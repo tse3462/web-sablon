@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kontakt — Bonelia</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a href="index.html" class="logo">Bonelia</a>
+      <nav class="nav">
+        <a href="index.html">Startseite</a>
+        <a href="products.html">Produkte</a>
+        <a href="contact.html">Kontakt</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <h1>Kontakt</h1>
+    <form class="contact-form" onsubmit="event.preventDefault(); alert('Danke für Ihre Nachricht!');">
+      <label>Name<br><input type="text" name="name" required></label>
+      <label>E-Mail<br><input type="email" name="email" required></label>
+      <label>Nachricht<br><textarea name="message" rows="5" required></textarea></label>
+      <button type="submit" class="btn">Senden</button>
+    </form>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>&copy; 2026 Bonelia. Alle Rechte vorbehalten.</p>
+    </div>
+  </footer>
+</body>
+</html>
