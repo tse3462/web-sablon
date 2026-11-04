@@ -131,6 +131,19 @@ class ServerClient:
         return self._request("POST", "/v1/tools/report", {"grant_id": grant_id, "tool_id": tool_id, "parameters": params,
                                                           "outcome": outcome, "verified": verified, "detail": detail})
 
+    def enroll_agent(self, label: str) -> DeviceCredentials:
+        """Create credentials for a background agent on this PC, authorised by this (USB) device."""
+        import os
+
+        key = generate_keypair()
+        res = EnrollResponse.model_validate(self._request("POST", "/v1/agent/enroll",
+                                                          {"device_label": label, "public_key_b64": public_key_b64(key)}))
+        if res.server_public_key_b64 != self.creds.server_public_key_b64:
+            raise FakeServerError("server key changed")
+        return DeviceCredentials(server_url=self.creds.server_url, device_id=res.device_id, tenant_id=res.tenant_id,
+                                 scopes=res.scopes, server_public_key_b64=res.server_public_key_b64, private_key=key,
+                                 data_key=os.urandom(32))
+
     def adapters(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/adapters").get("adapters", [])
 

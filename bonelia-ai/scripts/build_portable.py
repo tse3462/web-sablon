@@ -51,6 +51,21 @@ DE — Verwendung
 """
 
 
+# Double-click helpers on the USB: they ask Windows for admin rights themselves (UAC).
+_ELEVATE = ('net session >nul 2>&1 || (powershell -NoProfile -Command "Start-Process -FilePath \'%~f0\' -Verb RunAs" '
+            '& exit /b)\n')
+BAT_FILES = {
+    "Bu-Bilgisayara-Kur.bat": (
+        "@echo off\nrem BONELIA AI: install continuous monitoring + safe self-repair on THIS PC\n" + _ELEVATE +
+        'cd /d "%~dp0"\n'
+        '"%~dp0BoneliaAI-Konsol.exe" agent-install --yes --label "%COMPUTERNAME%"\n'
+        "echo.\necho USB'yi cikarabilirsiniz; izleme arka planda devam eder. / USB kann entfernt werden.\npause\n"),
+    "Bu-Bilgisayardan-Kaldir.bat": (
+        "@echo off\nrem BONELIA AI: remove the agent from THIS PC\n" + _ELEVATE +
+        'cd /d "%~dp0"\n"%~dp0BoneliaAI-Konsol.exe" agent-uninstall\npause\n'),
+}
+
+
 def sha256(p: Path) -> str:
     h = hashlib.sha256()
     with open(p, "rb") as fh:
@@ -89,6 +104,8 @@ def main() -> int:
     (pkg / "config" / "settings.json").write_text(json.dumps({"language": "tr", "allow_cloud_default": False, "log_paths": []}, indent=2),
                                                   encoding="utf-8")
     (pkg / "LIESMICH-BENIOKU.txt").write_text(README.format(version=__version__), encoding="utf-8")
+    for name, body in BAT_FILES.items():
+        (pkg / name).write_bytes(body.replace("\n", "\r\n").encode("ascii"))
     files = {str(p.relative_to(pkg)).replace("\\", "/"): sha256(p) for p in sorted(pkg.rglob("*")) if p.is_file()}
     manifest = {"product": "BONELİA AI Portable Monitor", "version": __version__, "built_at": datetime.now(timezone.utc).isoformat(),
                 "build_platform": f"{platform.system()} {platform.release()} {platform.machine()}", "python": platform.python_version(),

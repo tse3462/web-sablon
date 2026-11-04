@@ -57,10 +57,28 @@ def _check_name(name: Any) -> str | None:
     return None
 
 
+def is_admin() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
+    except Exception:
+        return False
+
+
 def _elevated(ps_command: str, timeout_s: int) -> tuple[int, str]:
-    """Run one PowerShell command elevated (Windows shows its own UAC prompt if needed)."""
-    outer = ("$p = Start-Process -FilePath powershell.exe -Verb RunAs -WindowStyle Hidden -Wait -PassThru "
-             f"-ArgumentList '-NoProfile','-NonInteractive','-Command','{ps_command}'; exit $p.ExitCode")
+    """Run one PowerShell command with admin rights.
+
+    Already elevated (e.g. the background agent running as SYSTEM): run directly, no prompt.
+    Otherwise Windows shows its own UAC prompt to the person at the PC.
+    """
+    if is_admin():
+        outer = f"{ps_command}; exit 0"
+    else:
+        outer = ("$p = Start-Process -FilePath powershell.exe -Verb RunAs -WindowStyle Hidden -Wait -PassThru "
+                 f"-ArgumentList '-NoProfile','-NonInteractive','-Command','{ps_command}'; exit $p.ExitCode")
     try:
         p = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", outer], capture_output=True,
                            timeout=timeout_s, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

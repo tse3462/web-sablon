@@ -231,6 +231,24 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             raise HTTPException(403, "enrollment_rejected") from exc
         return EnrollResponse(server_public_key_b64=server_pub, **res).model_dump()
 
+    class AgentEnroll(BaseModel):
+        device_label: str = Field(min_length=1, max_length=80)
+        public_key_b64: str = Field(max_length=200)
+
+    @app.post("/v1/agent/enroll")
+    async def agent_enroll(auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        """Install the background agent from an authorised USB: one click, no enrollment code."""
+        need_scope(auth, "install:agent")
+        req = parse(AgentEnroll, auth["body"])
+        try:
+            load_public_key(req.public_key_b64)
+            res = store.create_agent_device(auth["tenant"]["id"], req.device_label, req.public_key_b64, auth["device"]["id"])
+        except ValueError as exc:
+            raise HTTPException(422, "invalid_public_key") from exc
+        except PermissionError as exc:
+            raise HTTPException(403, "enrollment_rejected") from exc
+        return EnrollResponse(server_public_key_b64=server_pub, **res).model_dump()
+
     @app.post("/v1/analyze")
     async def analyze(auth: dict = Depends(device_auth)) -> dict[str, Any]:
         need_scope(auth, "diagnose")

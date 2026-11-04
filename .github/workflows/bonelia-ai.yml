@@ -113,6 +113,10 @@ jobs:
           Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           if (-not $ok) { throw "windowed BoneliaAI.exe did not serve the UI" }
           Write-Host "Windowed BoneliaAI.exe served the UI"
+          foreach ($f in "Bu-Bilgisayara-Kur.bat", "Bu-Bilgisayardan-Kaldir.bat", "BoneliaAI-Konsol.exe") {
+            if (-not (Test-Path "$pkg/$f")) { throw "missing in package: $f" }
+          }
+          & "$pkg/BoneliaAI-Konsol.exe" agent-status
       - uses: actions/upload-artifact@v4
         with:
           name: BONELIA-AI-Portable-windows

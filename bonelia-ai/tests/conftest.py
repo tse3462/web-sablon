@@ -55,3 +55,27 @@ class ServerThread:
 @pytest.fixture
 def server_thread():
     return ServerThread
+
+
+def write_test_event(source: str, event_id: int, message: str) -> None:
+    """Write a controlled ERROR event to the Windows Application log (eventcreate, with a PowerShell fallback).
+
+    eventcreate occasionally fails on CI runners without a useful message; the fallback keeps tests deterministic.
+    """
+    import subprocess
+    import time
+
+    last = ""
+    for _ in range(3):
+        p = subprocess.run(["eventcreate", "/T", "ERROR", "/ID", str(event_id), "/L", "APPLICATION", "/SO", source, "/D", message],
+                           capture_output=True, text=True)
+        if p.returncode == 0:
+            return
+        last = (p.stdout + p.stderr).strip()
+        time.sleep(1)
+    msg = message.replace("'", "''")
+    ps = (f"if (-not [System.Diagnostics.EventLog]::SourceExists('{source}')) {{ New-EventLog -LogName Application -Source '{source}' }}; "
+          f"Write-EventLog -LogName Application -Source '{source}' -EventId {event_id} -EntryType Error -Message '{msg}'")
+    p = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"could not write test event: eventcreate={last!r} powershell={p.stderr.strip()!r}")

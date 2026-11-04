@@ -7,9 +7,9 @@
 | 2 AI Server | 🟡 API, cihaz kimliği, olay yönetimi, analiz, sağlık; gerçek Ollama modeliyle test yapılmadı |
 | 3 AI Diagnostic Engine | 🟡 Kural motoru + bilgi tabanı tablosu + AI yönlendirme; onaylı bilgi tabanı girişi için henüz CLI komutu yok (yalnızca `Store.add_knowledge`) |
 | 4 İlk örnek modül (VeedelKorb) | 🟡 Ayrı, isteğe bağlı, salt okunur eklenti paketi (`adapters/veedelkorb`); canlı/test ortamında çalıştırılmadı (token yok). Çekirdek ondan bağımsız (testli) |
-| 5 Controlled Repair Engine | 🟡 Politika + geçit + doğrulama + denetim hazır; gerçek yürütme yalnızca sunucu tarafı ve TEST ortamı |
+| 5 Controlled Repair Engine | 🟡 Windows hizmet onarımları (başlat / yeniden başlat) gerçek Windows'ta doğrulandı; müşteri başına tek seferlik izin; triage (Önemli/Kontrol/Zararsız) |
 | 6 Çoklu program | ⏳ BONELIA Finance deposu bulunamadı; Supabase TEST projesi mevcut |
-| 7 Çoklu USB + Agent | 🟡 Çoklu USB/iptal hazır; Agent ve web Control Center yok |
+| 7 Çoklu USB + Agent | 🟡 Çoklu USB/iptal, Agent (sürekli izleme, güvenli kendi kendine onarım, USB'den tek tıkla kurulum, `alerts`) hazır — bkz. `AGENT.md`; web Control Center yok |
 | 8 SAP pilotu | ⏳ Yalnızca manifest (Service Layer / resmî API) |
 | 9 Ticari hazırlık | ⏳ Kod imzası, güvenli güncelleme, saklama süresi işleri yok |
 

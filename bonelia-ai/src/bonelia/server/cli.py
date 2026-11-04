@@ -53,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("tenant_id")
     ar.add_argument("--level", type=int, choices=[0, 1, 2], default=1,
                     help="0 = read-only, 1 = safe repairs (start a stopped service), 2 = also restart services")
+    ar.add_argument("--include-devices", action="store_true",
+                    help="also give this customer's USB devices the rights to repair and to install the agent")
 
     ds = sub.add_parser("device-scopes", help="add/remove permissions of an enrolled USB device")
     ds.add_argument("device_id")
@@ -68,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--params", default="{}")
     a.add_argument("--by", required=True)
     a.add_argument("--ttl-minutes", type=int, default=30)
+
+    al = sub.add_parser("alerts", help="what happened at your customers (important findings and repairs)")
+    al.add_argument("--tenant")
+    al.add_argument("--hours", type=int, default=24)
+    al.add_argument("--all", action="store_true", help="include 'check' findings, not only 'important'")
 
     au = sub.add_parser("audit")
     au.add_argument("--tenant")
@@ -121,8 +128,15 @@ def main(argv: list[str] | None = None) -> int:
         safe_tools = ["windows.start_service"] if args.level >= 1 else []
         store.update_tenant(args.tenant_id, max_auto_level=args.level, auto_tools=safe_tools,
                             production_writes_allowed=1 if args.level >= 1 else 0)
+        updated = []
+        if args.include_devices:
+            for d in store.devices(args.tenant_id):
+                if d["status"] == "active":
+                    store.update_device_scopes(d["id"], ["repair:windows", "install:agent"] if args.level >= 1 else [],
+                                               [] if args.level >= 1 else ["repair:windows", "install:agent"])
+                    updated.append(d["id"])
         print(json.dumps({"tenant_id": args.tenant_id, "repair_level": args.level, "one_click_tools": safe_tools,
-                          "note": "devices also need the repair:windows scope (see device-scopes)"}, indent=2))
+                          "devices_updated": updated}, indent=2))
     elif args.cmd == "device-scopes":
         scopes = store.update_device_scopes(args.device_id, [s for s in args.add.split(",") if s.strip()],
                                             [s for s in args.remove.split(",") if s.strip()])
@@ -137,6 +151,24 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "approve":
         params = json.loads(args.params)
         print(store.create_approval(args.tenant_id, args.tool_id, params_hash(args.tool_id, params), args.by, args.ttl_minutes))
+    elif args.cmd == "alerts":
+        from datetime import timedelta
+
+        from ..contracts import DiagnosticEvent, utcnow
+
+        since = utcnow() - timedelta(hours=args.hours)
+        names = {t["id"]: t["name"] for t in store.tenants()}
+        rows = []
+        for r in store.recent_events(since, args.tenant):
+            ev = DiagnosticEvent.model_validate_json(r["payload"])
+            if ev.triage.value == "important" or (args.all and ev.triage.value == "check"):
+                rows.append({"at": r["received_at"][:19], "customer": names.get(r["tenant_id"], r["tenant_id"]),
+                             "device": r["label"], "triage": ev.triage.value, "title": ev.title, "app": ev.app.name,
+                             "x": ev.occurrences, "repair": ev.repair_tool})
+        repairs = [{"at": a["at"][:19], "customer": names.get(a["tenant_id"], a["tenant_id"]), "action": a["action"],
+                    "detail": json.loads(a["detail"])} for a in store.audit_log(args.tenant, 300)
+                   if a["action"] in ("tool.executed", "tool.denied") and a["at"] >= since.isoformat()]
+        print(json.dumps({"findings": rows, "repairs": repairs}, indent=2, ensure_ascii=False))
     elif args.cmd == "audit":
         if args.verify:
             ok = store.verify_audit_chain()

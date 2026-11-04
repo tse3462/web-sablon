@@ -68,9 +68,9 @@ def test_cli_enroll_scan_analyze(tmp_path, server):
     controlled_source = None
     if sys.platform == "win32":
         controlled_source = "BoneliaAITest"
-        subprocess.run(["eventcreate", "/T", "ERROR", "/ID", "999", "/L", "APPLICATION", "/SO", controlled_source,
-                        "/D", "BONELIA AI controlled test error: export failed (connection refused)"], check=True,
-                       capture_output=True)
+        from tests.conftest import write_test_event
+
+        write_test_event(controlled_source, 999, "BONELIA AI controlled test error: export failed (connection refused)")
     rep = json.loads(run([*mon, "analyze", "--mode", "recent", "--log", str(log), "--json"], env).stdout)
     assert rep["customer_ref"] == tenant and rep["ai_mode"] in ("rules", "rules+cache", "cache+rules")
     assert any("connection refused" in f["evidence"][0]["text"] for f in rep["findings"])
@@ -131,3 +131,6 @@ def test_allow_repairs_and_device_scopes_commands(tmp_path):
     dev = store.redeem_enrollment(store.create_enrollment_code(tenant, ["diagnose"]), "USB", "pk")["device_id"]
     out = json.loads(run([*srv, "device-scopes", dev, "--add", "repair:windows"], env).stdout)
     assert out["scopes"] == ["diagnose", "repair:windows"]
+    out = json.loads(run([*srv, "allow-repairs", tenant, "--level", "1", "--include-devices"], env).stdout)
+    assert out["devices_updated"] == [dev]
+    assert set(store.device(dev)["scopes"]) == {"diagnose", "repair:windows", "install:agent"}

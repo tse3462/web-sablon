@@ -148,6 +148,18 @@ class Store:
         self.audit("admin", "enrollment.code_created", {"scopes": sorted(set(scopes)), "ttl_min": ttl_minutes}, tenant_id=tenant_id)
         return code
 
+    def create_agent_device(self, tenant_id: str, label: str, public_key_b64: str, by_device: str) -> dict[str, Any]:
+        """An authorised USB enrolls a background agent for a PC of the SAME customer (no code needed)."""
+        if self._q("select 1 from devices where public_key=?", (public_key_b64,)):
+            raise PermissionError("key_reused")
+        did = new_id("dev")
+        scopes = ["diagnose", "repair:windows"]
+        self._x("insert into devices (id, tenant_id, label, public_key, scopes, created_at) values (?,?,?,?,?,?)",
+                (did, tenant_id, label[:80], public_key_b64, json.dumps(scopes), _iso(utcnow())))
+        self.audit("device", "agent.enrolled_by_usb", {"label": label[:80], "by_device": by_device}, tenant_id=tenant_id,
+                   device_id=did)
+        return {"device_id": did, "tenant_id": tenant_id, "scopes": scopes}
+
     def redeem_enrollment(self, code: str, label: str, public_key_b64: str) -> dict[str, Any]:
         with self._lock:
             rows = self._q("select * from enrollment_codes where code_hash=?", (hash_secret(normalize_code(code)),))
@@ -226,6 +238,15 @@ class Store:
     def events(self, tenant_id: str, limit: int = 100) -> list[DiagnosticEvent]:
         rows = self._q("select payload from events where tenant_id=? order by received_at desc limit ?", (tenant_id, limit))
         return [DiagnosticEvent.model_validate_json(r["payload"]) for r in rows]
+
+    def recent_events(self, since: datetime, tenant_id: str | None = None) -> list[dict[str, Any]]:
+        sql = ("select e.tenant_id, e.device_id, d.label, e.received_at, e.payload from events e "
+               "left join devices d on d.id = e.device_id where e.received_at >= ?")
+        args: tuple = (_iso(since),)
+        if tenant_id:
+            sql += " and e.tenant_id = ?"
+            args += (tenant_id,)
+        return [dict(r) for r in self._q(sql + " order by e.received_at desc limit 500", args)]
 
     def previous_occurrences(self, tenant_id: str, fingerprint: str) -> int:
         return self._q("select count(*) c from events where tenant_id=? and fingerprint=?", (tenant_id, fingerprint))[0]["c"]

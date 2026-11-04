@@ -21,8 +21,9 @@ def test_controlled_error_is_detected_in_event_log():
     from bonelia.collectors.windows_events import collect
     from bonelia.diagnostics.engine import event_from_raw
 
-    subprocess.run(["eventcreate", "/T", "ERROR", "/ID", "998", "/L", "APPLICATION", "/SO", "BoneliaAIWinTest",
-                    "/D", "BONELIA AI windows test error mail test@example.com"], check=True, capture_output=True)
+    from tests.conftest import write_test_event
+
+    write_test_event("BoneliaAIWinTest", 998, "BONELIA AI windows test error mail test@example.com")
     events, _ = collect(hours=1, logs=("Application",), max_events=100)
     hit = [e for e in events if e.provider == "BoneliaAIWinTest" and e.event_id == 998]
     assert hit, "controlled event not found"
@@ -57,8 +58,9 @@ def test_german_umlauts_survive_event_log_reading():
     """Regression (owner's German Windows): 'Gerätezuordnung' was read as 'Ger�tezuordnung'."""
     from bonelia.collectors.windows_events import collect
 
-    subprocess.run(["eventcreate", "/T", "ERROR", "/ID", "996", "/L", "APPLICATION", "/SO", "BoneliaAIUmlaut",
-                    "/D", "Fehler bei der Gerätezuordnung: Größe Ä Ö Ü ß"], check=True, capture_output=True)
+    from tests.conftest import write_test_event
+
+    write_test_event("BoneliaAIUmlaut", 996, "Fehler bei der Gerätezuordnung: Größe Ä Ö Ü ß")
     events, status = collect(hours=1, logs=("Application",), max_events=100)
     assert status["eventlog:Application"].startswith("ok:"), status
     hit = [e for e in events if e.provider == "BoneliaAIUmlaut"]
@@ -98,3 +100,56 @@ def test_real_scan_has_triage_and_service_state():
     res = run_scan(mode="quick", salt="s", lang="tr")
     assert res.collector_status["services"].startswith("ok:")
     assert all(e.triage_reason for e in res.events)
+
+
+def test_agent_install_self_repair_and_uninstall_on_real_windows(tmp_path, monkeypatch):
+    """Install the agent (DPAPI + SYSTEM task), let one cycle repair a really stopped service, uninstall."""
+    import json
+    import os
+    import sys
+    import time
+
+    import psutil
+
+    from bonelia.security import crypto
+    from bonelia.server.app import create_app
+    from bonelia.server.config import ServerConfig
+    from bonelia.server.store import Store
+    from tests.conftest import ServerThread
+
+    cfg = ServerConfig(data_dir=tmp_path / "srv", ollama_url=None)
+    cfg.data_dir.mkdir()
+    store = Store(cfg.db_path)
+    tenant = store.create_tenant("Agent test")
+    store.update_tenant(tenant, max_auto_level=1, auto_tools=["windows.start_service"], production_writes_allowed=1)
+    code = store.create_enrollment_code(tenant, ["diagnose", "repair:windows"])
+    env = {**os.environ, "BONELIA_AGENT_DIR": str(tmp_path / "agent"), "PYTHONIOENCODING": "utf-8"}
+    with ServerThread(create_app(cfg, store=store, adapters={}, server_key=crypto.generate_keypair())) as srv:
+        p = subprocess.run([sys.executable, "-m", "bonelia", "agent-install", "--server", srv.url, "--code", code, "--yes",
+                            "--no-start"], capture_output=True, text=True, env=env, timeout=120)
+        try:
+            assert p.returncode == 0, p.stderr + p.stdout
+            raw = (tmp_path / "agent" / "agent.cred").read_bytes()
+            assert b"device_id" not in raw and b"private_key" not in raw  # DPAPI-protected
+            assert subprocess.run(["schtasks", "/Query", "/TN", "BONELIA AI Agent"], capture_output=True).returncode == 0
+
+            # a service that should run automatically is stopped -> the agent fixes it on its own
+            subprocess.run(["sc", "config", "Spooler", "start=", "auto"], capture_output=True)
+            subprocess.run(["sc", "stop", "Spooler"], capture_output=True)
+            for _ in range(30):
+                if psutil.win_service_get("Spooler").status() == "stopped":
+                    break
+                time.sleep(0.5)
+            c = subprocess.run([sys.executable, "-m", "bonelia", "agent", "--once"], capture_output=True, text=True,
+                               env=env, timeout=600)
+            assert c.returncode == 0, c.stderr
+            out = json.loads(c.stdout)
+            fixed = [r for r in out["repairs"] if r["tool_id"] == "windows.start_service" and r["params"] == {"service_name": "Spooler"}]
+            assert fixed and fixed[0]["outcome"] == "executed_verified", out
+            assert psutil.win_service_get("Spooler").status() == "running"
+            assert "tool.executed" in [a["action"] for a in store.audit_log(tenant)]
+        finally:
+            u = subprocess.run([sys.executable, "-m", "bonelia", "agent-uninstall"], capture_output=True, text=True, env=env, timeout=120)
+    assert u.returncode == 0, u.stderr
+    assert subprocess.run(["schtasks", "/Query", "/TN", "BONELIA AI Agent"], capture_output=True).returncode != 0
+    assert not (tmp_path / "agent" / "agent.cred").exists()

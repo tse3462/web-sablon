@@ -48,6 +48,106 @@ def _print(obj, as_json: bool) -> None:
         print(reports.render_text(obj) if isinstance(obj, dict) and obj.get("report_type") else obj)
 
 
+CONSENT = """BONELİA AI Agent bu bilgisayara kalıcı olarak kurulacak.
+- Windows açılınca arka planda başlar, birkaç dakikada bir hata kayıtlarını salt okunur tarar.
+- Bulguları kişisel veriler temizlenmiş olarak BONELİA AI sunucusuna gönderir.
+- İşletmenin izin verdiği GÜVENLİ onarımları (ör. durmuş bir hizmeti başlatmak) kendisi yapar ve doğrular.
+- Ticari kayıtları değiştirmez. 'BoneliaAI-Konsol.exe agent-uninstall' ile tamamen kaldırılır.
+
+Der BONELİA AI Agent wird dauerhaft auf diesem PC installiert (Hintergrundüberwachung, sichere
+Selbstreparatur mit Freigabe des Betriebs). Entfernen: 'BoneliaAI-Konsol.exe agent-uninstall'.
+"""
+
+
+def _agent_command(args) -> int:
+    import socket
+
+    from ..agent import install as inst
+    from ..repair.windows_tools import is_admin
+    from ..security.redact import pseudonymize
+
+    if args.cmd == "agent-status":
+        state = {}
+        try:
+            state = json.loads(inst.state_path().read_text(encoding="utf-8")).get("last_cycle", {})
+        except (OSError, ValueError):
+            pass
+        print(json.dumps({"installed": inst.task_installed(), "credentials": inst.cred_path().is_file(),
+                          "dir": str(inst.agent_dir()), "last_cycle": state}, indent=2, ensure_ascii=False))
+        return 0
+    if args.cmd == "agent-uninstall":
+        if sys.platform == "win32" and not is_admin():
+            print("Yönetici olarak çalıştırın / Als Administrator ausführen.", file=sys.stderr)
+            return 2
+        print(json.dumps({"removed": inst.uninstall(),
+                          "note": "Sunucuda cihazı da iptal edin / Gerät auch am Server widerrufen: bonelia-server revoke <device_id>"},
+                         indent=2, ensure_ascii=False))
+        return 0
+    if args.cmd == "agent-install":
+        if sys.platform != "win32":
+            print("Agent yalnızca Windows'ta kurulabilir / nur unter Windows.", file=sys.stderr)
+            return 2
+        if not is_admin():
+            print("Yönetici olarak çalıştırın / Als Administrator ausführen.", file=sys.stderr)
+            return 2
+        print(CONSENT)
+        if not args.yes and input("İşletmenin izni var mı? / Zustimmung des Betriebs? (evet/ja): ").strip().lower() not in ("evet", "ja", "yes", "e", "j", "y"):
+            print("İptal edildi / Abgebrochen.")
+            return 1
+        label = args.label or f"Agent {pseudonymize(socket.gethostname(), 'agent-label')[:12]}"
+        try:
+            if args.code:
+                if not args.server:
+                    print("--server gerekli / erforderlich", file=sys.stderr)
+                    return 2
+                creds = enroll(args.server, args.code, label, ca_file=args.ca)
+            else:  # one-click from the USB: the USB's identity authorises this PC
+                usb = _session(args)
+                if not usb.client:
+                    print("Bu USB kayıtlı değil / nicht registriert.", file=sys.stderr)
+                    return 2
+                creds = usb.client.enroll_agent(label)
+        except ServerError:
+            print("Kayıt reddedildi: kod yanlış, kullanılmış veya süresi dolmuş / Registrierung abgelehnt.", file=sys.stderr)
+            return 4
+        except ServerUnavailable:
+            print("Sunucuya ulaşılamıyor / Server nicht erreichbar: " + args.server, file=sys.stderr)
+            return 3
+        except (ValidationError, ValueError) as exc:
+            print(f"Geçersiz giriş veya yanlış parola / Ungültige Eingabe oder falsches Passwort: {exc}", file=sys.stderr)
+            return 2
+        inst.save_credentials(creds)
+        ok, info = inst.install_task(start_now=not args.no_start)
+        if not ok:
+            print(f"Görev oluşturulamadı / Aufgabe nicht erstellt: {info}", file=sys.stderr)
+            return 5
+        print(json.dumps({"installed": True, "device_id": creds.device_id, "tenant_id": creds.tenant_id, "scopes": creds.scopes,
+                          "task": inst.TASK_NAME, "command": info}, indent=2))
+        return 0
+
+    # agent run
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    from ..agent.agent import Agent, AgentState
+    from .client import ServerClient
+
+    inst.agent_dir().mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(level=logging.INFO, handlers=[RotatingFileHandler(inst.agent_dir() / "agent.log", maxBytes=1_000_000,
+                                                                          backupCount=3, encoding="utf-8")])
+    try:
+        creds = inst.load_credentials()
+    except (OSError, ValueError) as exc:
+        print(f"Agent kurulu değil / nicht installiert: {exc}", file=sys.stderr)
+        return 2
+    agent = Agent(ServerClient(creds, ca_file=args.ca), AgentState(inst.state_path()), lang=args.lang or "tr")
+    if args.once:
+        print(json.dumps(agent.cycle(), indent=2, ensure_ascii=False, default=str))
+        return 0
+    agent.run_forever(args.interval)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if not argv and getattr(sys, "frozen", False):
@@ -96,6 +196,17 @@ def main(argv: list[str] | None = None) -> int:
     tr_.add_argument("--params", default="{}")
     tr_.add_argument("--execute", action="store_true", help="real execution (policy and approvals still apply)")
     tr_.add_argument("--approval")
+    ag = sub.add_parser("agent", help="run the background agent (normally started by Windows at boot)")
+    ag.add_argument("--once", action="store_true", help="one cycle, then exit (prints a JSON summary)")
+    ag.add_argument("--interval", type=int, default=300)
+    ai_ = sub.add_parser("agent-install", help="install continuous monitoring on THIS PC (admin, business consent)")
+    ai_.add_argument("--server", help="only with --code; otherwise the USB's own server is used")
+    ai_.add_argument("--code", help="optional enrollment code; without it the enrolled USB authorises the install")
+    ai_.add_argument("--label", default=None)
+    ai_.add_argument("--yes", action="store_true", help="the business has agreed (skips the question)")
+    ai_.add_argument("--no-start", action="store_true")
+    sub.add_parser("agent-uninstall", help="remove the agent completely from this PC")
+    sub.add_parser("agent-status")
     ui = sub.add_parser("ui", help="open the local graphical interface")
     ui.add_argument("--no-browser", action="store_true")
     ui.add_argument("--port", type=int, default=0)
@@ -133,6 +244,9 @@ def main(argv: list[str] | None = None) -> int:
         vault.save(creds, _passphrase(confirm=True))
         print(json.dumps({"device_id": creds.device_id, "tenant_id": creds.tenant_id, "scopes": creds.scopes}, indent=2))
         return 0
+
+    if args.cmd.startswith("agent"):
+        return _agent_command(args)
 
     if args.cmd == "ui":
         from .ui import serve_ui
