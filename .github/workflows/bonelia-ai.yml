@@ -78,9 +78,10 @@ jobs:
           $ok = $false
           for ($i = 0; $i -lt 20 -and -not $ok; $i++) { Start-Sleep -Milliseconds 500; try { $ok = (Invoke-WebRequest http://127.0.0.1:8750/ -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch {} }
           if (-not $ok) { throw "panel not up after BONELIA-Baslat" }
-          $g = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\BONELIA-AI.bat"
           cmd /c deployment\windows\BONELIA-Kur-Otomatik.bat
-          if (-not (Test-Path $g)) { throw "combined autostart not created" }
+          schtasks /Query /TN "BONELIA AI" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "hidden autostart task not created" }
+          schtasks /Delete /F /TN "BONELIA AI" | Out-Null
           cmd /c deployment\windows\BONELIA-Server-Durdur.bat
 
   windows:

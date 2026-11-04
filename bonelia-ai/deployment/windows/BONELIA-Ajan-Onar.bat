@@ -31,6 +31,8 @@ echo.
 echo [3/4] Her acilista otomatik baslatma ayarlaniyor (bu kullanici + yonetici)...
 schtasks /Delete /F /TN "BONELIA AI Agent" >nul 2>&1
 schtasks /Create /F /TN "BONELIA AI Agent" /SC ONLOGON /RL HIGHEST /IT /TR "\"%PYW%\" -m bonelia agent"
+rem Hide the task in Task Scheduler (best effort; it still works if this fails).
+powershell -NoProfile -Command "try{$t=Get-ScheduledTask -TaskName 'BONELIA AI Agent' -ErrorAction Stop; $t.Settings.Hidden=$true; Set-ScheduledTask -InputObject $t | Out-Null}catch{}" >nul 2>&1
 schtasks /Run /TN "BONELIA AI Agent" >nul 2>&1
 
 echo.

