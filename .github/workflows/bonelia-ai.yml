@@ -52,6 +52,25 @@ jobs:
       - run: pip install -e ".[server]" pytest
       - name: Server + client tests on Windows with Python 3.14
         run: python -m pytest -q -rs tests
+      - name: Double-click server scripts (start hidden, health, stop, autostart on/off)
+        shell: pwsh
+        run: |
+          cmd /c deployment\windows\BONELIA-Server-Baslat.bat
+          if ($LASTEXITCODE -ne 0) { Get-Content C:\BoneliaAI\server.log -ErrorAction SilentlyContinue; throw "start script failed" }
+          $h = Invoke-RestMethod http://127.0.0.1:8742/v1/health
+          if ($h.status -ne "ok") { throw "health not ok" }
+          cmd /c deployment\windows\BONELIA-Server-Baslat.bat   # second start must detect the running server
+          cmd /c deployment\windows\BONELIA-Server-Durdur.bat
+          Start-Sleep -Seconds 2
+          $alive = $true
+          try { Invoke-RestMethod http://127.0.0.1:8742/v1/health -TimeoutSec 3 | Out-Null } catch { $alive = $false }
+          if ($alive) { throw "server still running after stop script" }
+          $f = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\BONELIA-AI-Server.bat"
+          cmd /c deployment\windows\Otomatik-Baslatma-AC.bat
+          if (-not (Test-Path $f)) { throw "autostart entry not created" }
+          Get-Content $f
+          cmd /c deployment\windows\Otomatik-Baslatma-KAPAT.bat
+          if (Test-Path $f) { throw "autostart entry not removed" }
 
   windows:
     # Real Windows verification: event log access, controlled error via eventcreate,
