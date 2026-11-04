@@ -79,19 +79,31 @@ def parse_diagnosis(text: str, event_id: str, produced_by: str, allowed_tools: s
     obj = _extract_json(text)
     warnings: list[str] = []
     hyps: list[Hypothesis] = []
+    seen: set[str] = set()
     for h in (obj.get("hypotheses") or [])[:10]:
         if not isinstance(h, dict) or not h.get("cause"):
             continue
+        cause = redact_text(str(h["cause"]), 1000)
+        key = re.sub(r"\W+", " ", cause.lower()).strip()
+        if key in seen:  # small models often repeat themselves
+            continue
+        seen.add(key)
         conf = str(h.get("confidence", "low")).lower()
         if conf not in {c.value for c in Confidence}:
             conf = "low"
-        hyps.append(Hypothesis(cause=redact_text(str(h["cause"]), 1000), confidence=Confidence(conf),
+        if conf == Confidence.high.value:
+            # An AI model may not claim high confidence on its own (seen with a 3B model restating
+            # the error text as "high"). High confidence is reserved for verified knowledge/rules.
+            conf = Confidence.medium.value
+        hyps.append(Hypothesis(cause=cause, confidence=Confidence(conf),
                                supporting_evidence=[redact_text(str(s), 200) for s in (h.get("supporting_evidence") or [])][:20]))
     recs: list[RecommendedAction] = []
     for r in (obj.get("recommendations") or [])[:10]:
         if not isinstance(r, dict) or not r.get("description"):
             continue
         tool_id = r.get("tool_id")
+        if isinstance(tool_id, str) and tool_id.strip().lower() in ("", "null", "none", "n/a", "-"):
+            tool_id = None  # models write "null" as a string to mean "no tool"
         if tool_id is not None and (not isinstance(tool_id, str) or tool_id not in allowed_tools):
             warnings.append(f"model proposed unknown tool '{str(tool_id)[:60]}' — ignored")
             tool_id = None

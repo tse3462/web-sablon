@@ -155,6 +155,7 @@ class HybridRouter:
                 modes.add("cache")
                 continue
             diag: Diagnosis | None = None
+            ai_budget -= 1  # count attempts, not successes: failed calls also cost time
             if local_ok and self.local is not None:
                 try:
                     diag = self._ask(self.local, event, rules, lang, policy.tenant_id)
@@ -179,7 +180,6 @@ class HybridRouter:
                 out.append(rules)
                 modes.add("rules")
             else:
-                ai_budget -= 1
                 self.usage.cache_diagnosis(policy.tenant_id, event.fingerprint, diag)
                 out.append(diag)
         if not local_ok and not (allow_cloud and self.cloud is not None and policy.cloud_allowed):

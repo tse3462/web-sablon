@@ -36,6 +36,24 @@ Henüz otomatik testi olmayan: uygulama sürüm uyuşmazlığı (sürüme özgü
 | GitHub Actions `windows-latest` (gerçek Windows Server, run #4) | **Tüm testler geçti** (yalnız-Windows testleri dahil); `BoneliaAI.exe` derlendi; exe gerçek Application/System günlüklerini okudu (`ok:15`, `ok:8`), 59 kurulu programı tanıdı, `eventcreate` ile yazılan kontrollü hatayı (`BoneliaAISmoke/997`) tespit etti; kayıtsız taramada USB'ye düz metin rapor yazmadı | 2026-11-04 |
 | GitHub Actions `ubuntu-latest` (run #4) | Eklentisiz çekirdek ✓, çekirdek + VeedelKorb ✓, eklenti kaldırıldıktan sonra ✓ | 2026-11-04 |
 
+### İlk gerçek kabul denemesi — sahibin bilgisayarı (2026-11-04)
+Gerçek USB bellek (G:), Almanca Windows 11 (10.0.26300), ev sunucusu aynı bilgisayarda (Python 3.14), Ollama `qwen2.5:3b-instruct` (CPU).
+
+| Adım (§35) | Sonuç |
+|---|---|
+| USB'den kurulumsuz başlatma, cihaz kaydı | ✓ |
+| Sunucuya imzalı bağlantı, AI modeli görünür | ✓ (`qwen2.5:3b-instruct ✓`) |
+| Gerçek olay günlüğü okuma, kontrollü hata (`eventcreate` BoneliaTest/999) tespiti | ✓ |
+| Kişisel veri temizleme (MAC → `[mac]`, kullanıcı yolları) | ✓ (2. denemede, MAC kuralı eklendikten sonra) |
+| Yerel AI ile neden/çözüm açıklaması | ✓ 4 olay AI ile analiz edildi; 1 AI cevabı geçersizdi → kural teşhisine güvenli dönüş |
+| Ticari kayıt değiştirilmedi | ✓ (salt okunur) |
+
+Bu denemenin bulduğu ve düzeltilen sorunlar: 30 sn istemci zaman aşımı "çevrimdışı" sanıldı; Almanca karakterler bozuktu; MAC adresi gizlenmiyordu; yer tutucu kayıt kodunda Python hata dökümü; kuyruktaki eski analiz yeni sonucu geciktirdi; küçük modelin `"null"` araç adı yanlış uyarı üretti, kendini tekrar etti ve "yüksek güven" iddia etti (AI artık en fazla "orta" güven verebilir); başarısız AI denemeleri süre sınırına sayılmıyordu; hem sunucu hem USB için siyah konsol penceresi gerekiyordu.
+
+Gözlem: 3B model ilk teşhis için kullanılabilir ama açıklamaları genel kalabiliyor; donanım uygunsa 7B önerilir.
+
+Henüz yapılmadı: AI Sohbet, rapor dışa aktarma, USB çıkarma ve ikinci bilgisayar adımları gerçek USB ile; kayıp USB (iptal) senaryosu.
+
 ### Gerçek Windows'un bulduğu hatalar (Linux'ta görünmeyen)
 | Hata | Düzeltme | Regresyon testi |
 |---|---|---|

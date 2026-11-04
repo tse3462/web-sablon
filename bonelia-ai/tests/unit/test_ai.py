@@ -167,3 +167,24 @@ def test_openai_provider_protocol_and_key_handling():
     bad = OpenAICompatibleProvider("k", "m", transport=httpx.MockTransport(lambda r: httpx.Response(500)))
     with pytest.raises(ProviderError):
         bad.complete("s", "u")
+
+
+def test_parse_handles_small_model_quirks():
+    """Regressions from the owner's first real run with qwen2.5:3b-instruct."""
+    raw = json.dumps({"summary": "s", "hypotheses": [
+        {"cause": "Port blocked by firewall.", "confidence": "high"},
+        {"cause": "port blocked by firewall", "confidence": "medium"},
+        {"cause": "Service not running", "confidence": "medium"}],
+        "recommendations": [{"description": "Check firewall", "tool_id": "null", "manual": True}]})
+    d = parse_diagnosis(raw, "e1", "ollama:m", {"generic.collect_snapshot"})
+    assert [h.cause for h in d.hypotheses] == ["Port blocked by firewall.", "Service not running"]  # duplicate removed
+    assert d.hypotheses[0].confidence.value == "medium"  # AI cannot claim "high" on its own
+    assert d.recommendations[0].tool_id is None and d.warnings == []  # "null" string is not an unknown tool
+
+
+def test_failed_ai_attempts_count_towards_the_per_request_limit():
+    local = FakeProvider("ollama", text="not json")
+    r = router(local=local)
+    r.max_ai_events = 2
+    r.analyze(events(), TenantAIPolicy("t1"), False, "en")
+    assert local.calls == 2  # bounded even when every attempt fails
