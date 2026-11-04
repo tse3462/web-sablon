@@ -52,18 +52,45 @@ DE — Verwendung
 
 
 # Double-click helpers on the USB: they ask Windows for admin rights themselves (UAC).
-_ELEVATE = ('net session >nul 2>&1 || (powershell -NoProfile -Command "Start-Process -FilePath \'%~f0\' -Verb RunAs" '
-            '& exit /b)\n')
-BAT_FILES = {
-    "Bu-Bilgisayara-Kur.bat": (
-        "@echo off\nrem BONELIA AI: install continuous monitoring + safe self-repair on THIS PC\n" + _ELEVATE +
-        'cd /d "%~dp0"\n'
-        '"%~dp0BoneliaAI-Konsol.exe" agent-install --yes --label "%COMPUTERNAME%"\n'
-        "echo.\necho USB'yi cikarabilirsiniz; izleme arka planda devam eder. / USB kann entfernt werden.\npause\n"),
-    "Bu-Bilgisayardan-Kaldir.bat": (
-        "@echo off\nrem BONELIA AI: remove the agent from THIS PC\n" + _ELEVATE +
-        'cd /d "%~dp0"\n"%~dp0BoneliaAI-Konsol.exe" agent-uninstall\npause\n'),
-}
+_INSTALL_BAT = r"""@echo off
+rem BONELIA AI: silent install of continuous monitoring + safe self-repair on THIS PC
+net session >nul 2>&1 || (powershell -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath '%~f0' -Verb RunAs" & exit /b)
+setlocal
+cd /d "%~dp0"
+title BONELIA AI
+
+rem 1) Tailscale: only if not installed yet and the installer was put on the USB (folder "tailscale")
+set "TS=%ProgramFiles%\Tailscale\tailscale.exe"
+if exist "%TS%" goto ts_join
+for %%f in ("%~dp0tailscale\*.msi") do msiexec /i "%%~f" /quiet /norestart TS_UNATTENDEDMODE=always
+:ts_join
+if not exist "%TS%" goto agent
+if not exist "%~dp0config\tailscale-authkey.txt" goto agent
+set /p TSKEY=<"%~dp0config\tailscale-authkey.txt"
+"%TS%" up --authkey=%TSKEY% --unattended >nul 2>&1
+
+:agent
+rem 2) BONELIA AI agent (silent with the install key; the USB password is asked only the very first time)
+"%~dp0BoneliaAI-Konsol.exe" agent-install --yes --label "%COMPUTERNAME%"
+if errorlevel 1 (
+  echo.
+  echo KURULUM BASARISIZ / INSTALLATION FEHLGESCHLAGEN
+  pause
+  exit /b 1
+)
+powershell -NoProfile -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationFramework; [void][System.Windows.MessageBox]::Show('BONELIA AI kuruldu ve arka planda calisiyor. USB cikarilabilir.' + [Environment]::NewLine + 'BONELIA AI ist installiert und laeuft im Hintergrund.', 'BONELIA AI')"
+exit /b 0
+"""
+
+_UNINSTALL_BAT = r"""@echo off
+rem BONELIA AI: remove the agent from THIS PC
+net session >nul 2>&1 || (powershell -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath '%~f0' -Verb RunAs" & exit /b)
+cd /d "%~dp0"
+"%~dp0BoneliaAI-Konsol.exe" agent-uninstall
+pause
+"""
+
+BAT_FILES = {"Bu-Bilgisayara-Kur.bat": _INSTALL_BAT, "Bu-Bilgisayardan-Kaldir.bat": _UNINSTALL_BAT}
 
 
 def sha256(p: Path) -> str:
@@ -106,6 +133,10 @@ def main() -> int:
     (pkg / "LIESMICH-BENIOKU.txt").write_text(README.format(version=__version__), encoding="utf-8")
     for name, body in BAT_FILES.items():
         (pkg / name).write_bytes(body.replace("\n", "\r\n").encode("ascii"))
+    (pkg / "tailscale").mkdir()
+    (pkg / "tailscale" / "BURAYA-TAILSCALE-MSI-KOYUN.txt").write_text(
+        "Tailscale Windows MSI kurulum dosyasini bu klasore koyun (https://pkgs.tailscale.com/stable/#windows).\n"
+        "Auth key: config\\tailscale-authkey.txt (yeniden kullanilabilir, etiketli anahtar).\n", encoding="utf-8")
     files = {str(p.relative_to(pkg)).replace("\\", "/"): sha256(p) for p in sorted(pkg.rglob("*")) if p.is_file()}
     manifest = {"product": "BONELİA AI Portable Monitor", "version": __version__, "built_at": datetime.now(timezone.utc).isoformat(),
                 "build_platform": f"{platform.system()} {platform.release()} {platform.machine()}", "python": platform.python_version(),

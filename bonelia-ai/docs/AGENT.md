@@ -11,9 +11,16 @@ bonelia-server --config deployment\server.home.toml allow-repairs ten_... --leve
   sunucuya uyarı olarak bildirir.
 * `--include-devices`: bu müşterinin USB'lerine onarım ve "bilgisayara kur" yetkisi verir.
 
-## Her bilgisayarda bir kez (USB ile)
+## Her bilgisayarda (USB ile, sessiz kurulum)
 1. USB'yi takın, **Bu-Bilgisayara-Kur.bat** dosyasına çift tıklayın, Windows'un yönetici sorusuna **Evet** deyin.
-2. USB parolasını girin. Bitti; USB'yi çıkarabilirsiniz.
+2. **Yalnızca ilk seferde** USB parolası sorulur. Program USB'ye sınırlı bir **kurulum anahtarı** (`config/install.key`)
+   kaydeder; sonraki bilgisayarlarda hiçbir şey sorulmaz.
+3. Sonunda "kuruldu" mesajı çıkar; USB çıkarılabilir.
+
+Kurulum anahtarı yalnızca bilgisayar kurabilir: müşteri verisini okuyamaz, onarım yapamaz. USB kaybolursa
+`bonelia-server devices` ile anahtarı bulun ve `bonelia-server revoke <id>` ile iptal edin; kurulu bilgisayarlar
+çalışmaya devam eder. Kurulu bilgisayarlar (agent) da yalnızca bulgu gönderir ve kendi bilgisayarını onarır;
+başka verileri okuyamaz.
 
 Agent, Windows açılınca **SYSTEM** hesabıyla arka planda başlar (pencere yok), 5 dakikada bir tarar:
 * yeni **Önemli / Kontrol edin** bulgularını sunucuya gönderir (yapay zekâ analizi),
@@ -33,7 +40,16 @@ Son 24 saatteki önemli bulguları ve yapılan/reddedilen onarımları gösterir
 USB'deki **Bu-Bilgisayardan-Kaldir.bat** (veya `BoneliaAI-Konsol.exe agent-uninstall`), sonra sunucuda
 `bonelia-server revoke <device_id>`.
 
-## Ağ
-Agent'ın çalıştığı bilgisayar ev sunucusuna ulaşabilmelidir. Sunucu ile aynı bilgisayarda değilse
-**Tailscale** her iki bilgisayara kurulmalı ve sunucu `host = "100.x.y.z"` ile başlatılmalıdır. Bağlantı yoksa agent
-bulguları tekrar dener, **onarım yapmaz** (izin ve denetim sunucuda).
+## Ağ: diğer bilgisayarlar evdeki sunucuya Tailscale ile ulaşır
+Bir kez (evde):
+1. Ev bilgisayarına Tailscale kurun, Tailscale adresini (`100.x.y.z`) öğrenin.
+2. `deployment\server.home.toml` içinde `host = "100.x.y.z"` yapın, sunucuyu yeniden başlatın.
+3. USB'de `config\settings.json` içine `"agent_server_url": "http://100.x.y.z:8742"` ekleyin.
+4. Tailscale yönetim panelinde **yeniden kullanılabilir, etiketli** bir auth key oluşturun ve
+   USB'de `config\tailscale-authkey.txt` dosyasına yazın. Tailscale ACL ile etiketli cihazların yalnızca
+   `100.x.y.z:8742` adresine erişmesine izin verin.
+5. Tailscale Windows MSI kurulum dosyasını USB'deki `tailscale\` klasörüne koyun.
+
+Bundan sonra **Bu-Bilgisayara-Kur.bat** Tailscale'i de sessizce kurar ve bağlar. Bağlantı yoksa agent bulguları
+tekrar dener, **onarım yapmaz** (izin ve denetim sunucuda). Auth key dosyası USB'de şifresizdir; USB kaybolursa
+anahtarı Tailscale panelinden iptal edin.

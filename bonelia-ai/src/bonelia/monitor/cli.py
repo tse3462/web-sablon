@@ -59,6 +59,32 @@ Selbstreparatur mit Freigabe des Betriebs). Entfernen: 'BoneliaAI-Konsol.exe age
 """
 
 
+def _enroll_agent_from_usb(args, label: str):
+    """Silent path: the USB's limited install key. First time: unlock the USB once and create that key."""
+    from ..security.crypto import DeviceCredentials
+    from .client import ServerClient
+
+    home = PortableHome(Path(args.home) if args.home else None).ensure()
+    key_file = home.path("config", "install.key")
+    # Address the agents use to reach the home server (e.g. its Tailscale address), if different from the USB's
+    agent_url = args.server or home.settings().get("agent_server_url")
+    if key_file.is_file():
+        installer = ServerClient(DeviceCredentials.from_json(key_file.read_bytes()), ca_file=args.ca)
+        return installer.enroll_agent(label, agent_url)
+    usb = Session(home=home, lang=args.lang or "tr", ca_file=args.ca)
+    if not usb.enrolled:
+        print("Bu USB kayıtlı değil / nicht registriert.", file=sys.stderr)
+        return None
+    print("İlk kurulum: USB parolası bir kez sorulur; sonraki bilgisayarlarda sorulmaz. / "
+          "Erste Installation: USB-Passwort wird einmal abgefragt.")
+    usb.unlock(_passphrase())
+    if not args.no_install_key:
+        ik = usb.client.create_install_key("Install key " + (usb.creds.device_id[-6:]))
+        key_file.write_bytes(ik.to_json())  # can ONLY enroll agents; revocable on the server
+        print("Kurulum anahtarı USB'ye kaydedildi (yalnızca bilgisayar kurma yetkisi). / Installationsschlüssel gespeichert.")
+    return usb.client.enroll_agent(label, agent_url)
+
+
 def _agent_command(args) -> int:
     import socket
 
@@ -101,12 +127,10 @@ def _agent_command(args) -> int:
                     print("--server gerekli / erforderlich", file=sys.stderr)
                     return 2
                 creds = enroll(args.server, args.code, label, ca_file=args.ca)
-            else:  # one-click from the USB: the USB's identity authorises this PC
-                usb = _session(args)
-                if not usb.client:
-                    print("Bu USB kayıtlı değil / nicht registriert.", file=sys.stderr)
+            else:  # one-click from the USB: no enrollment code needed
+                creds = _enroll_agent_from_usb(args, label)
+                if creds is None:
                     return 2
-                creds = usb.client.enroll_agent(label)
         except ServerError:
             print("Kayıt reddedildi: kod yanlış, kullanılmış veya süresi dolmuş / Registrierung abgelehnt.", file=sys.stderr)
             return 4
@@ -200,7 +224,8 @@ def main(argv: list[str] | None = None) -> int:
     ag.add_argument("--once", action="store_true", help="one cycle, then exit (prints a JSON summary)")
     ag.add_argument("--interval", type=int, default=300)
     ai_ = sub.add_parser("agent-install", help="install continuous monitoring on THIS PC (admin, business consent)")
-    ai_.add_argument("--server", help="only with --code; otherwise the USB's own server is used")
+    ai_.add_argument("--server", help="server address for the agent (default: settings 'agent_server_url' or the USB's)")
+    ai_.add_argument("--no-install-key", action="store_true", help="do not create the passphrase-free install key")
     ai_.add_argument("--code", help="optional enrollment code; without it the enrolled USB authorises the install")
     ai_.add_argument("--label", default=None)
     ai_.add_argument("--yes", action="store_true", help="the business has agreed (skips the question)")

@@ -97,7 +97,7 @@ def test_one_click_agent_install_authorised_by_the_usb(tmp_path, env):  # noqa: 
 
     s = usb(tmp_path, env, "USB-OWNER", env["a"], scopes=("diagnose", "install:agent"))
     creds = s.client.enroll_agent("Kasse 1 - Filiale Ehrenfeld")
-    assert creds.tenant_id == env["a"] and set(creds.scopes) == {"diagnose", "repair:windows"}
+    assert creds.tenant_id == env["a"] and set(creds.scopes) == {"agent", "repair:windows"}
     assert creds.device_id != s.creds.device_id and creds.private_key != s.creds.private_key
     assert ServerClient(creds).health()["status"] == "ok"  # the agent has its own working identity
     assert "agent.enrolled_by_usb" in [a["action"] for a in env["store"].audit_log(env["a"])]
@@ -105,3 +105,50 @@ def test_one_click_agent_install_authorised_by_the_usb(tmp_path, env):  # noqa: 
     with pytest.raises(ServerError) as e:
         plain.client.enroll_agent("x")
     assert e.value.status == 403  # only USBs allowed to install agents can do it
+
+
+def test_install_key_allows_silent_installs_but_nothing_else(tmp_path, env):  # noqa: F811
+    """The key stored unencrypted on the USB can only enroll agents; agents cannot read customer data."""
+    import pytest
+
+    from bonelia.monitor.client import ServerClient, ServerError
+
+    full = usb(tmp_path, env, "USB-OWNER", env["a"], scopes=("diagnose", "install:agent"))
+    ik = ServerClient(full.client.create_install_key("Install key"))
+    assert ik.creds.scopes == ["install:agent"]
+    agent = ServerClient(ik.enroll_agent("Kasse 2"))  # silent install path
+    assert set(agent.creds.scopes) == {"agent", "repair:windows"}
+    for call in (lambda: ik.events(), lambda: ik.chat("x", "tr"), lambda: ik.create_install_key("again"),
+                 lambda: agent.events(), lambda: agent.chat("x", "tr"), lambda: agent.create_install_key("x"),
+                 lambda: agent.enroll_agent("x")):
+        with pytest.raises(ServerError) as e:
+            call()
+        assert e.value.status == 403
+    assert agent.analyze([], None, False, "tr").diagnoses == []  # agents may report findings
+    # a lost USB: revoke the install key -> no more installs, existing agents keep working
+    env["store"].revoke_device(ik.creds.device_id)
+    with pytest.raises(ServerError):
+        ik.enroll_agent("Kasse 3")
+    assert agent.health()["status"] == "ok"
+
+
+def test_usb_asks_password_only_the_first_time(tmp_path, env, monkeypatch):  # noqa: F811
+    import argparse
+
+    import bonelia.monitor.cli as cli
+
+    full = usb(tmp_path, env, "USB-OWNER", env["a"], scopes=("diagnose", "install:agent"))
+    args = argparse.Namespace(home=str(full.home.root), lang="tr", ca=None, server=None, no_install_key=False)
+    monkeypatch.setattr(cli, "_passphrase", lambda confirm=False: "test passphrase 123")
+    first = cli._enroll_agent_from_usb(args, "PC-1")
+    assert first and (full.home.root / "config" / "install.key").is_file()
+
+    def no_password(confirm=False):
+        raise AssertionError("password must not be asked again")
+
+    monkeypatch.setattr(cli, "_passphrase", no_password)
+    second = cli._enroll_agent_from_usb(args, "PC-2")
+    assert second.device_id != first.device_id and second.tenant_id == env["a"]
+    # agents can be pointed at the home server's Tailscale address
+    args.server = "http://100.101.102.103:8742"
+    assert cli._enroll_agent_from_usb(args, "PC-3").server_url == "http://100.101.102.103:8742"

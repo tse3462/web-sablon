@@ -131,16 +131,24 @@ class ServerClient:
         return self._request("POST", "/v1/tools/report", {"grant_id": grant_id, "tool_id": tool_id, "parameters": params,
                                                           "outcome": outcome, "verified": verified, "detail": detail})
 
-    def enroll_agent(self, label: str) -> DeviceCredentials:
-        """Create credentials for a background agent on this PC, authorised by this (USB) device."""
+    def enroll_agent(self, label: str, server_url: str | None = None) -> DeviceCredentials:
+        """Create credentials for a background agent on this PC, authorised by this USB / install key."""
+        return self._child_device("/v1/agent/enroll", label, server_url)
+
+    def create_install_key(self, label: str) -> DeviceCredentials:
+        """Limited key (scope install:agent only) for passphrase-free installs from this USB."""
+        return self._child_device("/v1/install-key", label, None)
+
+    def _child_device(self, path: str, label: str, server_url: str | None) -> DeviceCredentials:
         import os
 
         key = generate_keypair()
-        res = EnrollResponse.model_validate(self._request("POST", "/v1/agent/enroll",
+        res = EnrollResponse.model_validate(self._request("POST", path,
                                                           {"device_label": label, "public_key_b64": public_key_b64(key)}))
         if res.server_public_key_b64 != self.creds.server_public_key_b64:
             raise FakeServerError("server key changed")
-        return DeviceCredentials(server_url=self.creds.server_url, device_id=res.device_id, tenant_id=res.tenant_id,
+        return DeviceCredentials(server_url=check_server_url(server_url) if server_url else self.creds.server_url,
+                                 device_id=res.device_id, tenant_id=res.tenant_id,
                                  scopes=res.scopes, server_public_key_b64=res.server_public_key_b64, private_key=key,
                                  data_key=os.urandom(32))
 

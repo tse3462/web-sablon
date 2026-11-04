@@ -180,8 +180,8 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         store.touch_device(device_id)
         return {"device": dev, "tenant": tenant, "body": body}
 
-    def need_scope(auth: dict[str, Any], scope: str) -> None:
-        if scope not in auth["device"]["scopes"]:
+    def need_scope(auth: dict[str, Any], scope: str, *alternatives: str) -> None:
+        if not ({scope, *alternatives} & set(auth["device"]["scopes"])):
             raise HTTPException(403, f"missing_scope:{scope}")
 
     def parse(model: type[BaseModel], body: bytes):
@@ -249,9 +249,25 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             raise HTTPException(403, "enrollment_rejected") from exc
         return EnrollResponse(server_public_key_b64=server_pub, **res).model_dump()
 
+    @app.post("/v1/install-key")
+    async def create_install_key(auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        """A full, passphrase-unlocked USB creates a limited key that can ONLY enroll agents (silent installs)."""
+        need_scope(auth, "install:agent")
+        need_scope(auth, "diagnose")  # an install key itself cannot create further keys
+        req = parse(AgentEnroll, auth["body"])
+        try:
+            load_public_key(req.public_key_b64)
+            res = store.create_agent_device(auth["tenant"]["id"], req.device_label, req.public_key_b64, auth["device"]["id"],
+                                            scopes=Store.INSTALL_KEY_SCOPES, kind="install_key")
+        except ValueError as exc:
+            raise HTTPException(422, "invalid_public_key") from exc
+        except PermissionError as exc:
+            raise HTTPException(403, "enrollment_rejected") from exc
+        return EnrollResponse(server_public_key_b64=server_pub, **res).model_dump()
+
     @app.post("/v1/analyze")
     async def analyze(auth: dict = Depends(device_auth)) -> dict[str, Any]:
-        need_scope(auth, "diagnose")
+        need_scope(auth, "diagnose", "agent")  # agents report findings; they cannot list or chat over customer data
         req = parse(AnalyzeRequest, auth["body"])
         res = await _analyze(auth, req.events, req.allow_cloud, req.language)
         return res.model_dump(mode="json")

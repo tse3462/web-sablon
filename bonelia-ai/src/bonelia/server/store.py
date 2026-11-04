@@ -148,15 +148,19 @@ class Store:
         self.audit("admin", "enrollment.code_created", {"scopes": sorted(set(scopes)), "ttl_min": ttl_minutes}, tenant_id=tenant_id)
         return code
 
-    def create_agent_device(self, tenant_id: str, label: str, public_key_b64: str, by_device: str) -> dict[str, Any]:
-        """An authorised USB enrolls a background agent for a PC of the SAME customer (no code needed)."""
+    AGENT_SCOPES = ("agent", "repair:windows")  # report findings + repair ITS OWN PC; cannot read customer data
+    INSTALL_KEY_SCOPES = ("install:agent",)  # can only enroll agents (lives unencrypted on the USB)
+
+    def create_agent_device(self, tenant_id: str, label: str, public_key_b64: str, by_device: str,
+                            scopes: tuple[str, ...] = AGENT_SCOPES, kind: str = "agent") -> dict[str, Any]:
+        """An authorised USB enrolls a background agent (or an install key) for the SAME customer."""
         if self._q("select 1 from devices where public_key=?", (public_key_b64,)):
             raise PermissionError("key_reused")
         did = new_id("dev")
-        scopes = ["diagnose", "repair:windows"]
+        scopes = sorted(scopes)
         self._x("insert into devices (id, tenant_id, label, public_key, scopes, created_at) values (?,?,?,?,?,?)",
                 (did, tenant_id, label[:80], public_key_b64, json.dumps(scopes), _iso(utcnow())))
-        self.audit("device", "agent.enrolled_by_usb", {"label": label[:80], "by_device": by_device}, tenant_id=tenant_id,
+        self.audit("device", f"{kind}.enrolled_by_usb", {"label": label[:80], "by_device": by_device}, tenant_id=tenant_id,
                    device_id=did)
         return {"device_id": did, "tenant_id": tenant_id, "scopes": scopes}
 
