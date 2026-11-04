@@ -57,3 +57,16 @@ def test_stopped_automatic_service_gets_a_one_click_repair_and_noise_is_skipped(
     assert classify(out[0], "tr")[0] == Triage.important
     # running service that crashed repeatedly -> restart (level 2) suggestion
     assert crash.repair_tool == "windows.restart_service" and crash.repair_params == {"service_name": "Spooler"}
+
+
+def test_new_signatures_are_recognised_and_triaged():
+    from bonelia.collectors.windows_events import RawEvent
+    from bonelia.diagnostics.engine import event_from_raw
+
+    cases = {("MSSQLSERVER", 9002): Triage.important, ("MSSQLSERVER", 824): Triage.important,
+             ("Microsoft-Windows-WHEA-Logger", 19): Triage.important, ("Microsoft-Windows-WER-SystemErrorReporting", 1001): Triage.important,
+             ("Service Control Manager", 7001): Triage.check, ("volsnap", 36): Triage.check}
+    for (prov, eid), expected in cases.items():
+        e = event_from_raw(RawEvent(log="System", provider=prov, event_id=eid, level=2, time_created=None, message="x"), "tr")
+        assert e.rule_id is not None, (prov, eid)
+        assert classify(e, "tr")[0] == expected, (prov, eid)

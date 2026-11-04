@@ -76,7 +76,8 @@ _TXT = {
     "test": {"tr": "Kontrollü test kaydı", "de": "Kontrollierter Testeintrag", "en": "Controlled test entry"},
 }
 
-IMPORTANT_RULES = {"win.unexpected_shutdown", "win.disk_error", "win.service_crash", "db.mssql_login_failed", "win.service_stopped"}
+IMPORTANT_RULES = {"win.unexpected_shutdown", "win.disk_error", "win.service_crash", "db.mssql_login_failed", "win.service_stopped",
+                   "db.mssql_log_full", "db.mssql_io_error", "win.hardware_error", "win.bugcheck"}
 
 
 def _provider_and_id(event: DiagnosticEvent) -> tuple[str, int] | None:

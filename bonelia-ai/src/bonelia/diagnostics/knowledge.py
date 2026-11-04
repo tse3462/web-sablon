@@ -173,6 +173,60 @@ SIGNATURES: tuple[KnownSignature, ...] = (
     ),
 )
 
+SIGNATURES = SIGNATURES + (
+    KnownSignature(
+        "db.mssql_log_full", ("MSSQLSERVER", "MSSQL$SQLEXPRESS"), (9002,), ErrorCategory.database, Severity.critical,
+        _l("SQL Server işlem günlüğü dolu", "SQL-Server-Transaktionsprotokoll voll", "SQL Server transaction log full"),
+        ((_l("Günlük yedeği alınmıyor veya disk dolu; veritabanına yazılamıyor", "Keine Log-Sicherung oder Datenträger voll; DB nicht beschreibbar",
+             "No log backups or disk full; the database cannot be written"), Confidence.medium),),
+        (_l("Disk alanını ve SQL yedekleme planını yetkili kişiyle kontrol edin", "Speicherplatz und SQL-Sicherungsplan prüfen",
+            "Check disk space and the SQL backup plan with an authorised person"),),
+    ),
+    KnownSignature(
+        "db.mssql_io_error", ("MSSQLSERVER", "MSSQL$SQLEXPRESS"), (823, 824, 825), ErrorCategory.database, Severity.critical,
+        _l("SQL Server disk okuma/yazma hatası (veri bozulma riski)", "SQL-Server-E/A-Fehler (Gefahr von Datenbeschädigung)",
+           "SQL Server I/O error (risk of data corruption)"),
+        ((_l("Disk veya depolama denetleyicisi arızası", "Datenträger- oder Controllerfehler", "Disk or storage controller failure"),
+          Confidence.medium),),
+        (_l("Hemen yedeğin sağlam olduğunu doğrulayın; DBCC CHECKDB yalnızca yetkili kişi", "Sofort Sicherung prüfen; DBCC CHECKDB nur durch Befugte",
+            "Verify backups immediately; DBCC CHECKDB only by an authorised person"),),
+    ),
+    KnownSignature(
+        "win.hardware_error", ("Microsoft-Windows-WHEA-Logger",), (1, 17, 18, 19, 46, 47), ErrorCategory.os_stability, Severity.critical,
+        _l("Donanım hatası bildirildi (işlemci, bellek veya PCIe)", "Hardwarefehler gemeldet (CPU, RAM oder PCIe)",
+           "Hardware error reported (CPU, memory or PCIe)"),
+        ((_l("Arızalanan donanım, aşırı ısınma veya güncel olmayan BIOS/sürücü", "Defekte Hardware, Überhitzung oder veraltetes BIOS/Treiber",
+             "Failing hardware, overheating or outdated BIOS/driver"), Confidence.medium),),
+        (_l("Tekrarlıyorsa donanımı servis için planlayın; BIOS ve yonga seti sürücülerini güncelleyin",
+            "Bei Wiederholung Hardwareservice planen; BIOS/Chipsatztreiber aktualisieren",
+            "If it repeats, plan hardware service; update BIOS and chipset drivers"),),
+    ),
+    KnownSignature(
+        "win.bugcheck", ("Microsoft-Windows-WER-SystemErrorReporting", "BugCheck"), (1001,), ErrorCategory.os_stability, Severity.critical,
+        _l("Bilgisayar mavi ekranla çöktü", "Computer ist mit Bluescreen abgestürzt", "The computer crashed with a blue screen"),
+        ((_l("Sürücü veya donanım sorunu", "Treiber- oder Hardwareproblem", "Driver or hardware problem"), Confidence.medium),),
+        (_l("Hata kodunu ve son yüklenen sürücüleri kontrol edin", "Stoppcode und zuletzt installierte Treiber prüfen",
+            "Check the stop code and recently installed drivers"),),
+    ),
+    KnownSignature(
+        "win.dependency_failed", ("Service Control Manager",), (7001, 7003), ErrorCategory.service_failure, Severity.error,
+        _l("Bir hizmet, bağlı olduğu hizmet başlamadığı için başlayamadı", "Dienst startete nicht, weil ein abhängiger Dienst fehlte",
+           "A service did not start because a service it depends on failed"),
+        ((_l("Bağımlı hizmet durmuş veya devre dışı", "Abhängiger Dienst gestoppt oder deaktiviert", "The dependency is stopped or disabled"),
+          Confidence.medium),),
+        (_l("Bağımlı hizmetin durumunu kontrol edin", "Status des abhängigen Dienstes prüfen", "Check the dependency's status"),),
+    ),
+    KnownSignature(
+        "win.shadow_copies_deleted", ("volsnap",), (25, 33, 35, 36), ErrorCategory.disk, Severity.error,
+        _l("Gölge kopyalar (geri yükleme noktaları) silindi", "Schattenkopien (Wiederherstellungspunkte) gelöscht",
+           "Shadow copies (restore points) were deleted"),
+        ((_l("Gölge kopya alanı yetersiz veya disk dolu", "Zu wenig Schattenkopie-Speicher oder Datenträger voll",
+             "Not enough shadow copy storage or disk full"), Confidence.medium),),
+        (_l("Disk alanını ve gölge kopya ayarlarını kontrol edin", "Speicherplatz und VSS-Einstellungen prüfen",
+            "Check disk space and shadow copy settings"),),
+    ),
+)
+
 EXCEPTION_CODES: dict[str, L] = {
     "0xc0000005": _l("Bellek erişim ihlali", "Speicherzugriffsverletzung", "Access violation"),
     "0xc0000409": _l("Yığın arabelleği taşması / güvenlik denetimi", "Stapelpufferüberlauf / Sicherheitsprüfung", "Stack buffer overrun / fail-fast"),
