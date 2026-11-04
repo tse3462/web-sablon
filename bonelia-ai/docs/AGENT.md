@@ -47,6 +47,10 @@ Komutla: `bonelia-server --config deployment\server.home.toml alerts --hours 24`
 | DNS ad çözümleme zaman aşımı | DNS önbelleğini temizle | DNS sorgusu çalışıyor |
 | Sistem diski %90+ dolu | 7 günden eski geçici dosyaları sil | eski geçici dosya kalmadı (kullanımdakiler hariç) |
 
+## Her açılışta otomatik (sunucu + panel)
+Bir kez `deployment\windows\BONELIA-Kur-Otomatik.bat` dosyasına çift tıklayın: ev sunucusu ve telefon paneli
+bilgisayar her açıldığında arka planda birlikte başlar. Elle başlatmak için `BONELIA-Baslat.bat`.
+
 ## Bildirimler
 Ev bilgisayarınızda Windows bildirimi (`deployment\server.home.toml` → `[notify] windows_toast = true`):
 * ⚠ önemli sorun bulundu (aynı sorun 6 saatte bir kez)

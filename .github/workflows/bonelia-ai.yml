@@ -71,6 +71,17 @@ jobs:
           Get-Content $f
           cmd /c deployment\windows\Otomatik-Baslatma-KAPAT.bat
           if (Test-Path $f) { throw "autostart entry not removed" }
+          # Combined launcher: server + phone panel, and the all-in-one autostart entry
+          cmd /c deployment\windows\BONELIA-Baslat.bat
+          Start-Sleep -Seconds 2
+          if ((Invoke-RestMethod http://127.0.0.1:8742/v1/health).status -ne "ok") { throw "server not up after BONELIA-Baslat" }
+          $ok = $false
+          for ($i = 0; $i -lt 20 -and -not $ok; $i++) { Start-Sleep -Milliseconds 500; try { $ok = (Invoke-WebRequest http://127.0.0.1:8750/ -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch {} }
+          if (-not $ok) { throw "panel not up after BONELIA-Baslat" }
+          $g = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\BONELIA-AI.bat"
+          cmd /c deployment\windows\BONELIA-Kur-Otomatik.bat
+          if (-not (Test-Path $g)) { throw "combined autostart not created" }
+          cmd /c deployment\windows\BONELIA-Server-Durdur.bat
 
   windows:
     # Real Windows verification: event log access, controlled error via eventcreate,

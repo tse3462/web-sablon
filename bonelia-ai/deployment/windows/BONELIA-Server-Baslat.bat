@@ -39,5 +39,6 @@ echo Sunucu baslamadi / Server nicht gestartet. Log: C:\BoneliaAI\server.log
 endlocal & exit /b 1
 
 :end
+if "%~1"=="/quiet" ( endlocal & exit /b 0 )
 if not defined CI timeout /t 4 >nul
 endlocal & exit /b 0
