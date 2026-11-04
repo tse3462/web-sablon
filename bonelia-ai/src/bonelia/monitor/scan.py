@@ -77,6 +77,23 @@ def _service_events(svcs: list[dict], events: list[DiagnosticEvent], lang: str) 
     return out
 
 
+def attach_generic_repairs(events: list[DiagnosticEvent], snap) -> list[DiagnosticEvent]:
+    """Deterministic repair suggestions (never chosen by the AI)."""
+    import os
+
+    sys_drive = (os.environ.get("SystemDrive", "C:") + "\\").upper()
+    for ev in events:
+        if ev.repair_tool:
+            continue
+        if ev.rule_id == "win.dns_timeout":
+            ev.repair_tool, ev.repair_params = "windows.flush_dns", {}
+        elif ev.rule_id == "metric.disk_full" and snap is not None and snap.is_windows:
+            mount = next((str(e.data.get("mount", "")) for e in ev.evidence if e.data.get("mount")), "")
+            if mount.upper() == sys_drive:
+                ev.repair_tool, ev.repair_params = "windows.clean_temp", {}
+    return events
+
+
 def run_scan(mode: str = "quick", salt: str = "", lang: str = "tr", app_query: str | None = None,
              log_paths: list[str] | None = None, hours: int | None = None, include_eventlog: bool = True) -> ScanResult:
     if mode not in MODES:
@@ -109,7 +126,7 @@ def run_scan(mode: str = "quick", salt: str = "", lang: str = "tr", app_query: s
     events.extend(lf_events)
     res.collector_status.update(lf_status)
 
-    res.events = apply_triage(group_events(events), lang)
+    res.events = apply_triage(attach_generic_repairs(group_events(events), res.system), lang)
     res.diagnoses = [diagnose_with_rules(e, lang) for e in res.events]
     res.finished_at = utcnow()
     return res

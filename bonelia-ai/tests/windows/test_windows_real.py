@@ -153,3 +153,18 @@ def test_agent_install_self_repair_and_uninstall_on_real_windows(tmp_path, monke
     assert u.returncode == 0, u.stderr
     assert subprocess.run(["schtasks", "/Query", "/TN", "BONELIA AI Agent"], capture_output=True).returncode != 0
     assert not (tmp_path / "agent" / "agent.cred").exists()
+
+
+def test_flush_dns_on_real_windows():
+    from bonelia.repair import windows_tools as wt
+
+    res = wt.flush_dns({}, False)
+    assert res.ok, res.detail
+    assert wt.verify_dns({}, res)
+
+
+def test_clean_temp_dry_run_on_real_windows():
+    from bonelia.repair import windows_tools as wt
+
+    res = wt.clean_temp({}, True)
+    assert res.ok and "would_delete_files" in res.detail and res.detail["roots"]

@@ -102,6 +102,13 @@ class Agent:
         self.state.data["cycles"] += 1
         self.state.data["last_cycle"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), **summary}
         self.state.save()
+        if not summary["offline"]:
+            try:  # "alive" signal for the control panel, with a short summary of this cycle
+                self.client.heartbeat({"cycles": self.state.data["cycles"], "new_findings": summary["new_findings"],
+                                       "repairs": [f"{r.get('tool_id')}:{r.get('outcome')}" for r in summary["repairs"]],
+                                       "important_open": sum(1 for e in res.events if e.triage == Triage.important)})
+            except (ServerUnavailable, ServerError):
+                pass
         return summary
 
     def run_forever(self, interval_s: int = 300) -> None:

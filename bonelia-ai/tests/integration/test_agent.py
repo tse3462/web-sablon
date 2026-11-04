@@ -152,3 +152,15 @@ def test_usb_asks_password_only_the_first_time(tmp_path, env, monkeypatch):  # n
     # agents can be pointed at the home server's Tailscale address
     args.server = "http://100.101.102.103:8742"
     assert cli._enroll_agent_from_usb(args, "PC-3").server_url == "http://100.101.102.103:8742"
+
+
+def test_agent_heartbeat_and_vetted_safe_tools_covered_by_level1(tmp_path, env):  # noqa: F811
+    s = usb(tmp_path, env, "AGENT-HB", env["a"], scopes=("diagnose", "repair:windows"))
+    # consent given before new safe tools existed: auto_tools lists only start_service
+    env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])
+    g = s.client.authorize_tool("windows.flush_dns", {})
+    assert g["allowed"] and g["grant_id"]  # vetted built-in safe tool is covered by the level-1 consent
+    pc = FakePC()
+    Agent(s.client, AgentState(tmp_path / "hb.json"), executors=pc.executors(), scan=pc.scan).cycle()
+    dev = env["store"].device(s.creds.device_id)
+    assert dev["last_seen_at"] and '"cycles": 1' in (dev["last_status"] or "")

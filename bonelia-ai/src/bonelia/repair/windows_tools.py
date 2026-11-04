@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 from .tools import ExecResult
@@ -140,7 +141,106 @@ def verify_running(params: dict[str, Any], result: ExecResult) -> bool:
     return status == "running"
 
 
+# ---------------------------------------------------------------- DNS cache
+
+def flush_dns(params: dict[str, Any], dry_run: bool) -> ExecResult:
+    if dry_run:
+        return ExecResult(True, {"would_run": "ipconfig /flushdns"})
+    if sys.platform != "win32":
+        return ExecResult(False, {"error": "not_windows"})
+    try:
+        p = subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=30,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return ExecResult(False, {"error": type(exc).__name__})
+    return ExecResult(p.returncode == 0, {"exit_code": p.returncode})
+
+
+def verify_dns(params: dict[str, Any], result: ExecResult) -> bool:
+    """Independent check: name resolution works after the flush."""
+    import socket
+
+    for host in ("www.microsoft.com", "www.google.com"):
+        try:
+            socket.getaddrinfo(host, 443)
+            result.detail["after"] = {"dns_lookup": "ok"}
+            return True
+        except OSError:
+            continue
+    result.detail["after"] = {"dns_lookup": "failed"}
+    return False
+
+
+# ---------------------------------------------------------------- temporary files
+
+TEMP_MIN_AGE_DAYS = 7
+
+
+def temp_roots() -> list[Path]:
+    """System and current-account temp folders only (as Windows' own Disk Cleanup does)."""
+    import os
+
+    roots = []
+    for value in (os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "Temp"), os.environ.get("TEMP"), os.environ.get("TMP")):
+        if value:
+            p = Path(value)
+            if p.is_dir() and p not in roots:
+                roots.append(p)
+    return roots
+
+
+def clean_old_files(roots: list[Path], older_than_days: int = TEMP_MIN_AGE_DAYS, dry_run: bool = False,
+                    max_files: int = 100_000) -> dict[str, Any]:
+    """Delete files older than N days below the given roots. Never follows links; skips locked files."""
+    import os
+
+    cutoff = time.time() - older_than_days * 86400
+    stats = {"files": 0, "bytes": 0, "skipped": 0}
+    for root in roots:
+        for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+            for name in filenames:
+                if stats["files"] + stats["skipped"] >= max_files:
+                    return stats
+                f = Path(dirpath) / name
+                try:
+                    st = f.lstat()
+                    if f.is_symlink() or st.st_mtime > cutoff:
+                        continue
+                    if not dry_run:
+                        f.unlink()
+                    stats["files"] += 1
+                    stats["bytes"] += st.st_size
+                except OSError:
+                    stats["skipped"] += 1  # in use or no permission: left alone
+    return stats
+
+
+def clean_temp(params: dict[str, Any], dry_run: bool) -> ExecResult:
+    import shutil
+
+    roots = temp_roots()
+    if not roots:
+        return ExecResult(False, {"error": "no_temp_folders"})
+    drive = Path(roots[0].anchor or "/")
+    before = shutil.disk_usage(drive).free
+    stats = clean_old_files(roots, dry_run=dry_run)
+    detail = {"roots": [str(r) for r in roots], "files": stats["files"], "freed_mb": round(stats["bytes"] / 1024**2, 1),
+              "skipped_in_use": stats["skipped"], "before": {"free_gb": round(before / 1024**3, 2)}}
+    if dry_run:
+        detail["would_delete_files"] = detail.pop("files")
+    return ExecResult(True, detail)
+
+
+def verify_clean(params: dict[str, Any], result: ExecResult) -> bool:
+    """Independent check: nothing older than the limit is left except files that were in use."""
+    remaining = clean_old_files(temp_roots(), dry_run=True)
+    result.detail["after"] = {"old_files_left": remaining["files"]}
+    return remaining["files"] <= result.detail.get("skipped_in_use", 0)
+
+
 EXECUTORS: dict[str, tuple[Callable[[dict[str, Any], bool], ExecResult], Callable[[dict[str, Any], ExecResult], bool]]] = {
     "windows.start_service": (start_service, verify_running),
     "windows.restart_service": (restart_service, verify_running),
+    "windows.flush_dns": (flush_dns, verify_dns),
+    "windows.clean_temp": (clean_temp, verify_clean),
 }

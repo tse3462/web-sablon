@@ -152,7 +152,9 @@ def test_approval_consumed_before_execution():
 
 def test_builtin_registry_defaults_are_safe():
     reg = default_registry()
-    assert {t.tool_id for t in reg.all()} == {"generic.collect_snapshot", "windows.start_service", "windows.restart_service"}
+    assert {t.tool_id for t in reg.all()} == {"generic.collect_snapshot", "windows.start_service", "windows.restart_service",
+                                              "windows.flush_dns", "windows.clean_temp"}
+    assert all(t.risk_level < RiskLevel.CRITICAL for t in reg.all())
     # Service tools run on the client and are inert until the customer allows repairs (tenant level 0 by default)
     for tid, level in (("windows.start_service", RiskLevel.SAFE_AUTO), ("windows.restart_service", RiskLevel.ADMIN_APPROVED)):
         t = reg.get(tid)
@@ -190,3 +192,41 @@ def test_windows_executors_refuse_critical_and_invalid_services():
         assert wt.restart_service({"service_name": name}, False).detail["error"] == "critical_service_refused"
     assert wt.start_service({"service_name": "a b; del"}, False).detail["error"] == "invalid_service_name"
     assert wt.start_service({"service_name": 5}, False).detail["error"] == "invalid_service_name"
+
+
+def test_clean_old_files_only_removes_old_files_and_never_follows_links(tmp_path):
+    import os
+    import time
+
+    from bonelia.repair.windows_tools import clean_old_files
+
+    root = tmp_path / "Temp"
+    (root / "sub").mkdir(parents=True)
+    old, new = root / "sub" / "old.tmp", root / "new.tmp"
+    old.write_bytes(b"x" * 2048)
+    new.write_bytes(b"y")
+    past = time.time() - 10 * 86400
+    os.utime(old, (past, past))
+    outside = tmp_path / "keep.txt"
+    outside.write_text("important")
+    os.utime(outside, (past, past))
+    (root / "link.txt").symlink_to(outside)
+    dry = clean_old_files([root], dry_run=True)
+    assert dry["files"] == 1 and old.exists()
+    res = clean_old_files([root])
+    assert res == {"files": 1, "bytes": 2048, "skipped": 0}
+    assert not old.exists() and new.exists() and outside.exists()
+
+
+def test_generic_repairs_are_attached_by_rules_not_ai():
+    from bonelia.contracts import AppIdentity, DiagnosticEvent, Evidence, SystemSnapshot
+    from bonelia.monitor.scan import attach_generic_repairs
+
+    snap = SystemSnapshot(hostname_ref="r", os="Windows", os_version="11", is_windows=True)
+    dns = DiagnosticEvent(app=AppIdentity(app_id="a", name="a"), title="dns", fingerprint="d", rule_id="win.dns_timeout")
+    disk_c = DiagnosticEvent(app=AppIdentity(app_id="a", name="a"), title="disk", fingerprint="c", rule_id="metric.disk_full",
+                             evidence=[Evidence(source="system_metrics", kind="metric", data={"mount": "C:\\"})])
+    disk_d = DiagnosticEvent(app=AppIdentity(app_id="a", name="a"), title="disk", fingerprint="e", rule_id="metric.disk_full",
+                             evidence=[Evidence(source="system_metrics", kind="metric", data={"mount": "D:\\"})])
+    attach_generic_repairs([dns, disk_c, disk_d], snap)
+    assert dns.repair_tool == "windows.flush_dns" and disk_c.repair_tool == "windows.clean_temp" and disk_d.repair_tool is None

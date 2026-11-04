@@ -32,7 +32,7 @@ from ..contracts import (
     new_id,
 )
 from ..diagnostics.engine import group_events
-from ..repair.builtin_tools import default_registry
+from ..repair.builtin_tools import SAFE_AUTO_TOOLS, default_registry
 from ..repair.gateway import ToolGateway
 from ..repair.policy import PolicyContext
 from ..repair.tools import ToolRegistry
@@ -265,6 +265,16 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             raise HTTPException(403, "enrollment_rejected") from exc
         return EnrollResponse(server_public_key_b64=server_pub, **res).model_dump()
 
+    class Heartbeat(BaseModel):
+        status: dict[str, Any] = Field(default_factory=dict)
+
+    @app.post("/v1/heartbeat")
+    async def heartbeat(auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        """Agents report 'alive' every cycle (device_auth already updates last_seen_at)."""
+        hb = parse(Heartbeat, auth["body"])
+        store.set_device_status(auth["device"]["id"], redact_value(hb.status))
+        return {"ok": True}
+
     @app.post("/v1/analyze")
     async def analyze(auth: dict = Depends(device_auth)) -> dict[str, Any]:
         need_scope(auth, "diagnose", "agent")  # agents report findings; they cannot list or chat over customer data
@@ -365,7 +375,10 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         return PolicyContext(
             tenant_id=tenant["id"], device_scopes=set(dev["scopes"]), actor_role="operator",
             tenant_max_level=RiskLevel(min(int(tenant["max_auto_level"]), int(RiskLevel.ADMIN_APPROVED))),
-            auto_tools=set(tenant["auto_tools"]), runs_last_hour=store.tool_runs_last_hour(tenant["id"], req.tool_id),
+            # Level >= 1 = the customer allowed "safe repairs": this covers the vetted built-in safe tools,
+            # including ones added in later versions. Adapter tools still need to be listed explicitly.
+            auto_tools=set(tenant["auto_tools"]) | (set(SAFE_AUTO_TOOLS) if int(tenant["max_auto_level"]) >= 1 else set()),
+            runs_last_hour=store.tool_runs_last_hour(tenant["id"], req.tool_id),
             approval=approval, environment=tenant["environment"],
             production_writes_allowed=bool(tenant["production_writes_allowed"]),
             technician_confirmed=req.technician_confirmed)

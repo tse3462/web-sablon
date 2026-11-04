@@ -152,6 +152,9 @@ class ServerClient:
                                  scopes=res.scopes, server_public_key_b64=res.server_public_key_b64, private_key=key,
                                  data_key=os.urandom(32))
 
+    def heartbeat(self, status: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/v1/heartbeat", {"status": status})
+
     def adapters(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/adapters").get("adapters", [])
 

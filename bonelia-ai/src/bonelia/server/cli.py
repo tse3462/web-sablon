@@ -125,7 +125,9 @@ def main(argv: list[str] | None = None) -> int:
         if store.tenant(args.tenant_id) is None:
             print("unknown tenant", file=sys.stderr)
             return 1
-        safe_tools = ["windows.start_service"] if args.level >= 1 else []
+        from ..repair.builtin_tools import SAFE_AUTO_TOOLS
+
+        safe_tools = list(SAFE_AUTO_TOOLS) if args.level >= 1 else []
         store.update_tenant(args.tenant_id, max_auto_level=args.level, auto_tools=safe_tools,
                             production_writes_allowed=1 if args.level >= 1 else 0)
         updated = []

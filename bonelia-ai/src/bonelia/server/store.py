@@ -93,6 +93,12 @@ class Store:
         self._db.execute("pragma journal_mode=wal")
         self._db.execute("pragma foreign_keys=on")
         self._db.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        cols = {r["name"] for r in self._q("pragma table_info(devices)")}
+        if "last_status" not in cols:  # added after v0.1 first release
+            self._x("alter table devices add column last_status text")
 
     def _q(self, sql: str, args: tuple = ()) -> list[sqlite3.Row]:
         with self._lock:
@@ -193,14 +199,28 @@ class Store:
 
     def devices(self, tenant_id: str | None = None) -> list[dict[str, Any]]:
         if tenant_id:
-            rows = self._q("select id, tenant_id, label, scopes, status, created_at, last_seen_at, revoked_at from devices where tenant_id=?",
-                           (tenant_id,))
+            rows = self._q("select id, tenant_id, label, scopes, status, created_at, last_seen_at, revoked_at, last_status "
+                           "from devices where tenant_id=?", (tenant_id,))
         else:
-            rows = self._q("select id, tenant_id, label, scopes, status, created_at, last_seen_at, revoked_at from devices")
+            rows = self._q("select id, tenant_id, label, scopes, status, created_at, last_seen_at, revoked_at, last_status from devices")
         return [dict(r) for r in rows]
 
     def touch_device(self, device_id: str) -> None:
         self._x("update devices set last_seen_at=? where id=?", (_iso(utcnow()), device_id))
+
+    def set_device_status(self, device_id: str, status: dict[str, Any]) -> None:
+        self._x("update devices set last_status=? where id=?", (json.dumps(status, default=str)[:4000], device_id))
+
+    def findings(self, since: datetime, tenant_id: str | None = None, limit: int = 300) -> list[dict[str, Any]]:
+        """Events with device label and the latest diagnosis (AI or rules) for the control panel."""
+        sql = ("select e.id, e.tenant_id, e.device_id, d.label, e.received_at, e.payload, "
+               "(select g.payload from diagnoses g where g.event_id = e.id order by g.id desc limit 1) as diagnosis "
+               "from events e left join devices d on d.id = e.device_id where e.received_at >= ?")
+        args: tuple = (_iso(since),)
+        if tenant_id:
+            sql += " and e.tenant_id = ?"
+            args += (tenant_id,)
+        return [dict(r) for r in self._q(sql + " order by e.received_at desc limit ?", args + (limit,))]
 
     def update_device_scopes(self, device_id: str, add: list[str] = (), remove: list[str] = ()) -> list[str] | None:
         dev = self.device(device_id)

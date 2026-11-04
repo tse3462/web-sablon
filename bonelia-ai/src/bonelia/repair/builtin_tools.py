@@ -51,9 +51,34 @@ def _restart_service_tool() -> ToolSpec:
                    "en": "The service stops briefly and starts again. Programs using it may briefly lose their connection."})
 
 
+def _flush_dns_tool() -> ToolSpec:
+    return ToolSpec(
+        tool_id="windows.flush_dns", description="Clear the Windows DNS cache (name resolution problems)",
+        platforms=("windows",), risk_level=RiskLevel.SAFE_AUTO, required_scope="repair:windows", required_role="operator",
+        params={}, supports_dry_run=True, idempotent=True, rollback="Not needed: the cache refills automatically",
+        timeout_s=60, max_runs_per_hour=3, verification="A DNS lookup succeeds after the flush",
+        side_effects="None noticeable; the next lookups take a few milliseconds longer", enabled=True, runs_on="client",
+        risk_text={"tr": "DNS önbelleği temizlenir; risk yok.", "de": "DNS-Cache wird geleert; kein Risiko.", "en": "DNS cache is cleared; no risk."})
+
+
+def _clean_temp_tool() -> ToolSpec:
+    return ToolSpec(
+        tool_id="windows.clean_temp", description="Delete temporary files older than 7 days (system and account temp folders)",
+        platforms=("windows",), risk_level=RiskLevel.SAFE_AUTO, required_scope="repair:windows", required_role="operator",
+        params={}, supports_dry_run=True, idempotent=True,
+        rollback="Not possible (files are deleted) — limited to temp folders and files older than 7 days, like Windows Disk Cleanup",
+        timeout_s=300, max_runs_per_hour=1, verification="No file older than 7 days remains except files in use",
+        side_effects="Frees disk space; files in use are skipped", enabled=True, runs_on="client",
+        risk_text={"tr": "Geçici klasörlerdeki 7 günden eski dosyalar silinir.", "de": "Temporäre Dateien älter als 7 Tage werden gelöscht.",
+                   "en": "Temporary files older than 7 days are deleted."})
+
+
+SAFE_AUTO_TOOLS = ("windows.start_service", "windows.flush_dns", "windows.clean_temp")
+
+
 def default_registry(enable: set[str] | None = None) -> ToolRegistry:
     reg = ToolRegistry()
-    for spec in (_snapshot_tool(), _start_service_tool(), _restart_service_tool()):
+    for spec in (_snapshot_tool(), _start_service_tool(), _restart_service_tool(), _flush_dns_tool(), _clean_temp_tool()):
         if enable and spec.tool_id in enable and spec.risk_level < RiskLevel.CRITICAL:
             spec.enabled = True
         reg.register(spec)
