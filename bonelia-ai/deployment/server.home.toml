@@ -13,3 +13,11 @@ max_ai_events_per_request = 3
 
 [repair]
 enabled_tools = []
+
+[notify]
+# Windows notification on this PC for important problems, repairs and silent computers
+windows_toast = true
+# Optional: Telegram to your phone. Put the bot token in the environment variable
+# BONELIA_TELEGRAM_BOT_TOKEN and your chat id here.
+# telegram_chat_id = "123456789"
+language = "tr"

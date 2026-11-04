@@ -27,6 +27,7 @@ class ServerConfig:
     # Optional adapter sections: {"<adapter_id>": {"enabled": bool, "tenant_ids": [...], ...adapter settings}}
     adapters: dict[str, dict[str, Any]] = field(default_factory=dict)
     enabled_tools: list[str] = field(default_factory=list)
+    notify: dict[str, Any] = field(default_factory=dict)  # {"windows_toast": bool, "telegram_chat_id": str, "language": "tr"}
 
     @property
     def db_path(self) -> Path:
@@ -65,4 +66,5 @@ class ServerConfig:
             max_ai_events_per_request=int(ai.get("max_ai_events_per_request", 5)),
             adapters={k: dict(v) for k, v in (raw.get("adapters") or {}).items() if isinstance(v, dict)},
             enabled_tools=list(raw.get("repair", {}).get("enabled_tools", [])),
+            notify=dict(raw.get("notify", {})),
         )

@@ -61,6 +61,8 @@ create table if not exists nonces (device_id text not null, nonce text not null,
 create table if not exists audit (
   id integer primary key autoincrement, at text not null, tenant_id text, device_id text, actor text not null,
   action text not null, detail text not null, prev_hash text not null, hash text not null);
+create table if not exists notifications (
+  key text primary key, last_at text not null, count integer not null default 1);
 create table if not exists knowledge (
   id integer primary key autoincrement, app_name text not null, app_version text, error_code text not null,
   symptoms text not null, verified_cause text not null, solution_steps text not null, required_permissions text,
@@ -207,6 +209,17 @@ class Store:
 
     def touch_device(self, device_id: str) -> None:
         self._x("update devices set last_seen_at=? where id=?", (_iso(utcnow()), device_id))
+
+    def notification_due(self, key: str, quiet: timedelta) -> bool:
+        rows = self._q("select last_at from notifications where key=?", (key,))
+        return not rows or datetime.fromisoformat(rows[0]["last_at"]) <= utcnow() - quiet
+
+    def mark_notified(self, key: str) -> None:
+        self._x("insert into notifications (key, last_at) values (?,?) on conflict(key) do update set "
+                "last_at=excluded.last_at, count=count+1", (key[:300], _iso(utcnow())))
+
+    def clear_notification(self, key: str) -> None:
+        self._x("delete from notifications where key=?", (key,))
 
     def set_device_status(self, device_id: str, status: dict[str, Any]) -> None:
         self._x("update devices set last_status=? where id=?", (json.dumps(status, default=str)[:4000], device_id))

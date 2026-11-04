@@ -85,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("hw-check", help="assess hardware and recommend a local model size")
 
+    sub.add_parser("notify-test", help="send a test notification through the configured channels")
+
     db = sub.add_parser("dashboard", help="open the local control panel (browser, this PC only)")
     db.add_argument("--port", type=int, default=0)
     db.add_argument("--no-browser", action="store_true")
@@ -115,6 +117,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     store = _store(cfg)
+    if args.cmd == "notify-test":
+        from .notify import build_notifier
+
+        n = build_notifier(store, cfg.notify)
+        ok = n.test()
+        print(json.dumps({"channels": [c.name for c in n.channels], "sent": ok}, indent=2))
+        return 0 if ok else 1
     if args.cmd == "dashboard":
         from .dashboard import serve_dashboard
 

@@ -8,6 +8,7 @@ home server. The network API only serves enrolled, signed devices.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -43,6 +44,7 @@ from ..security.crypto import (
 from ..security.redact import redact_text, redact_value
 from ..security.untrusted import fence, make_boundary
 from .config import ServerConfig
+from .notify import Notifier, build_notifier
 from .store import Store
 
 log = logging.getLogger("bonelia.server")
@@ -106,7 +108,7 @@ class ChatRequest(BaseModel):
 
 def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRouter | None = None,
                registry: ToolRegistry | None = None, adapters: dict[str, LoadedAdapter] | None = None,
-               server_key: Ed25519PrivateKey | None = None) -> FastAPI:
+               server_key: Ed25519PrivateKey | None = None, notifier: Notifier | None = None) -> FastAPI:
     """`adapters=None` discovers optional adapter packages; `{}` runs the pure core."""
     if store is None:
         cfg.data_dir.mkdir(parents=True, exist_ok=True)
@@ -126,7 +128,33 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
     device_limiter = _RateLimiter(120)
     server_pub = public_key_b64(server_key)
 
-    app = FastAPI(title="BONELİA AI Server", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
+    notifier = notifier or build_notifier(store, cfg.notify)
+
+    def labels(tenant: dict[str, Any], dev: dict[str, Any]) -> tuple[str, str]:
+        return tenant.get("name") or tenant["id"], dev.get("label") or dev["id"]
+
+    def safe_notify(fn, *a) -> None:
+        try:
+            fn(*a)
+        except Exception as exc:  # notifications must never break an API call
+            log.warning("notification failed: %s", exc)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        async def offline_watch():
+            while True:
+                await asyncio.sleep(300)
+                await run_in_threadpool(safe_notify, notifier.check_offline)
+
+        task = asyncio.create_task(offline_watch())
+        try:
+            yield
+        finally:
+            task.cancel()
+
+    app = FastAPI(title="BONELİA AI Server", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
+                  lifespan=lifespan)
+    app.state.notifier = notifier
     app.state.store = store
     app.state.router = router
     app.state.registry = registry
@@ -206,6 +234,9 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             d.event_id = back.get(d.event_id, d.event_id)
         store.audit("device", "analyze", {"events": len(saved), "mode": result.mode, "allow_cloud": allow_cloud},
                     tenant_id=tenant["id"], device_id=dev["id"])
+        cust, dlabel = labels(tenant, dev)
+        for ev in saved:
+            await run_in_threadpool(safe_notify, notifier.finding, cust, dlabel, tenant["id"], ev)
         return AnalyzeResponse(diagnoses=result.diagnoses, ai_mode=result.mode, notices=result.notices)
 
     # ------------------------------------------------------------------ routes
@@ -402,6 +433,9 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
                   "technician_confirmed": req.technician_confirmed, "risk_level": int(tool.risk_level)}
         if not decision.allowed:
             store.audit("device", "tool.denied", detail, tenant_id=tenant["id"], device_id=dev["id"])
+            if "agent" in dev["scopes"]:  # unattended PC needs a permission the owner has not given yet
+                await run_in_threadpool(safe_notify, notifier.denied, *labels(tenant, dev), tenant["id"], req.tool_id,
+                                        req.parameters, decision.reasons)
             return {"allowed": False, "requires_approval": decision.requires_approval, "reasons": decision.reasons}
         if decision.dry_run_only:
             return {"allowed": True, "dry_run_only": True, "reasons": decision.reasons}
@@ -428,6 +462,8 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         store.audit("device", "tool.executed", {"tool_id": rep.tool_id, "params": rep.parameters, "outcome": rep.outcome,
                                                 "verified": rep.verified, "detail": redact_value(rep.detail), "grant_id": rep.grant_id},
                     tenant_id=auth["tenant"]["id"], device_id=auth["device"]["id"])
+        await run_in_threadpool(safe_notify, notifier.repair, *labels(auth["tenant"], auth["device"]), auth["tenant"]["id"],
+                                rep.tool_id, rep.parameters, rep.outcome)
         return {"recorded": True}
 
     @app.post("/v1/tools/run")
