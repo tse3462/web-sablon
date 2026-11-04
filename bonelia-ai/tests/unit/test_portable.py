@@ -62,3 +62,19 @@ def test_enrollment_codes_are_cli_safe_and_typo_tolerant(tmp_path):
     code = store.create_enrollment_code(t, ["diagnose"])
     typed = code.lower().replace("-", " ")  # technician types it in lower case with spaces
     assert store.redeem_enrollment(typed, "USB", "pk1")["tenant_id"] == t
+
+
+def test_agent_reinstall_does_not_fail_on_identical_running_program(tmp_path):
+    """Regression (owner's PC): a second install failed with WinError 32 because the agent exe was running."""
+    from bonelia.agent import install as inst
+
+    src, dst = tmp_path / "BoneliaAI-Konsol.exe", tmp_path / "BoneliaAI-Agent.exe"
+    src.write_bytes(b"v1")
+    inst._copy_program(src, dst)
+    assert dst.read_bytes() == b"v1"
+    dst.chmod(0o444)  # identical program already installed (and possibly locked): nothing is copied
+    inst._copy_program(src, dst)
+    dst.chmod(0o644)
+    src.write_bytes(b"v2")  # update
+    inst._copy_program(src, dst)
+    assert dst.read_bytes() == b"v2"

@@ -49,13 +49,43 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
         return subprocess.CompletedProcess(cmd, 1, "", str(exc))
 
 
+def _same_file(a: Path, b: Path) -> bool:
+    import hashlib
+
+    if not b.is_file() or a.stat().st_size != b.stat().st_size:
+        return False
+    h = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()  # noqa: E731
+    return h(a) == h(b)
+
+
+def _copy_program(src: Path, dst: Path) -> None:
+    """Copy the agent program; if an older agent is running (re-install / update), stop it first."""
+    import time
+
+    if _same_file(src, dst):
+        return  # already installed in this version
+    for attempt in range(5):
+        try:
+            shutil.copy2(src, dst)
+            return
+        except PermissionError:
+            if attempt == 0:
+                _run(["schtasks", "/End", "/TN", TASK_NAME])
+                _run(["taskkill", "/IM", "BoneliaAI-Agent.exe", "/F"])
+            time.sleep(1.5)
+    shutil.copy2(src, dst)
+
+
 def install_task(start_now: bool = True) -> tuple[bool, str]:
     """Copy the program to %ProgramData%\\BONELIA-AI and register a SYSTEM task that starts at boot."""
     d = agent_dir()
     d.mkdir(parents=True, exist_ok=True)
     if getattr(sys, "frozen", False):
         exe = d / "BoneliaAI-Agent.exe"
-        shutil.copy2(sys.executable, exe)  # keeps running after the USB stick is removed
+        try:
+            _copy_program(Path(sys.executable), exe)  # keeps running after the USB stick is removed
+        except OSError as exc:
+            return False, f"copy failed: {exc}"
         command = f'"{exe}" agent'
     else:
         command = f'"{sys.executable}" -m bonelia agent'

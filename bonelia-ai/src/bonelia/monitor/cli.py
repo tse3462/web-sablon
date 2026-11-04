@@ -121,6 +121,21 @@ def _agent_command(args) -> int:
             print("İptal edildi / Abgebrochen.")
             return 1
         label = args.label or f"Agent {pseudonymize(socket.gethostname(), 'agent-label')[:12]}"
+        existing = None
+        if inst.cred_path().is_file():
+            try:
+                existing = inst.load_credentials()
+            except (OSError, ValueError):
+                existing = None
+        if existing is not None and not args.code:
+            # Already installed on this PC: keep its identity, just refresh program + task (re-install / update)
+            ok, info = inst.install_task(start_now=not args.no_start)
+            if not ok:
+                print(f"Kurulum güncellenemedi / Aktualisierung fehlgeschlagen: {info}", file=sys.stderr)
+                return 5
+            print(json.dumps({"installed": True, "already_installed": True, "device_id": existing.device_id,
+                              "task": inst.TASK_NAME}, indent=2))
+            return 0
         try:
             if args.code:
                 if not args.server:
