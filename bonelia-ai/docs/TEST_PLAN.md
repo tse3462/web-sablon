@@ -54,6 +54,11 @@ Gözlem: 3B model ilk teşhis için kullanılabilir ama açıklamaları genel ka
 
 Henüz yapılmadı: AI Sohbet, rapor dışa aktarma, USB çıkarma ve ikinci bilgisayar adımları gerçek USB ile; kayıp USB (iptal) senaryosu.
 
+### Gerçek Windows'ta doğrulanan onarım ve Agent (GitHub Actions run #15–16, 2026-11-04)
+* Yazdırma biriktiricisi (Spooler) gerçekten durduruldu; `windows.start_service` başlattı, `windows.restart_service` yeniden başlattı; her ikisi bağımsız durum kontrolüyle doğrulandı.
+* Agent: `agent-install` (DPAPI makine kapsamı + SYSTEM zamanlanmış görevi), durdurulan hizmeti tek döngüde **kendi kendine** onardı (`executed_verified`), sunucu denetim kaydına yazıldı, `agent-uninstall` görevi ve dosyaları kaldırdı.
+* Çift tıklanan `BoneliaAI.exe` konsol penceresi olmadan arayüzü sundu; sunucu `.bat` dosyaları (arka planda başlat/durdur, otomatik başlatma aç/kapa) çalıştı.
+
 ### Gerçek Windows'un bulduğu hatalar (Linux'ta görünmeyen)
 | Hata | Düzeltme | Regresyon testi |
 |---|---|---|
