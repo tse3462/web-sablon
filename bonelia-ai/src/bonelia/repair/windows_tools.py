@@ -224,8 +224,11 @@ def clean_temp(params: dict[str, Any], dry_run: bool) -> ExecResult:
     drive = Path(roots[0].anchor or "/")
     before = shutil.disk_usage(drive).free
     stats = clean_old_files(roots, dry_run=dry_run)
-    detail = {"roots": [str(r) for r in roots], "files": stats["files"], "freed_mb": round(stats["bytes"] / 1024**2, 1),
-              "skipped_in_use": stats["skipped"], "before": {"free_gb": round(before / 1024**3, 2)}}
+    freed_mb = round(stats["bytes"] / 1024**2, 1)
+    detail = {"roots": [str(r) for r in roots], "files": stats["files"], "freed_mb": freed_mb,
+              "skipped_in_use": stats["skipped"], "before": {"free_gb": round(before / 1024**3, 2)},
+              # "note" is kept in the server audit log, so the owner sees what the cleanup did in the panel
+              "note": f"{stats['files']} dosya / Dateien, {freed_mb} MB"}
     if dry_run:
         detail["would_delete_files"] = detail.pop("files")
     return ExecResult(True, detail)

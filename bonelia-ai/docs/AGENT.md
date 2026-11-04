@@ -25,6 +25,9 @@ başka verileri okuyamaz.
 Agent, Windows açılınca **SYSTEM** hesabıyla arka planda başlar (pencere yok), 5 dakikada bir tarar:
 * yeni **Önemli / Kontrol edin** bulgularını sunucuya gönderir (yapay zekâ analizi),
 * güvenli onarımları yapar ve sonucu bağımsız olarak doğrular,
+* **günde bir kez** düzenli bakım yapar (bir sorun oluşmasa da): geçici klasörlerdeki 7 günden
+  eski dosyaları siler — yani "bilgisayar kendi diskini temizler". Bu da müşterinin onayından
+  (seviye 1) geçer; onay yoksa yapılmaz.
 * her işlemi sunucunun denetim kaydına yazar.
 
 Agent'ın kendi kimliği vardır (USB'den bağımsız, sunucuda ayrı cihaz). Anahtarı Windows DPAPI ile o bilgisayara bağlı
@@ -46,6 +49,7 @@ Komutla: `bonelia-server --config deployment\server.home.toml alerts --hours 24`
 | Otomatik çalışması gereken hizmet durmuş | hizmeti başlat | hizmet "running" |
 | DNS ad çözümleme zaman aşımı | DNS önbelleğini temizle | DNS sorgusu çalışıyor |
 | Sistem diski %90+ dolu | 7 günden eski geçici dosyaları sil | eski geçici dosya kalmadı (kullanımdakiler hariç) |
+| Düzenli bakım (günde bir, sorun beklenmeden) | 7 günden eski geçici dosyaları sil | eski geçici dosya kalmadı (kullanımdakiler hariç) |
 
 ## Her açılışta otomatik (sunucu + panel)
 Bir kez `deployment\windows\BONELIA-Kur-Otomatik.bat` dosyasına çift tıklayın: ev sunucusu ve telefon paneli

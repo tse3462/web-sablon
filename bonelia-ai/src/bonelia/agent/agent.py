@@ -7,7 +7,10 @@ Every cycle (default 5 minutes):
    decides (customer consent level, device scope, rate limits). Level-1 repairs run
    unattended; level-2 repairs are never self-confirmed by the agent (they are denied
    and appear as alerts for the technician);
-4. every repair is independently verified and reported to the server's audit log.
+4. routine housekeeping (by default a daily temp-file cleanup) runs on a schedule, not
+   only when something is wrong -- this is the unattended "the computer cleans its own
+   disk" behaviour. It goes through the same server consent gate as every other repair;
+5. every repair is independently verified and reported to the server's audit log.
 
 Without a server connection nothing is repaired; findings are retried next cycle.
 """
@@ -29,6 +32,12 @@ from ..monitor.scan import run_scan
 
 log = logging.getLogger("bonelia.agent")
 DENIED_RETRY_S = 6 * 3600
+# Routine, unattended housekeeping that runs on a schedule rather than in response to a
+# problem (what the owner means by "the computer cleans its own disk"). Only safe, level-1,
+# idempotent tools belong here; each still goes through the server's consent gate, so it does
+# nothing unless the customer has allowed repairs. Default: delete temp files older than 7 days.
+MAINTENANCE_INTERVAL_S = 24 * 3600
+MAINTENANCE_TOOLS: tuple[str, ...] = ("windows.clean_temp",)
 
 
 class AgentState:
@@ -43,6 +52,7 @@ class AgentState:
         self.data.setdefault("cycles", 0)
         self.data.setdefault("denied", {})
         self.data.setdefault("repaired", {})  # repair key + log occurrence -> epoch seconds  # repair key -> epoch seconds of the last denial
+        self.data.setdefault("last_maintenance", 0)  # epoch seconds of the last routine housekeeping pass
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,9 +67,11 @@ class AgentState:
 
 class Agent:
     def __init__(self, client: ServerClient, state: AgentState, lang: str = "tr", executors=None,
-                 scan: Callable[..., Any] = run_scan, own_exe: Path | None = None, self_update: bool = False):
+                 scan: Callable[..., Any] = run_scan, own_exe: Path | None = None, self_update: bool = False,
+                 maintenance_interval_s: int = MAINTENANCE_INTERVAL_S, maintenance_tools: tuple[str, ...] = MAINTENANCE_TOOLS):
         self.client, self.state, self.lang, self.executors, self.scan = client, state, lang, executors, scan
         self.own_exe, self.self_update = own_exe, self_update
+        self.maintenance_interval_s, self.maintenance_tools = maintenance_interval_s, maintenance_tools
 
     def cycle(self) -> dict[str, Any]:
         summary: dict[str, Any] = {"new_findings": 0, "sent": False, "repairs": [], "offline": False}
@@ -106,6 +118,24 @@ class Agent:
                     if occ_key:
                         repaired[occ_key] = now
                 summary["repairs"].append({k: r.get(k) for k in ("tool_id", "params", "outcome", "verified", "reasons")})
+            # Routine housekeeping on a schedule (e.g. daily temp-file cleanup), independent of any
+            # problem. It runs through the same consent gate as every repair, so a customer who has
+            # not allowed repairs simply sees it denied — never executed without consent.
+            if self.maintenance_tools and now - self.state.data["last_maintenance"] >= self.maintenance_interval_s:
+                ran_any = False
+                for tool_id in self.maintenance_tools:
+                    key = f"{tool_id}|{json.dumps({}, sort_keys=True)}"
+                    if key in done:  # already handled this cycle by a finding (e.g. disk already 90% full)
+                        ran_any = True
+                        continue
+                    done.add(key)
+                    r = run_repair(self.client, tool_id, {}, False, self.executors)
+                    ran_any = True
+                    rec = {k: r.get(k) for k in ("tool_id", "params", "outcome", "verified", "reasons")}
+                    rec["maintenance"] = True
+                    summary["repairs"].append(rec)
+                if ran_any:
+                    self.state.data["last_maintenance"] = now
         except ServerUnavailable:
             summary["offline"] = True  # no repairs without the server; findings are retried next cycle
         except ServerError as exc:

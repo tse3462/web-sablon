@@ -50,6 +50,20 @@ class FakePC:
                 "windows.restart_service": (restart, lambda p, r: True)}
 
 
+class FakePCWithCleanup(FakePC):
+    """Same PC, but the temp-file cleaner is wired up (as it is on a real Windows client)."""
+
+    def executors(self):
+        ex = super().executors()
+
+        def clean(p, d):
+            self.calls.append("clean_temp")
+            return ExecResult(True, {"files": 3, "freed_mb": 12.0})
+
+        ex["windows.clean_temp"] = (clean, lambda p, r: True)
+        return ex
+
+
 def test_agent_level1_repairs_and_level2_needs_level2_consent(tmp_path, env):  # noqa: F811
     s = usb(tmp_path, env, "AGENT-PC1", env["a"], scopes=("diagnose", "repair:windows"))
     env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])
@@ -70,11 +84,50 @@ def test_agent_level1_repairs_and_level2_needs_level2_consent(tmp_path, env):  #
     assert json.loads((tmp_path / "state.json").read_text())["cycles"] == 2
 
 
+def test_agent_runs_routine_disk_cleanup_on_a_schedule(tmp_path, env):  # noqa: F811
+    """Unattended "the computer cleans its own disk": a daily temp-file cleanup that runs
+    on a schedule, not only when the disk is already full."""
+    s = usb(tmp_path, env, "AGENT-MNT", env["a"], scopes=("diagnose", "repair:windows"))
+    # consent given at level 1 before clean_temp was ever listed: the vetted safe tool is still covered
+    env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])
+    pc = FakePCWithCleanup()
+    state = AgentState(tmp_path / "m.json")
+    agent = Agent(s.client, state, executors=pc.executors(), scan=pc.scan)
+
+    first = agent.cycle()
+    mnt = [r for r in first["repairs"] if r.get("maintenance")]
+    assert len(mnt) == 1 and mnt[0]["tool_id"] == "windows.clean_temp"
+    assert mnt[0]["outcome"] == "executed_verified"  # ran unattended, nobody at the PC
+    assert pc.calls.count("clean_temp") == 1
+    assert state.data["last_maintenance"] > 0
+
+    second = agent.cycle()  # within the interval: housekeeping is not repeated
+    assert [r for r in second["repairs"] if r.get("maintenance")] == []
+    assert pc.calls.count("clean_temp") == 1
+
+    state.data["last_maintenance"] = 0  # a day later
+    state.save()
+    third = agent.cycle()
+    assert [r for r in third["repairs"] if r.get("maintenance")]  # the schedule triggers the pass again
+    assert state.data["last_maintenance"] > 0  # and the clock is reset for the next day
+
+
+def test_routine_disk_cleanup_needs_customer_consent(tmp_path, env):  # noqa: F811
+    """No per-click approval, but still no action without the customer's one-time consent."""
+    s = usb(tmp_path, env, "AGENT-MNT2", env["a"], scopes=("diagnose", "repair:windows"))
+    pc = FakePCWithCleanup()  # tenant left at the default read-only level
+    out = Agent(s.client, AgentState(tmp_path / "m2.json"), executors=pc.executors(), scan=pc.scan).cycle()
+    mnt = [r for r in out["repairs"] if r.get("maintenance")]
+    assert len(mnt) == 1 and mnt[0]["outcome"] == "denied"
+    assert "clean_temp" not in pc.calls  # never executed without consent
+
+
 def test_agent_level2_restarts_crashed_service_once_per_crash(tmp_path, env):  # noqa: F811
     s = usb(tmp_path, env, "AGENT-PC4", env["a"], scopes=("diagnose", "repair:windows"))
     env["store"].update_tenant(env["a"], max_auto_level=2, auto_tools=["windows.start_service"])
     pc = FakePC()
-    agent = Agent(s.client, AgentState(tmp_path / "state.json"), executors=pc.executors(), scan=pc.scan)
+    agent = Agent(s.client, AgentState(tmp_path / "state.json"), executors=pc.executors(), scan=pc.scan,
+                  maintenance_tools=())  # this test isolates finding-driven repairs; see maintenance tests below
     out = agent.cycle()
     assert {r["tool_id"]: r["outcome"] for r in out["repairs"]} == {
         "windows.start_service": "executed_verified", "windows.restart_service": "executed_verified"}
