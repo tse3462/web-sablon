@@ -142,3 +142,4 @@ def test_dashboard_refuses_unsafe_bind(tmp_path):
     p = run(["-m", "bonelia.server.cli", "--data-dir", str(tmp_path / "d"), "dashboard", "--host", "192.168.1.10", "--no-browser"],
             env, check=False, timeout=30)
     assert p.returncode == 2 and ("Tailscale" in p.stdout or "Tailscale" in p.stderr)
+

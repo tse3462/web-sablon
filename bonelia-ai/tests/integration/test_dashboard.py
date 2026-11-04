@@ -94,3 +94,56 @@ def test_stable_token_persists(tmp_path):
 
     t1 = _stable_token(tmp_path)
     assert t1 and _stable_token(tmp_path) == t1
+
+
+def test_tailscale_ipv4_parsing(monkeypatch):
+    import subprocess
+
+    from bonelia.server import dashboard as d
+
+    class R:
+        def __init__(self, out):
+            self.stdout = out
+
+    monkeypatch.setattr(d.shutil if hasattr(d, "shutil") else __import__("shutil"), "which", lambda x: "tailscale", raising=False)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R("fe80::1\n100.68.212.97\n"))
+    assert d.tailscale_ipv4() == "100.68.212.97"
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R("192.168.1.5\n"))
+    assert d.tailscale_ipv4() is None
+    def boom(*a, **k):
+        raise OSError("not installed")
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert d.tailscale_ipv4() is None
+
+
+def test_serve_dashboard_host_auto_falls_back_without_tailscale(tmp_path, monkeypatch):
+    import bonelia.server.dashboard as d
+
+    captured = {}
+    monkeypatch.setattr(d, "tailscale_ipv4", lambda: None)
+    monkeypatch.setattr(d, "create_dashboard_app", lambda *a, **k: object())
+
+    class FakeUvicorn:
+        def run(self, app, host, port, log_level):
+            captured["host"] = host
+
+    import sys
+    monkeypatch.setitem(sys.modules, "uvicorn", FakeUvicorn())
+    store = Store(tmp_path / "db")
+    assert d.serve_dashboard(store, port=8751, open_browser=False, host="auto", data_dir=tmp_path) == 0
+    assert captured["host"] == "127.0.0.1"  # no Tailscale -> local, not a crash
+
+
+def test_serve_dashboard_host_auto_uses_detected_tailscale(tmp_path, monkeypatch):
+    import sys
+
+    import bonelia.server.dashboard as d
+
+    captured = {}
+    monkeypatch.setattr(d, "tailscale_ipv4", lambda: "100.68.212.97")
+    monkeypatch.setattr(d, "create_dashboard_app", lambda *a, **k: object())
+    monkeypatch.setitem(sys.modules, "uvicorn", type("U", (), {"run": staticmethod(lambda app, host, port, log_level: captured.update(host=host))})())
+    store = Store(tmp_path / "db")
+    assert d.serve_dashboard(store, port=8751, open_browser=False, host="auto", data_dir=tmp_path) == 0
+    assert captured["host"] == "100.68.212.97"
+    assert (tmp_path / "panel-url.txt").read_text(encoding="utf-8").count("100.68.212.97:8751") == 1

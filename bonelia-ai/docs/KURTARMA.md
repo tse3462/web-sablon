@@ -1,14 +1,15 @@
 # Kurtarma ve telefondan erişim
 
-## Telefondan / uzaktan kontrol paneli (Tailscale)
-1. Ev bilgisayarına Tailscale kurun; adresini (`100.x.y.z`) öğrenin (`tailscale ip -4`).
-2. Telefonunuza Tailscale uygulamasını kurun, aynı hesapla girin.
-3. Ev bilgisayarında paneli o adrese açın:
-   `bonelia-server --config deployment\server.home.toml dashboard --host 100.x.y.z`
-4. Ekranda yazan `http://100.x.y.z:PORT/#...` bağlantısını telefonda açın (bir kez; yer imine ekleyin).
+## Telefondan kontrol paneli (en kolay yol)
+Bir kez (ev bilgisayarında):
+1. Ev bilgisayarına ve telefona **Tailscale** kurun, ikisinde de aynı hesapla giriş yapın (ücretsiz).
+2. `deployment\windows\BONELIA-Panel-Kur.bat` dosyasına **çift tıklayın**. Bu, paneli her açılışta arka planda
+   kendiliğinden başlatır ve Tailscale adresini kendisi bulur. Açılan not defterinde telefon bağlantısı yazar.
+3. O bağlantıyı telefona gönderin, bir kez açıp ana ekrana/yer imlerine ekleyin. Adres hep aynı kalır.
 
-İnternete açık değildir; yalnızca Tailscale ağınızdaki cihazlar erişir, ayrıca parola (token) ister. Panel yalnızca
-127.0.0.1 veya bir Tailscale (100.x) adresinde açılır; başka adresleri reddeder.
+Bundan sonra komut yazmanıza gerek yok: telefondan o bağlantıya dokunmanız yeterli (Tailscale açık olsun).
+Kapatmak: `BONELIA-Panel-Otomatik-KAPAT.bat`. Panel internete açık değildir; yalnızca Tailscale ağınızdaki cihazlar
+erişir ve parola (token) ister.
 
 ## Rehberli Windows kurtarma (açılan ama sorunlu bilgisayar)
 USB'deki **Bu-Bilgisayari-Kurtar.bat** dosyasına çift tıklayın (onarım adımları için yönetici sorusuna "Evet").

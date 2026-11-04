@@ -14,6 +14,7 @@ import secrets
 import socket
 import threading
 import webbrowser
+from pathlib import Path
 from datetime import datetime, timedelta
 from importlib import resources
 from typing import Any
@@ -29,6 +30,28 @@ from .store import Store
 
 ONLINE_MINUTES = 15  # agents report every 5 minutes
 _TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
+
+
+def tailscale_ipv4() -> str | None:
+    """This PC's Tailscale IPv4 (100.64/10), so the panel can bind itself for phone access."""
+    import ipaddress
+    import shutil
+    import subprocess
+
+    exe = shutil.which("tailscale") or r"C:\Program Files\Tailscale\tailscale.exe"
+    try:
+        out = subprocess.run([exe, "ip", "-4"], capture_output=True, text=True, timeout=10,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    for line in out.splitlines():
+        line = line.strip()
+        try:
+            if ipaddress.ip_address(line) in _TAILSCALE:
+                return line
+        except ValueError:
+            continue
+    return None
 
 
 def is_safe_bind(host: str) -> bool:
@@ -173,7 +196,6 @@ def _free_port() -> int:
 
 def _stable_token(data_dir) -> str:
     """A token that survives restarts, so a phone URL stays valid. Stored 0600, server-only."""
-    from pathlib import Path
 
     p = Path(data_dir) / "dashboard.token"
     if p.is_file():
@@ -193,6 +215,14 @@ def serve_dashboard(store: Store, port: int = 0, open_browser: bool = True, host
                     data_dir=None) -> int:
     import uvicorn
 
+    if host == "auto":  # find the Tailscale address ourselves; fall back to local if Tailscale is off
+        detected = tailscale_ipv4()
+        if detected:
+            host = detected
+        else:
+            print("Tailscale adresi bulunamadı; panel yalnızca bu bilgisayarda açılıyor. / "
+                  "Keine Tailscale-Adresse; Panel nur lokal.", flush=True)
+            host = "127.0.0.1"
     if host != "127.0.0.1" and not is_safe_bind(host):
         print("Panel yalnızca 127.0.0.1 veya bir Tailscale (100.x) adresinde açılabilir (şifreli özel ağ). / "
               "Nur auf 127.0.0.1 oder einer Tailscale-Adresse.", flush=True)
@@ -207,6 +237,14 @@ def serve_dashboard(store: Store, port: int = 0, open_browser: bool = True, host
     print(f"BONELİA AI Kontrol Paneli: {phone_url or local_url}", flush=True)
     if remote:
         print(f"Telefon/uzak erişim (Tailscale): {phone_url}", flush=True)
+        if data_dir:
+            try:
+                (Path(data_dir) / "panel-url.txt").write_text(
+                    "BONELİA AI Kontrol Paneli — telefon/uzak erişim adresi\n"
+                    "(Tailscale bağlıyken telefon tarayıcısına girin; bir kez kaydedin):\n\n"
+                    + phone_url + "\n", encoding="utf-8")
+            except OSError:
+                pass
     if open_browser and not remote:
         threading.Timer(1.0, lambda: webbrowser.open(local_url)).start()
     uvicorn.run(create_dashboard_app(store, token, port, extra_hosts=extra), host=host, port=port, log_level="warning")
