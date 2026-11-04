@@ -1,0 +1,14 @@
+# Ready-to-use home server configuration (Windows, local AI only, loopback).
+# Start: bonelia-server --config deployment\server.home.toml serve
+[server]
+data_dir = "C:/BoneliaAI/server-data"
+host = "127.0.0.1"
+port = 8742
+
+[ai]
+ollama_url = "http://127.0.0.1:11434"
+ollama_model = "qwen2.5:3b-instruct"
+max_ai_events_per_request = 5
+
+[repair]
+enabled_tools = []
