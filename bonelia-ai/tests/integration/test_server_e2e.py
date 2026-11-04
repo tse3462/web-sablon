@@ -11,7 +11,7 @@ import pytest
 from bonelia.ai.costs import PriceTable
 from bonelia.ai.providers import OllamaProvider
 from bonelia.ai.router import HybridRouter
-from bonelia.adapters.veedelkorb import VeedelKorbAdapter
+from bonelia.adapters.registry import load_server_adapters, register_adapter_tools
 from bonelia.contracts import RiskLevel
 from bonelia.monitor.client import FakeServerError, ServerClient, ServerError, ServerUnavailable, check_server_url, enroll
 from bonelia.monitor.offline_queue import OfflineQueue
@@ -23,7 +23,8 @@ from bonelia.security import crypto
 from bonelia.server.app import create_app
 from bonelia.server.config import ServerConfig
 from bonelia.server.store import Store
-from tests.conftest import ServerThread, fixture_json, free_port
+from tests.conftest import ServerThread, free_port
+from tests.demo_plugins import EntryPoint, Plugin, tool
 from tests.fakes import fake_ollama
 
 PASS = "test passphrase 123"
@@ -34,22 +35,23 @@ def env(tmp_path):
     """Home AI server + fake local model + two tenants."""
     ollama_state = {"mode": "ok"}
     ollama = ServerThread(fake_ollama(ollama_state)).__enter__()
-    cfg = ServerConfig(data_dir=tmp_path / "server", ollama_url=ollama.url, veedelkorb={"tenant_id": None})
+    cfg = ServerConfig(data_dir=tmp_path / "server", ollama_url=ollama.url)
     cfg.data_dir.mkdir()
     store = Store(cfg.db_path)
-    t_a = store.create_tenant("Kunde A (VeedelKorb)", environment="test")
+    t_a = store.create_tenant("Kunde A", environment="test")
     t_b = store.create_tenant("Kunde B", environment="production")
-    cfg.veedelkorb["tenant_id"] = t_a
-    vk = VeedelKorbAdapter("https://example.supabase.co", "server-only-token",
-                           transport=httpx.MockTransport(lambda r: httpx.Response(503, json=fixture_json("saglik_degraded.json"))))
+    # A generic, test-only application adapter (no real application is involved)
+    adapters = load_server_adapters({"demo-erp": {"enabled": True, "tenant_ids": [t_a]}}, {},
+                                    eps=[EntryPoint("demo-erp", Plugin("demo-erp", tools=[tool("demo-erp.retry_exports")]))])
     registry = default_registry()
+    register_adapter_tools(adapters, registry, set())
     # max_ai_events=25: host metric events (e.g. a full disk on a CI runner) must not crowd out the controlled test error
     rt = HybridRouter(OllamaProvider(ollama.url, timeout_s=2), None, PriceTable(), store, lambda: registry.ids(), max_ai_events=25)
     key = crypto.generate_keypair()
     port = free_port()
-    srv = ServerThread(create_app(cfg, store=store, router=rt, registry=registry, veedelkorb=vk, server_key=key), port).__enter__()
+    srv = ServerThread(create_app(cfg, store=store, router=rt, registry=registry, adapters=adapters, server_key=key), port).__enter__()
     ctx = {"cfg": cfg, "store": store, "a": t_a, "b": t_b, "srv": srv, "key": key, "ollama": ollama_state, "port": port,
-           "registry": registry, "router": rt, "vk": vk}
+           "registry": registry, "router": rt, "adapters": adapters}
     yield ctx
     srv.__exit__(None, None, None)
     ollama.__exit__(None, None, None)
@@ -159,12 +161,12 @@ def test_lost_usb_is_revoked_without_affecting_others(tmp_path, env):
 
 def test_tenant_isolation(tmp_path, env):
     a = usb(tmp_path, env, "USB-A", env["a"])
-    b = usb(tmp_path, env, "USB-B", env["b"], scopes=("diagnose", "adapter:veedelkorb"))
+    b = usb(tmp_path, env, "USB-B", env["b"], scopes=("diagnose", "adapter:demo-erp"))
     a.scan(log_paths=[controlled_error_log(tmp_path)], include_eventlog=False)
     a.analyze()
     assert a.client.events() and b.client.events() == []
     with pytest.raises(ServerError) as e:  # adapter belongs to tenant A
-        b.client.veedelkorb_health("tr")
+        b.client.adapter_health("demo-erp", "tr")
     assert e.value.detail == "adapter_not_assigned_to_tenant"
     assert env["store"].events(env["b"]) == []
 
@@ -172,7 +174,7 @@ def test_tenant_isolation(tmp_path, env):
 def test_scope_enforcement(tmp_path, env):
     s = usb(tmp_path, env, "USB-01", env["a"], scopes=("diagnose",))
     with pytest.raises(ServerError) as e:
-        s.client.veedelkorb_health("tr")
+        s.client.adapter_health("demo-erp", "tr")
     assert e.value.status == 403
 
 
@@ -248,7 +250,7 @@ def test_server_down_then_back_queue_drains(tmp_path, env):
     with pytest.raises(ServerUnavailable):
         s.client.run_tool("windows.restart_service", {"service_name": "Spooler"}, dry_run=True)  # no remote action offline
     env["srv"] = ServerThread(create_app(env["cfg"], store=env["store"], router=env["router"], registry=env["registry"],
-                                         veedelkorb=env["vk"], server_key=env["key"]), env["port"]).__enter__()
+                                         adapters=env["adapters"], server_key=env["key"]), env["port"]).__enter__()
     s.analyze()
     assert OfflineQueue(s.home.path("queue"), s.data_key).size() == 0
 
@@ -278,17 +280,19 @@ def test_offline_queue_is_bounded_and_survives_corruption(tmp_path):
 # ----------------------------------------------------------------------------- adapters, tools, chat
 
 
-def test_veedelkorb_read_only_analysis(tmp_path, env):
-    s = usb(tmp_path, env, "USB-03", env["a"], scopes=("diagnose", "adapter:veedelkorb"))
-    res = s.client.veedelkorb_health("tr")
-    assert res["collector_status"]["veedelkorb:ai_control"] == "disabled_or_unknown"
-    titles = [e["title"] for e in res["events"]]
-    assert any("notify" in t for t in titles) and len(res["diagnoses"]) == len(res["events"])
-    assert "server-only-token" not in json.dumps(res)
+def test_optional_adapter_health_analysis(tmp_path, env):
+    s = usb(tmp_path, env, "USB-03", env["a"], scopes=("diagnose", "adapter:demo-erp"))
+    res = s.client.adapter_health("demo-erp", "tr")
+    assert res["adapter_id"] == "demo-erp" and res["collector_status"]["demo-erp:health"] == "ok"
+    assert [e["title"] for e in res["events"]] == ["Export queue stalled"]
+    assert len(res["diagnoses"]) == 1 and res["diagnoses"][0]["is_definitive"] is False
+    adapters = {a["adapter_id"]: a for a in s.client.adapters()}
+    assert adapters["demo-erp"]["load_status"] == "available" and adapters["demo-erp"]["assigned_to_tenant"]
+    assert "secret_env" not in adapters["demo-erp"]
 
 
 def test_tool_gateway_over_api(tmp_path, env):
-    s = usb(tmp_path, env, "USB-01", env["a"], scopes=("diagnose", "repair:windows", "repair:veedelkorb"))
+    s = usb(tmp_path, env, "USB-01", env["a"], scopes=("diagnose", "repair:windows", "repair:demo"))
     tools = {t["tool_id"]: t for t in s.client.tools()}
     assert tools["windows.restart_service"]["risk_level"] == int(RiskLevel.ADMIN_APPROVED)
     dry = s.client.run_tool("windows.restart_service", {"service_name": "PosKasseSync"}, dry_run=True)
@@ -296,7 +300,7 @@ def test_tool_gateway_over_api(tmp_path, env):
     with pytest.raises(ServerError) as e:
         s.client.run_tool("windows.restart_service", {"service_name": "PosKasseSync"}, dry_run=False)
     assert e.value.status == 409
-    res = s.client.run_tool("veedelkorb.retry_failed_notifications", {}, dry_run=False)
+    res = s.client.run_tool("demo-erp.retry_exports", {}, dry_run=False)
     assert res["outcome"] == "denied" and res["reasons"] == ["tool_disabled"]
     assert s.client.run_tool("powershell.run", {"cmd": "whoami"}, dry_run=False)["reasons"] == ["unknown_tool"]
     bad = s.client.run_tool("windows.restart_service", {"service_name": "x; shutdown /s"}, dry_run=True)

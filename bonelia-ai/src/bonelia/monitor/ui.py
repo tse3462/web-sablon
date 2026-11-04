@@ -111,12 +111,26 @@ def create_ui_app(session: Session, token: str, port: int, transport=None) -> Fa
         apps = [a.model_dump(mode="json") for a in session.last_scan.apps[:200]] if session.last_scan else []
         return {"report": rep, "apps": apps}
 
-    @app.post("/api/veedelkorb")
-    def veedelkorb() -> dict[str, Any]:
+    @app.get("/api/adapters")
+    def adapters() -> dict[str, Any]:
+        """Optional server-side adapters assigned to this customer (empty when none exist)."""
+        if not session.client:
+            return {"adapters": []}
+        try:
+            rows = session.client.adapters()
+        except (ServerUnavailable, ServerError):
+            return {"adapters": []}
+        return {"adapters": [{"adapter_id": a["adapter_id"], "name": a.get("name", a["adapter_id"])} for a in rows
+                             if a.get("load_status") == "available" and a.get("assigned_to_tenant")]}
+
+    @app.post("/api/adapters/{adapter_id}/health")
+    def adapter_health(adapter_id: str, allow_cloud: bool = False) -> dict[str, Any]:
         if not session.client:
             raise HTTPException(409, "not_unlocked")
         try:
-            return session.client.veedelkorb_health(session.lang)
+            return session.client.adapter_health(adapter_id, session.lang, allow_cloud=allow_cloud)
+        except ValueError as exc:
+            raise HTTPException(404, "adapter_not_found") from exc
         except ServerUnavailable as exc:
             raise HTTPException(503, "server_unavailable") from exc
         except ServerError as exc:

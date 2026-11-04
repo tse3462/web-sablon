@@ -51,7 +51,7 @@ class ToolSpec:
     description: str
     platforms: tuple[str, ...]  # "windows", "server", "any"
     risk_level: RiskLevel
-    required_scope: str  # device scope, e.g. "repair:veedelkorb"
+    required_scope: str  # device scope, e.g. "repair:windows" or "repair:<adapter_id>"
     required_role: str  # "operator" | "admin"
     params: dict[str, ParamSpec]
     supports_dry_run: bool

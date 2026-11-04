@@ -1,6 +1,7 @@
 # BONELİA AI — Test Planı ve Sonuçları (v0.1)
 
-Çalıştırma: `cd bonelia-ai && pip install -e ".[dev]" && python -m pytest -q -rs`
+Çalıştırma: `cd bonelia-ai && pip install -e ".[dev]" && python -m pytest -q -rs tests` (yalnız çekirdek)
+Eklenti: `pip install -e adapters/veedelkorb && python -m pytest -q adapters/veedelkorb/tests`
 
 ## Kategoriler (Master prompt §31)
 
@@ -10,7 +11,9 @@
 | Unit | `tests/unit/test_diagnostics.py` | Event Log XML ayrıştırma (gerçek RenderedXml formatı), bozuk XML, sınıflandırma, gruplama, istisna kodu, metrik olayları, sınırlı log okuma |
 | Unit | `tests/unit/test_repair_policy.py` | Seviye 0–3, parametre doğrulama, kapsam/rol, onay kuralları, hız sınırı, üretim koruması, zaman aşımı, bağımsız doğrulama |
 | Unit | `tests/unit/test_ai.py` | İstem çitleme, çıktı doğrulama, hibrit yönlendirme, önbellek, bütçe/izin, Ollama ve OpenAI protokolleri |
-| Unit | `tests/unit/test_veedelkorb_adapter.py` | `saglik` yanıt sözleşmesi, 401/erişilemez, token yalnız başlıkta, güvenli eylem yalnız TEST, doğrulama |
+| Unit | `tests/unit/test_recognize.py` | Evrensel uygulama tanıma (olay ↔ kurulu program), yanlış eşleşme koruması |
+| Integration | `tests/integration/test_modularity.py` | Çekirdek–eklenti bağımsızlığı: statik import/ad taraması, eklentisiz tam akış, bozuk/çöken eklenti izolasyonu, gizli anahtar sınırlaması, araç ad alanı, müşteri bazlı atama |
+| Eklenti (ayrı) | `adapters/veedelkorb/tests/` | `saglik` sözleşmesi, token yalnız başlıkta, güvenli eylem yalnız TEST, yalnız `plugin_api` kullanımı, entry point keşfi, çekirdek sunucu üzerinden uçtan uca |
 | Unit | `tests/unit/test_portable.py` | USB düzeni, USB çıkarılınca kapanma |
 | Integration | `tests/integration/test_server_e2e.py` | Gerçek uvicorn sunucusu + Ollama protokolünü konuşan test modeli üzerinden USB–Server, rapor, kayıt, iptal, izolasyon, sahte sunucu, tekrar, sunucu kapanması, AI hataları, araç geçidi, sohbet |
 | Integration | `tests/integration/test_cli_e2e.py` | Gerçek `bonelia-server` ve `BoneliaAI` CLI süreçleri; Windows'ta `eventcreate` ile gerçek kontrollü hata |
@@ -26,7 +29,9 @@ Henüz otomatik testi olmayan: uygulama sürüm uyuşmazlığı (sürüme özgü
 
 | Ortam | Sonuç | Tarih |
 |---|---|---|
-| Linux konteyner, Python 3.13 | **106 geçti, 5 atlandı** (5 = yalnız Windows) | 2026-11-04 |
+| Linux, yalnız çekirdek (eklenti kurulu değil) | **111 geçti, 5 atlandı** (5 = yalnız Windows) | 2026-11-04 |
+| Linux, çekirdek + VeedelKorb eklentisi | **125 geçti, 5 atlandı** | 2026-11-04 |
+| Linux, eklenti kaldırıldıktan sonra (modülerlik + CLI e2e) | **14 geçti** | 2026-11-04 |
 | PyInstaller ikilisi (Linux) | Derlendi; `--version`, `scan --json`, UI (`/` 200, belirteçsiz 403, belirteçli 200), USB klasörü silinince süreç kapandı | 2026-11-04 |
 | GitHub Actions `windows-latest` | Bkz. iş akışı çalıştırması (aşağıya eklenecek) | — |
 

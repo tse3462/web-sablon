@@ -105,7 +105,7 @@ class Evidence(_Model):
 
 
 class AppIdentity(_Model):
-    app_id: str = Field(max_length=120)  # stable id, e.g. "veedelkorb" or "win:notepad.exe"
+    app_id: str = Field(max_length=120)  # stable id, e.g. "win:notepad.exe" or an adapter app id
     name: str = Field(max_length=200)
     publisher: str | None = Field(default=None, max_length=200)
     version: str | None = Field(default=None, max_length=80)

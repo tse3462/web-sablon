@@ -8,6 +8,7 @@ from ..adapters.generic_windows import filter_apps
 from ..collectors import log_files, system, windows_events
 from ..contracts import AppIdentity, DiagnosticEvent, ErrorCategory, Evidence, ScanResult, Severity, utcnow
 from ..diagnostics.engine import diagnose_with_rules, event_from_raw, group_events, metric_events
+from ..diagnostics.recognize import correlate
 from ..security.redact import redact_text
 
 MODES = {"quick": 24, "full": 24 * 7, "recent": 1, "app": 24 * 7}
@@ -44,10 +45,9 @@ def run_scan(mode: str = "quick", salt: str = "", lang: str = "tr", app_query: s
     res.system = system.snapshot(salt)
     res.collector_status["system"] = "ok"
 
-    apps, st = system.installed_apps()
+    all_apps, st = system.installed_apps()
     res.collector_status["installed_apps"] = st
-    if app_query:
-        apps = filter_apps(apps, app_query)
+    apps = filter_apps(all_apps, app_query) if app_query else all_apps
     res.apps = apps[:300]
 
     if include_eventlog:
@@ -56,7 +56,7 @@ def run_scan(mode: str = "quick", salt: str = "", lang: str = "tr", app_query: s
     else:
         raw = []
         res.collector_status["eventlog"] = "skipped:by_operator"
-    events = [e for e in (event_from_raw(r, lang) for r in raw) if e is not None]
+    events = correlate([e for e in (event_from_raw(r, lang) for r in raw) if e is not None], all_apps)
     if app_query:
         q = app_query.lower()
         events = [e for e in events if q in e.app.name.lower() or any(q in ev.text.lower() for ev in e.evidence)]

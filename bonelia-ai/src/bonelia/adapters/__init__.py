@@ -1,4 +1,8 @@
-"""Application adapters and the adapter manifest catalogue."""
+"""Application adapters.
+
+Only the universal `generic-windows` adapter lives in the core. Application-specific
+adapters are optional packages discovered at runtime (see `registry.py`).
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,6 @@ from importlib import resources
 
 from .base import AdapterManifest
 from .generic_windows import MANIFEST as GENERIC_MANIFEST
-from .veedelkorb import MANIFEST as VEEDELKORB_MANIFEST
 
 
 def planned_manifests() -> list[AdapterManifest]:
@@ -16,5 +19,5 @@ def planned_manifests() -> list[AdapterManifest]:
     return [AdapterManifest(**item) for item in json.loads(raw)]
 
 
-def all_manifests() -> list[AdapterManifest]:
-    return [GENERIC_MANIFEST, VEEDELKORB_MANIFEST, *planned_manifests()]
+def core_manifests() -> list[AdapterManifest]:
+    return [GENERIC_MANIFEST, *planned_manifests()]

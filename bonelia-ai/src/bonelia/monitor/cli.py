@@ -80,8 +80,12 @@ def main(argv: list[str] | None = None) -> int:
     en.add_argument("--server-key", help="expected server public key (out-of-band fingerprint)")
 
     sub.add_parser("status")
-    vk = sub.add_parser("veedelkorb", help="read-only VeedelKorb health analysis via the server")
-    vk.add_argument("--json", action="store_true")
+    al = sub.add_parser("adapters", help="list application adapters known to the server")
+    al.add_argument("--json", action="store_true")
+    ad = sub.add_parser("adapter", help="server-side health analysis through an optional application adapter")
+    ad.add_argument("adapter_id")
+    ad.add_argument("--allow-cloud", action="store_true")
+    ad.add_argument("--json", action="store_true")
     ch = sub.add_parser("chat")
     ch.add_argument("question")
     sub.add_parser("tools")
@@ -131,12 +135,19 @@ def main(argv: list[str] | None = None) -> int:
         print("Cihaz kayıtlı değil / Gerät nicht registriert.", file=sys.stderr)
         return 2
     try:
-        if args.cmd == "veedelkorb":
-            res = s.client.veedelkorb_health(s.lang)
+        if args.cmd == "adapters":
+            rows = s.client.adapters()
+            if args.json:
+                _print(rows, True)
+            for a in [] if args.json else rows:
+                print(f"{a['adapter_id']:<20} {a.get('load_status', ''):<15} {a.get('name', '')}"
+                      + ("  [assigned]" if a.get("assigned_to_tenant") else ""))
+        elif args.cmd == "adapter":
+            res = s.client.adapter_health(args.adapter_id, s.lang, allow_cloud=args.allow_cloud)
             if args.json:
                 _print(res, True)
             else:
-                print(f"AI: {res['ai_mode']}  status: {res['collector_status']}")
+                print(f"{args.adapter_id} · AI: {res['ai_mode']} · {res['collector_status']}")
                 for n in res.get("notices", []):
                     print(f"! {n}")
                 for ev, d in zip(res["events"], res["diagnoses"]):
@@ -144,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
                     for h in d["hypotheses"][:3]:
                         print(f"  - ({h['confidence']}) {h['cause']}")
                 if not res["events"]:
-                    print("VeedelKorb: sorun bulunmadı / keine Probleme gefunden")
+                    print("Sorun bulunmadı / keine Probleme gefunden / no problems found")
         elif args.cmd == "chat":
             res = s.client.chat(args.question, s.lang)
             print(res["answer"])
@@ -159,6 +170,9 @@ def main(argv: list[str] | None = None) -> int:
     except ServerError as exc:
         print(f"Sunucu reddetti / Server lehnte ab: {exc.status} {exc.detail}", file=sys.stderr)
         return 4
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     return 0
 
 

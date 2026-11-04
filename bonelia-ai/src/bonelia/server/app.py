@@ -22,14 +22,16 @@ from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from .. import __version__
-from ..adapters import all_manifests
-from ..adapters.veedelkorb import VeedelKorbAdapter
+from ..adapters import core_manifests
+from ..adapters.registry import ADAPTER_ID, LoadedAdapter, adapter_of_tool, load_server_adapters, register_adapter_tools
 from ..ai.costs import PriceTable
 from ..ai.providers import OllamaProvider, OpenAICompatibleProvider
 from ..ai.router import HybridRouter, TenantAIPolicy
-from ..contracts import AnalyzeRequest, AnalyzeResponse, EnrollRequest, EnrollResponse, RiskLevel, ToolRequest
+from ..contracts import (
+    AnalyzeRequest, AnalyzeResponse, DiagnosticEvent, EnrollRequest, EnrollResponse, RiskLevel, ToolRequest,
+)
 from ..diagnostics.engine import group_events
-from ..repair.builtin_tools import VeedelKorbSafeAction, default_registry
+from ..repair.builtin_tools import default_registry
 from ..repair.gateway import ToolGateway
 from ..repair.policy import PolicyContext
 from ..repair.tools import ToolRegistry
@@ -97,22 +99,20 @@ class ChatRequest(BaseModel):
 
 
 def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRouter | None = None,
-               registry: ToolRegistry | None = None, veedelkorb: VeedelKorbAdapter | None = None,
+               registry: ToolRegistry | None = None, adapters: dict[str, LoadedAdapter] | None = None,
                server_key: Ed25519PrivateKey | None = None) -> FastAPI:
+    """`adapters=None` discovers optional adapter packages; `{}` runs the pure core."""
     if store is None:
         cfg.data_dir.mkdir(parents=True, exist_ok=True)
         store = Store(cfg.db_path)
     server_key = server_key or load_or_create_server_key(cfg)
+    if adapters is None:
+        adapters = load_server_adapters(cfg.adapters, os.environ)
     if registry is None:
-        action = None
-        vk = cfg.veedelkorb
-        token = ServerConfig.env_secret("BONELIA_VEEDELKORB_HEALTH_TOKEN")
-        if veedelkorb is None and vk.get("url") and token:
-            veedelkorb = VeedelKorbAdapter(vk["url"], token)
-        svc_key = ServerConfig.env_secret("BONELIA_VEEDELKORB_TEST_SERVICE_KEY")
-        if veedelkorb is not None and svc_key and vk.get("environment") == "test":
-            action = VeedelKorbSafeAction(vk["url"], svc_key, veedelkorb, "test")
-        registry = default_registry(action, enable=set(cfg.enabled_tools))
+        registry = default_registry(enable=set(cfg.enabled_tools))
+        register_adapter_tools(adapters, registry, set(cfg.enabled_tools))
+    for la in adapters.values():
+        log.info("adapter %s: %s", la.adapter_id, la.status)
     router = router or build_router(cfg, store, registry)
     gateway = ToolGateway(registry, lambda action, detail: store.audit("gateway", action, detail, tenant_id=detail.get("tenant_id")))
     analyze_sem = asyncio.Semaphore(max(1, cfg.max_concurrent_analyses))
@@ -273,17 +273,30 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         return {"answer": redact_text(str(answer), 4000), "produced_by": f"{router.local.name}:{router.local.model}",
                 "grounded_on": len(recent)}
 
-    @app.get("/v1/adapters")
-    async def adapters(auth: dict = Depends(device_auth)) -> dict[str, Any]:
-        return {"adapters": [m.to_dict() for m in all_manifests()]}
+    def tenant_may_use_tool(tool_id: str, tenant_id: str) -> bool:
+        la = adapter_of_tool(adapters, tool_id)
+        return la is None or tenant_id in la.tenant_ids  # core tools: always; adapter tools: assigned tenants only
 
-    @app.post("/v1/adapters/veedelkorb/health")
-    async def veedelkorb_health(auth: dict = Depends(device_auth)) -> dict[str, Any]:
-        need_scope(auth, "adapter:veedelkorb")
-        if veedelkorb is None:
-            raise HTTPException(503, "adapter_not_configured")
-        if cfg.veedelkorb.get("tenant_id") != auth["tenant"]["id"]:
+    @app.get("/v1/adapters")
+    async def list_adapters(auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        tid = auth["tenant"]["id"]
+        core = [{**m.to_dict(), "load_status": "core" if m.status == "implemented" else "planned"} for m in core_manifests()]
+        for d in core:
+            d.pop("secret_env", None)
+        return {"adapters": core + [la.public(tid) for la in adapters.values()]}
+
+    @app.post("/v1/adapters/{adapter_id}/health")
+    async def adapter_health(adapter_id: str, auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        if not ADAPTER_ID.match(adapter_id):
+            raise HTTPException(404, "adapter_not_found")
+        la = adapters.get(adapter_id)
+        if la is None:
+            raise HTTPException(404, "adapter_not_found")
+        need_scope(auth, f"adapter:{adapter_id}")
+        if auth["tenant"]["id"] not in la.tenant_ids:
             raise HTTPException(403, "adapter_not_assigned_to_tenant")
+        if la.status != "available" or la.instance is None:
+            raise HTTPException(503, f"adapter_{la.status}")
         try:
             payload = json.loads(auth["body"] or b"{}")
         except ValueError as exc:
@@ -291,18 +304,28 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         if not isinstance(payload, dict):
             raise HTTPException(422, "invalid_payload")
         lang = payload.get("language", "tr") if payload.get("language") in ("tr", "de", "en") else "tr"
-        evs, status = await run_in_threadpool(veedelkorb.health, lang)
+        try:  # an adapter failure must never take the server down
+            evs, status = await run_in_threadpool(la.instance.health, lang)
+            evs = [e for e in evs if isinstance(e, DiagnosticEvent)][:100]
+        except Exception as exc:
+            store.audit("adapter", "adapter.error", {"adapter_id": adapter_id, "error": type(exc).__name__},
+                        tenant_id=auth["tenant"]["id"], device_id=auth["device"]["id"])
+            raise HTTPException(502, "adapter_error") from exc
         res = await _analyze(auth, evs, bool(payload.get("allow_cloud", False)), lang)
-        return {**res.model_dump(mode="json"), "collector_status": status, "events": [e.model_dump(mode="json") for e in evs]}
+        return {**res.model_dump(mode="json"), "adapter_id": adapter_id, "collector_status": status,
+                "events": [e.model_dump(mode="json") for e in evs]}
 
     @app.get("/v1/tools")
     async def tools(auth: dict = Depends(device_auth)) -> dict[str, Any]:
-        return {"tools": [t.public_manifest() for t in registry.all()]}
+        tid = auth["tenant"]["id"]
+        return {"tools": [t.public_manifest() for t in registry.all() if tenant_may_use_tool(t.tool_id, tid)]}
 
     @app.post("/v1/tools/run")
     async def run_tool(auth: dict = Depends(device_auth)) -> dict[str, Any]:
         req = parse(ToolRequest, auth["body"])
         tenant, dev = auth["tenant"], auth["device"]
+        if not tenant_may_use_tool(req.tool_id, tenant["id"]):
+            raise HTTPException(403, "adapter_not_assigned_to_tenant")
         tool = registry.get(req.tool_id)
         approval = store.approval(req.approval_id, tenant["id"]) if req.approval_id else None
         ctx = PolicyContext(

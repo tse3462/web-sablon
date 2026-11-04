@@ -2,7 +2,7 @@
 
 **Universal AI Diagnostic, Monitoring & Control Platform** — v0.1 (geliştirme sürümü)
 
-USB'den çalışan taşınabilir bir teknik servis programı (**Portable Monitor**) ve ev bilgisayarında çalışan merkezi bir yapay zekâ sunucusu (**BONELİA AI Server**). Program Windows hata kayıtlarını salt okunur inceler, kişisel verileri temizler, kural motoru + yerel/bulut AI ile olası nedenleri açıklar ve müdahaleleri yalnızca güvenli araç geçidinden, izin ve doğrulama ile önerir.
+BONELİA AI, **herhangi bir uygulamaya bağımlı olmayan** evrensel bir teknik servis platformudur. USB'den çalışan taşınabilir bir teknik servis programı (**Portable Monitor**) ve ev bilgisayarında çalışan merkezi bir yapay zekâ sunucusu (**BONELİA AI Server**). Program Windows hata kayıtlarını salt okunur inceler, kişisel verileri temizler, kural motoru + yerel/bulut AI ile olası nedenleri açıklar ve müdahaleleri yalnızca güvenli araç geçidinden, izin ve doğrulama ile önerir.
 
 > v0.1 **salt okunurdur**: hiçbir ticari kayıt, ayar veya hizmet değiştirilmez. Seviye 3 (kritik) müdahaleler kodda engellidir.
 
@@ -42,7 +42,8 @@ python scripts/build_portable.py      # dist/BONELIA-AI-Portable
 * [Mimari](docs/ARCHITECTURE.md)
 * [Tehdit modeli](docs/THREAT_MODEL.md)
 * [Test planı ve sonuçları](docs/TEST_PLAN.md)
-* [VeedelKorb entegrasyonu](docs/VEEDELKORB.md)
+* [Modüler bağdaştırıcılar (eklentiler)](docs/ARCHITECTURE.md#9-modüler-uygulama-bağdaştırıcıları-eklentiler)
+* [İsteğe bağlı VeedelKorb modülü](adapters/veedelkorb/README.md)
 * [Durum ve yol haritası](docs/ROADMAP.md)
 
 ## Bilinen eksikler (dürüst durum)

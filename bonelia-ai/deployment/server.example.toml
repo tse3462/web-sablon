@@ -1,8 +1,7 @@
 # BONELİA AI Server — example configuration (copy to server.toml on the home server)
 # Secrets are NEVER written here. They come from environment variables:
 #   OPENAI_API_KEY                         (optional, cloud AI)
-#   BONELIA_VEEDELKORB_HEALTH_TOKEN        (VeedelKorb saglik HEALTH_CHECK_TOKEN, read-only)
-#   BONELIA_VEEDELKORB_TEST_SERVICE_KEY    (only for a VeedelKorb TEST project; enables the repair executor)
+#   BONELIA_<ADAPTER_ID>_*                 (secrets of OPTIONAL adapters; each adapter only sees its own)
 
 [server]
 data_dir = "C:/BoneliaAI/server-data"
@@ -28,10 +27,14 @@ max_ai_events_per_request = 5
 # output_per_million = 0.0
 # currency = "EUR"
 
-[adapters.veedelkorb]
-# tenant_id = "ten_..."                     # output of `bonelia-server tenant-add`
+# Optional application adapters are separate packages (see adapters/). BONELİA AI works
+# without any of them. An installed adapter stays OFF until enabled here, and only the
+# listed customers can use it.
+# [adapters.veedelkorb]
+# enabled = true
+# tenant_ids = ["ten_..."]
 # url = "https://<project-ref>.supabase.co"
-environment = "test"
+# environment = "test"
 
 [repair]
 # Tools are disabled unless listed here. Level-3 tools do not exist in v0.1.

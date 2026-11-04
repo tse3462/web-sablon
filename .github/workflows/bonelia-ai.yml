@@ -22,8 +22,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev]"
-      - run: python -m pytest -q -rs
+      # 1) Pure core: NO application adapter installed. Proves BONELİA AI works when every
+      #    optional adapter (e.g. VeedelKorb) is removed.
+      - name: Install core only
+        run: pip install -e ".[dev]"
+      - name: Core tests without any adapter package
+        run: |
+          python -c "from importlib.metadata import entry_points; eps=list(entry_points(group='bonelia.adapters')); assert not eps, eps"
+          python -m pytest -q -rs tests
+      # 2) Optional adapter installed alongside the core.
+      - name: Install optional VeedelKorb adapter
+        run: pip install -e adapters/veedelkorb --no-deps
+      - name: Core + adapter tests
+        run: python -m pytest -q -rs tests adapters/veedelkorb/tests
+      # 3) Adapter uninstalled again: core must still pass.
+      - name: Uninstall adapter and re-test core
+        run: |
+          pip uninstall -y bonelia-adapter-veedelkorb
+          python -m pytest -q tests/integration/test_modularity.py tests/integration/test_cli_e2e.py
 
   windows:
     # Real Windows verification: event log access, controlled error via eventcreate,
@@ -34,9 +50,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev]"   # the USB monitor never ships application adapters
       - name: Tests (including Windows-only tests)
-        run: python -m pytest -q -rs
+        run: python -m pytest -q -rs tests
       - name: Build portable package
         run: python scripts/build_portable.py --out dist
       - name: Smoke test BoneliaAI.exe on Windows

@@ -153,7 +153,7 @@ def test_approval_consumed_before_execution():
 def test_builtin_registry_defaults_are_safe():
     reg = default_registry()
     assert reg.ids() == {"generic.collect_snapshot"}  # everything that can change state is off
-    assert reg.get("veedelkorb.retry_failed_notifications").executor is None
+    assert {t.tool_id for t in reg.all()} == {"generic.collect_snapshot", "windows.restart_service"}  # no app-specific tools
     restart = reg.get("windows.restart_service")
     assert restart.risk_level == RiskLevel.ADMIN_APPROVED and restart.verifier is None
     assert all(t.risk_level < RiskLevel.CRITICAL for t in reg.all())

@@ -83,7 +83,7 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 8px;
       <div class="row">
         <label><input type="checkbox" id="useAI" checked> <span data-i="use_ai"></span></label>
         <label><input type="checkbox" id="cloud"> <span data-i="allow_cloud"></span></label>
-        <button class="sec" id="btnVK" data-i="vk"></button>
+        <span id="adapterBtns"></span>
       </div>
       <div class="small" data-i="readonly_note"></div>
     </div>
@@ -125,7 +125,7 @@ tr:{nav_home:"Ana ekran",nav_scan:"Tarama",nav_chat:"AI Sohbet",nav_fix:"Müdaha
 customer:"Seçili müşteri",computer:"Bilgisayar",apps:"Tespit edilen uygulamalar",active_errors:"Aktif hata",monitoring:"İzleme durumu",mon_session:"Oturum boyunca",
 last_analyses:"Son analizler",none_yet:"Henüz tarama yapılmadı.",scan_title:"Teşhis türünü seçin",m_quick:"Hızlı teşhis",m_full:"Tam teşhis (7 gün)",
 m_recent:"Son hatalar (1 saat)",m_app:"Belirli uygulamayı incele",app_ph:"Uygulama adı",use_ai:"Merkezi AI ile analiz et",allow_cloud:"Müşteri bulut AI'ye izin veriyor",
-vk:"VeedelKorb sağlık analizi",readonly_note:"Bu sürüm salt okunurdur: hiçbir kayıt veya ayar değiştirilmez.",chat_title:"Doğal dilde soru sorun",
+adapter_check:"sağlık analizi (eklenti)",readonly_note:"Bu sürüm salt okunurdur: hiçbir kayıt veya ayar değiştirilmez.",chat_title:"Doğal dilde soru sorun",
 chat_ph:"Örn: Son yarım saatteki hataları incele.",ask:"Sor",chat_note:"Yanıtlar kayıtlı teknik kanıtlara dayanır; komut çalıştırılmaz.",
 fix_title:"Kontrollü müdahale",fix_note:"Tüm araçlar politika motorundan geçer. v0.1'de yalnızca deneme (dry-run) yapılabilir; gerçek müdahale yönetici onayı ve test ortamı gerektirir.",
 tool:"Araç",risk:"Risk seviyesi",state:"Durum",report_title:"Teknik servis raporu",open_report:"Raporu aç / yazdır (PDF)",export:"Dışa aktar (JSON, TXT, HTML)",
@@ -137,7 +137,7 @@ de:{nav_home:"Übersicht",nav_scan:"Scan",nav_chat:"KI-Chat",nav_fix:"Eingriff",
 customer:"Kunde",computer:"Computer",apps:"Erkannte Anwendungen",active_errors:"Aktive Fehler",monitoring:"Überwachung",mon_session:"Während der Sitzung",
 last_analyses:"Letzte Analysen",none_yet:"Noch kein Scan durchgeführt.",scan_title:"Diagnoseart wählen",m_quick:"Schnelldiagnose",m_full:"Volldiagnose (7 Tage)",
 m_recent:"Letzte Fehler (1 Std.)",m_app:"Bestimmte Anwendung prüfen",app_ph:"Anwendungsname",use_ai:"Mit zentraler KI analysieren",allow_cloud:"Kunde erlaubt Cloud-KI",
-vk:"VeedelKorb-Gesundheitsanalyse",readonly_note:"Diese Version arbeitet nur lesend: keine Daten oder Einstellungen werden verändert.",chat_title:"Frage in natürlicher Sprache",
+adapter_check:"Gesundheitsanalyse (Modul)",readonly_note:"Diese Version arbeitet nur lesend: keine Daten oder Einstellungen werden verändert.",chat_title:"Frage in natürlicher Sprache",
 chat_ph:"z. B.: Prüfe die Fehler der letzten halben Stunde.",ask:"Fragen",chat_note:"Antworten basieren auf erfassten technischen Nachweisen; es werden keine Befehle ausgeführt.",
 fix_title:"Kontrollierter Eingriff",fix_note:"Alle Werkzeuge laufen über die Richtlinien-Engine. In v0.1 nur Probelauf (Dry-Run); echte Eingriffe brauchen Admin-Freigabe und Testumgebung.",
 tool:"Werkzeug",risk:"Risikostufe",state:"Status",report_title:"Technischer Servicebericht",open_report:"Bericht öffnen / drucken (PDF)",export:"Exportieren (JSON, TXT, HTML)",
@@ -149,7 +149,7 @@ en:{nav_home:"Home",nav_scan:"Scan",nav_chat:"AI Chat",nav_fix:"Intervention",na
 customer:"Customer",computer:"Computer",apps:"Detected applications",active_errors:"Active errors",monitoring:"Monitoring",mon_session:"During session",
 last_analyses:"Latest analyses",none_yet:"No scan yet.",scan_title:"Choose diagnosis type",m_quick:"Quick diagnosis",m_full:"Full diagnosis (7 days)",
 m_recent:"Recent errors (1 hour)",m_app:"Inspect a specific app",app_ph:"Application name",use_ai:"Analyse with central AI",allow_cloud:"Customer allows cloud AI",
-vk:"VeedelKorb health analysis",readonly_note:"This version is read-only: no records or settings are changed.",chat_title:"Ask in natural language",
+adapter_check:"health analysis (adapter)",readonly_note:"This version is read-only: no records or settings are changed.",chat_title:"Ask in natural language",
 chat_ph:"e.g. Inspect the errors of the last half hour.",ask:"Ask",chat_note:"Answers are grounded on recorded technical evidence; no commands are run.",
 fix_title:"Controlled intervention",fix_note:"All tools pass the policy engine. v0.1 allows dry-runs only; real interventions need admin approval and a test environment.",
 tool:"Tool",risk:"Risk level",state:"State",report_title:"Technical service report",open_report:"Open / print report (PDF)",export:"Export (JSON, TXT, HTML)",
@@ -188,11 +188,14 @@ function busy(on){$$("button").forEach(b=>b.disabled=on)}
 $$("[data-mode]").forEach(b=>b.onclick=async()=>{busy(true);$("#findings").innerHTML=`<div class="card">${t("working")}</div>`;
  try{const r=await api("/api/scan",{mode:b.dataset.mode,app:$("#appq").value||null,analyze:$("#useAI").checked,allow_cloud:$("#cloud").checked});renderReport(r.report)}
  catch(e){$("#findings").innerHTML=`<div class="notice">${esc(e.message)}</div>`}busy(false);refresh()});
-$("#btnVK").onclick=async()=>{busy(true);try{const r=await api("/api/veedelkorb");
- const fake={notices:r.notices,findings:r.events.map((e,i)=>({title:e.title,severity:e.severity,program:"VeedelKorb",program_version:"",occurrences:e.occurrences,
+async function runAdapter(id,name){busy(true);try{const r=await api("/api/adapters/"+encodeURIComponent(id)+"/health?allow_cloud="+$("#cloud").checked,{});
+ const rep={notices:r.notices,findings:r.events.map((e,i)=>({title:e.title,severity:e.severity,program:name,program_version:"",occurrences:e.occurrences,
  analysis_source:(r.diagnoses[i]||{}).produced_by,occurred_at:e.occurred_at,evidence:e.evidence,likely_causes:(r.diagnoses[i]||{hypotheses:[]}).hypotheses,
  recommendations:((r.diagnoses[i]||{recommendations:[]}).recommendations).map(x=>x.description),missing_information:[],warnings:(r.diagnoses[i]||{}).warnings||[]}))};
- renderReport(fake)}catch(e){$("#findings").innerHTML=`<div class="notice">${esc(e.message)}</div>`}busy(false)};
+ renderReport(rep)}catch(e){$("#findings").innerHTML=`<div class="notice">${esc(e.message)}</div>`}busy(false)}
+async function loadAdapters(){try{const r=await api("/api/adapters");
+ $("#adapterBtns").innerHTML=r.adapters.map(a=>`<button class="sec" data-adapter="${esc(a.adapter_id)}" data-name="${esc(a.name)}">${esc(a.name)} ${esc(t("adapter_check"))}</button>`).join(" ");
+ $$("[data-adapter]").forEach(b=>b.onclick=()=>runAdapter(b.dataset.adapter,b.dataset.name))}catch(e){$("#adapterBtns").innerHTML=""}}
 $("#btnAsk").onclick=async()=>{busy(true);$("#answer").textContent=t("working");try{const r=await api("/api/chat",{question:$("#q").value});
  $("#answer").textContent=r.answer+"\n\n["+r.produced_by+", "+r.grounded_on+"]"}catch(e){$("#answer").textContent=e.message}busy(false)};
 async function loadTools(){const r=await api("/api/tools");$("#tools").innerHTML=r.tools.map(x=>`<tr><td><b>${esc(x.tool_id)}</b><div class="small">${esc(x.description)}</div></td>
@@ -204,7 +207,7 @@ $("#btnOpenRep").onclick=async()=>{const r=await fetch("/api/report.html",{heade
 $("#btnExport").onclick=async()=>{try{const r=await api("/api/export",{dest:$("#dest").value});$("#expres").textContent=r.files.join(", ")}catch(e){$("#expres").textContent=e.message}};
 $("#btnUnlock").onclick=async()=>{try{await api("/api/unlock",{passphrase:$("#pass").value});$("#pass").value="";refresh()}catch(e){alert(e.message)}};
 $("#lang").onchange=async e=>{L=e.target.value;await api("/api/language",{language:L});i18n()};
-$$("#nav button").forEach(b=>b.onclick=()=>show(b.dataset.p));
+$$("#nav button").forEach(b=>b.onclick=()=>{show(b.dataset.p);if(b.dataset.p==="scan")loadAdapters()});
 history.replaceState(null,"",location.pathname);i18n();refresh();setInterval(refresh,30000);
 </script>
 </body>

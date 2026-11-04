@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
 
     e = sub.add_parser("enroll-code", help="one-time enrollment code for a USB device")
     e.add_argument("tenant_id")
-    e.add_argument("--scopes", default="diagnose", help="comma separated, e.g. diagnose,adapter:veedelkorb")
+    e.add_argument("--scopes", default="diagnose", help="comma separated, e.g. diagnose,adapter:<adapter_id>")
     e.add_argument("--ttl-minutes", type=int, default=30)
 
     d = sub.add_parser("devices")

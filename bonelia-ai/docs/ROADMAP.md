@@ -6,7 +6,7 @@
 | 1 Portable Monitor MVP | 🟡 Kod + testler hazır; Windows CI doğrulaması bekleniyor; gerçek USB ile elle test yapılmadı |
 | 2 AI Server | 🟡 API, cihaz kimliği, olay yönetimi, analiz, sağlık; gerçek Ollama modeliyle test yapılmadı |
 | 3 AI Diagnostic Engine | 🟡 Kural motoru + bilgi tabanı tablosu + AI yönlendirme; onaylı bilgi tabanı girişi için henüz CLI komutu yok (yalnızca `Store.add_knowledge`) |
-| 4 VeedelKorb | 🟡 Salt okunur bağdaştırıcı sözleşmeye göre hazır; canlı/test ortamında çalıştırılmadı (token yok) |
+| 4 İlk örnek modül (VeedelKorb) | 🟡 Ayrı, isteğe bağlı, salt okunur eklenti paketi (`adapters/veedelkorb`); canlı/test ortamında çalıştırılmadı (token yok). Çekirdek ondan bağımsız (testli) |
 | 5 Controlled Repair Engine | 🟡 Politika + geçit + doğrulama + denetim hazır; gerçek yürütme yalnızca sunucu tarafı ve TEST ortamı |
 | 6 Çoklu program | ⏳ BONELIA Finance deposu bulunamadı; Supabase TEST projesi mevcut |
 | 7 Çoklu USB + Agent | 🟡 Çoklu USB/iptal hazır; Agent ve web Control Center yok |

@@ -3,11 +3,9 @@ import json
 import httpx
 import pytest
 
-from bonelia.adapters import all_manifests
-from bonelia.adapters.base import CAPABILITY_KEYS
-from bonelia.adapters.veedelkorb import VeedelKorbAdapter, events_from_health
-from bonelia.repair.builtin_tools import VeedelKorbSafeAction, veedelkorb_retry_tool
-from tests.conftest import fixture_json
+from bonelia.plugin_api import CAPABILITY_KEYS
+from bonelia_adapter_veedelkorb import MANIFEST, VeedelKorbAdapter, VeedelKorbSafeAction, events_from_health, retry_tool
+from conftest import fixture_json
 
 
 def test_degraded_payload_is_translated_into_events():
@@ -60,7 +58,7 @@ def test_safe_action_executor_only_for_test_environment():
     a = VeedelKorbAdapter("https://x.supabase.co", "t", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})))
     with pytest.raises(PermissionError):
         VeedelKorbSafeAction("https://x.supabase.co", "svc", a, "production")
-    assert veedelkorb_retry_tool(None).enabled is False
+    assert retry_tool(None).enabled is False and retry_tool(None).executor is None
 
 
 def test_safe_action_verification_against_controlled_test_system():
@@ -82,9 +80,7 @@ def test_safe_action_verification_against_controlled_test_system():
     assert res.ok and act.verifier({}, res) and res.detail["failed_24h_after"] == 0
 
 
-def test_manifests_declare_all_capabilities_honestly():
-    ms = {m.adapter_id: m for m in all_manifests()}
-    for m in ms.values():
-        assert set(m.capabilities) == set(CAPABILITY_KEYS)
-    for planned in ("bonelia-finance", "vedicore", "kanslide", "sap-business-one", "sap-s4hana"):
-        assert ms[planned].status == "planned" and not any(ms[planned].capabilities.values())
+def test_manifest_declares_all_capabilities_and_only_prefixed_secrets():
+    assert set(MANIFEST.capabilities) == set(CAPABILITY_KEYS)
+    assert MANIFEST.runs_on == "server" and not MANIFEST.capabilities["safe_interventions"]
+    assert all(k.startswith("BONELIA_VEEDELKORB_") for k in MANIFEST.secret_env)

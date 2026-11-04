@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -92,8 +93,11 @@ class ServerClient:
     def chat(self, question: str, lang: str) -> dict[str, Any]:
         return self._request("POST", "/v1/chat", {"question": question, "language": lang})
 
-    def veedelkorb_health(self, lang: str, allow_cloud: bool = False) -> dict[str, Any]:
-        return self._request("POST", "/v1/adapters/veedelkorb/health", {"language": lang, "allow_cloud": allow_cloud})
+    def adapter_health(self, adapter_id: str, lang: str, allow_cloud: bool = False) -> dict[str, Any]:
+        """Server-side health analysis through an optional application adapter."""
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,40}", adapter_id):
+            raise ValueError("invalid adapter id")
+        return self._request("POST", f"/v1/adapters/{adapter_id}/health", {"language": lang, "allow_cloud": allow_cloud})
 
     def events(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/events").get("events", [])

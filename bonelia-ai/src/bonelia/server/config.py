@@ -24,7 +24,8 @@ class ServerConfig:
     prices: dict[str, Any] = field(default_factory=dict)
     max_concurrent_analyses: int = 2
     max_ai_events_per_request: int = 5
-    veedelkorb: dict[str, Any] = field(default_factory=dict)  # {"tenant_id":..., "url":..., "environment": "test"}
+    # Optional adapter sections: {"<adapter_id>": {"enabled": bool, "tenant_ids": [...], ...adapter settings}}
+    adapters: dict[str, dict[str, Any]] = field(default_factory=dict)
     enabled_tools: list[str] = field(default_factory=list)
 
     @property
@@ -62,6 +63,6 @@ class ServerConfig:
             prices=ai.get("prices", {}),
             max_concurrent_analyses=int(server.get("max_concurrent_analyses", 2)),
             max_ai_events_per_request=int(ai.get("max_ai_events_per_request", 5)),
-            veedelkorb=raw.get("adapters", {}).get("veedelkorb", {}),
+            adapters={k: dict(v) for k, v in (raw.get("adapters") or {}).items() if isinstance(v, dict)},
             enabled_tools=list(raw.get("repair", {}).get("enabled_tools", [])),
         )

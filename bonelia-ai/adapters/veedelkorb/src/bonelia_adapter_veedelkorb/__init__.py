@@ -1,35 +1,42 @@
-"""VeedelKorb adapter (server-side, READ-ONLY in v0.1).
+"""BONELİA AI — optional VeedelKorb adapter (server-side, READ-ONLY).
 
-Verified against the VeedelKorb repository (tse3462/veedelkorb, 2026-11-04):
-* Edge Function `saglik` (supabase/functions/_shared/health.mjs): GET with
-  `Authorization: Bearer <HEALTH_CHECK_TOKEN>`; `?context=agent` adds the output of
-  `public.ai_alarm_context()` — a personal-data-free summary (jobs, cron, orders,
-  notifications, payments, invoices counters, ai_control.enabled).
-* Status 200 = ok, 503 = degraded/unavailable, 401 = bad token.
+This package is NOT part of the BONELİA AI core. It is discovered through the
+`bonelia.adapters` entry point and may be uninstalled at any time; the core keeps
+working without it. It imports only `bonelia.plugin_api`.
 
-The token lives ONLY in the server environment (`BONELIA_VEEDELKORB_HEALTH_TOKEN`).
-It is never sent to, or stored on, a USB device.
+It never changes VeedelKorb's source code, database or live services:
 
-`ai_safe_action` (allow-listed RPC in VeedelKorb) is registered as a tool but is
-DISABLED: AI control was found switched off in production and must not be enabled
-without the owner's explicit approval.
+* Reads VeedelKorb's existing `saglik` Edge Function with `?context=agent`
+  (contract verified in tse3462/veedelkorb, supabase/functions/_shared/health.mjs,
+  2026-11-04): aggregated, personal-data-free counters only.
+* The health token is a server-side secret (`BONELIA_VEEDELKORB_HEALTH_TOKEN`);
+  it is never sent to, or stored on, a USB device.
+* The optional `veedelkorb.retry_failed_notifications` tool wraps VeedelKorb's own
+  allow-listed `ai_safe_action` RPC. It can only be configured for a separate TEST
+  project, is disabled by default and must be enabled explicitly by the owner.
 """
 
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from typing import Any, Mapping
 
 import httpx
 
-from ..contracts import AppIdentity, DiagnosticEvent, ErrorCategory, Evidence, Severity
-from ..security.redact import redact_value
-from .base import Adapter, AdapterManifest
+from bonelia.plugin_api import (
+    AdapterManifest, AppIdentity, DiagnosticEvent, ErrorCategory, Evidence, ExecResult, RiskLevel, ServerAdapter,
+    Severity, ToolSpec, redact_value,
+)
+
+__version__ = "0.1.0"
+
+ENV_TOKEN = "BONELIA_VEEDELKORB_HEALTH_TOKEN"
+ENV_TEST_SERVICE_KEY = "BONELIA_VEEDELKORB_TEST_SERVICE_KEY"
 
 MANIFEST = AdapterManifest(
     adapter_id="veedelkorb",
     name="VeedelKorb",
-    version="0.1.0",
+    version=__version__,
     status="implemented",
     runs_on="server",
     capabilities={
@@ -38,14 +45,14 @@ MANIFEST = AdapterManifest(
     },
     supported_app_versions="saglik Edge Function v6+ (context=agent); ai_alarm_context migration 20261026150821",
     required_permissions=["HEALTH_CHECK_TOKEN of the target VeedelKorb environment (server-side secret)"],
-    safe_tools=["veedelkorb.retry_failed_notifications (disabled)"],
-    notes="Read-only. Does not access customer, order or payment rows — only aggregated counters.",
+    safe_tools=["veedelkorb.retry_failed_notifications (disabled by default, TEST environment only)"],
+    notes="Optional, read-only. Accesses only aggregated counters, never customer, order or payment rows.",
+    secret_env=[ENV_TOKEN, ENV_TEST_SERVICE_KEY],
 )
 
 APP = AppIdentity(app_id="veedelkorb", name="VeedelKorb", publisher="BONELIA", adapter_id="veedelkorb", recognized=True)
 
-# Job heartbeat expectations (seconds without a successful run before we flag it).
-# Conservative defaults; tune per environment. Source of job names: ai_alarm_context().
+# Seconds without a successful run before a job is flagged. Initial values; tune with real data.
 JOB_MAX_OK_AGE_S = {
     "dispatch": 15 * 60, "scheduled_tick": 15 * 60, "payment": 30 * 60, "payment_jobs": 30 * 60,
     "notify": 30 * 60, "invoice": 6 * 3600, "retention": 36 * 3600, "backup": 30 * 3600,
@@ -93,7 +100,8 @@ def _event(title: str, category: ErrorCategory, severity: Severity, code: str, d
 
 
 def events_from_health(status_code: int, body: dict[str, Any] | None, lang: str = "tr") -> list[DiagnosticEvent]:
-    """Pure function: translate a `saglik?context=agent` response into events."""
+    """Pure function: translate a `saglik?context=agent` response into BONELİA events."""
+    lang = lang if lang in ("tr", "de", "en") else "en"
     t = lambda k, **kw: _T[k][lang].format(**kw)  # noqa: E731
     if status_code == 401:
         return [_event(t("unauthorized"), ErrorCategory.configuration, Severity.error, "unauthorized", {}, _fp("401"))]
@@ -131,18 +139,17 @@ def events_from_health(status_code: int, body: dict[str, Any] | None, lang: str 
     return out
 
 
-class VeedelKorbAdapter(Adapter):
+class VeedelKorbAdapter(ServerAdapter):
     manifest = MANIFEST
 
-    def __init__(self, base_url: str, token: str, transport: httpx.BaseTransport | None = None, timeout_s: float = 15.0):
+    def __init__(self, base_url: str, token: str, transport: httpx.BaseTransport | None = None, timeout_s: float = 15.0,
+                 safe_action: "VeedelKorbSafeAction | None" = None):
         if not base_url.startswith("https://") and not base_url.startswith("http://127.0.0.1"):
             raise ValueError("VeedelKorb health URL must use https")
         self.url = base_url.rstrip("/")
         self._token = token
         self._client = httpx.Client(timeout=timeout_s, transport=transport)
-
-    def recognize(self, apps: list[AppIdentity]) -> list[AppIdentity]:
-        return [APP]
+        self.safe_action = safe_action
 
     def fetch(self) -> tuple[int, dict[str, Any] | None]:
         try:
@@ -157,10 +164,85 @@ class VeedelKorbAdapter(Adapter):
         except ValueError:
             return r.status_code, None
 
-    def health(self, lang: str = "tr") -> tuple[list[DiagnosticEvent], dict[str, str]]:  # type: ignore[override]
+    def health(self, lang: str = "tr") -> tuple[list[DiagnosticEvent], dict[str, str]]:
         status, body = self.fetch()
         events = events_from_health(status, body, lang)
         ai_enabled = ((body or {}).get("context") or {}).get("ai_control", {}).get("enabled") if isinstance(body, dict) else None
         st = {"veedelkorb:saglik": f"http_{status}" if status else "error:unreachable",
               "veedelkorb:ai_control": "enabled" if ai_enabled else "disabled_or_unknown"}
         return events, st
+
+    def tools(self) -> list[ToolSpec]:
+        return [retry_tool(self.safe_action)]
+
+
+class VeedelKorbSafeAction:
+    """VeedelKorb's own `ai_safe_action('retry_failed_notifications')`. TEST environment only."""
+
+    def __init__(self, supabase_url: str, service_key: str, health: VeedelKorbAdapter, environment: str,
+                 transport: httpx.BaseTransport | None = None):
+        if environment != "test":
+            raise PermissionError("VeedelKorb repair executor may only be configured for a TEST environment")
+        self.url = supabase_url.rstrip("/")
+        self._key = service_key
+        self.health = health
+        self._client = httpx.Client(timeout=20.0, transport=transport)
+
+    def _failed_24h(self) -> int | None:
+        _, body = self.health.fetch()
+        if not isinstance(body, dict):
+            return None
+        n = ((body.get("context") or {}).get("notifications") or {}).get("failed_24h")
+        return int(n) if isinstance(n, (int, float)) else None
+
+    def executor(self, params: dict[str, Any], dry_run: bool) -> ExecResult:
+        before = self._failed_24h()
+        if dry_run:
+            return ExecResult(True, {"failed_24h_before": before, "would_requeue_max": 50,
+                                     "rpc": "ai_safe_action('retry_failed_notifications')"})
+        r = self._client.post(f"{self.url}/rest/v1/rpc/ai_safe_action",
+                              headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"},
+                              json={"p_action": "retry_failed_notifications", "p_note": "BONELIA AI gateway"})
+        try:
+            body = r.json()
+        except ValueError:
+            body = {}
+        ok = r.status_code == 200 and isinstance(body, dict) and body.get("ok") is not False
+        return ExecResult(ok, {"http_status": r.status_code, "failed_24h_before": before,
+                               "result": body if isinstance(body, dict) else {}})
+
+    def verifier(self, params: dict[str, Any], result: ExecResult) -> bool:
+        before = result.detail.get("failed_24h_before")
+        after = self._failed_24h()
+        result.detail["failed_24h_after"] = after
+        return before is not None and after is not None and after < before
+
+
+def retry_tool(action: VeedelKorbSafeAction | None) -> ToolSpec:
+    return ToolSpec(
+        tool_id="veedelkorb.retry_failed_notifications",
+        description="Re-queue notifications that failed in the last 24 h (each at most once; VeedelKorb's own safe action)",
+        platforms=("server",), risk_level=RiskLevel.SAFE_AUTO, required_scope="repair:veedelkorb", required_role="operator",
+        params={}, supports_dry_run=True, idempotent=True,
+        rollback="Not needed: notifications are re-queued once (ai_retried flag); no order/payment data is touched",
+        timeout_s=30, max_runs_per_hour=3,
+        verification="notifications.failed_24h from saglik?context=agent decreases after execution",
+        side_effects="Customers may receive a previously failed notification",
+        executor=action.executor if action else None, verifier=action.verifier if action else None, enabled=False)
+
+
+class _Plugin:
+    manifest = MANIFEST
+
+    def create(self, config: Mapping[str, Any], env: Mapping[str, str]) -> VeedelKorbAdapter | None:
+        url, token = config.get("url"), env.get(ENV_TOKEN)
+        if not url or not token:
+            return None  # not configured: the core reports "not_configured" and continues
+        adapter = VeedelKorbAdapter(str(url), token)
+        svc = env.get(ENV_TEST_SERVICE_KEY)
+        if svc and config.get("environment") == "test":
+            adapter.safe_action = VeedelKorbSafeAction(str(url), svc, adapter, "test")
+        return adapter
+
+
+PLUGIN = _Plugin()
