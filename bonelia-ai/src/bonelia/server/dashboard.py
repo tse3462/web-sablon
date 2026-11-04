@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..contracts import Diagnosis, DiagnosticEvent, RiskLevel, utcnow
 from ..repair.builtin_tools import SAFE_AUTO_TOOLS
-from .notify import TELEGRAM_KEY, TOKEN_RE, TelegramAPI
+from .notify import TELEGRAM_KEY, TelegramAPI, extract_token
 from .store import Store
 
 ONLINE_MINUTES = 15  # agents report every 5 minutes
@@ -95,7 +95,7 @@ _URL = re.compile(r"^https?://[^\s<>\"'`]+$", re.IGNORECASE)
 
 
 class TokenBody(BaseModel):
-    token: str = Field(max_length=200)  # format checked in the endpoint for a clear message
+    token: str = Field(max_length=4000)  # may be the whole @BotFather message; the token is extracted
 
 
 # absolute Windows paths only: "D:\Kasa\Yedek" or a network share "\\NAS\yedek"
@@ -303,8 +303,8 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
 
     @app.post("/api/settings/telegram/token")
     def telegram_token(body: TokenBody) -> dict[str, Any]:
-        tok = body.token.strip()
-        if not TOKEN_RE.match(tok):
+        tok = extract_token(body.token)
+        if not tok:
             raise HTTPException(422, "invalid_token")
         bot = tg.bot_name(tok)
         if not bot:

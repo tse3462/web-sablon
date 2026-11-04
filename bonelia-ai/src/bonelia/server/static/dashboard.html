@@ -229,8 +229,8 @@ level_help:"Seviye 1: durmuş hizmeti başlatma, DNS önbelleği temizleme, eski
 closed:"Panel kapatıldı.",quit_q:"Panel kapatılsın mı? Tekrar açmak için bilgisayarda BONELIA-Baslat gerekir.",
 tg_title:"📱 Telefon bildirimleri (Telegram)",
 tg_help:"Bağlandıktan sonra telefonuna mesaj gelir: önemli sorunlar (disk arızası, eski yedek…), yapılan onarımlar, izin gereken onarımlar ve 30 dakikadır sinyal vermeyen bilgisayarlar.",
-tg_s1:"Telegram'da @BotFather'ı aç, /newbot yaz, bota bir ad ver (sonu 'bot' ile bitmeli). Sana uzun bir anahtar (token) verir — onu kopyala.",
-tg_s2:"Anahtarı aşağıya yapıştır ve 'Kaydet'e bas.",tg_save:"Kaydet",
+tg_s1:"Telegram'da @BotFather'ı aç, /newbot yaz, bota bir ad ver (sonu 'bot' ile bitmeli). Anahtarı (token) içeren mesajı basılı tut → Kopyala. (Zaten bot varsa: /token yaz.)",
+tg_s2:"Aşağıya yapıştır ve 'Kaydet'e bas — mesajın tamamını yapıştırabilirsin, anahtarı panel kendisi bulur.",tg_len:"Yapıştırılan: {n} karakter. Anahtar şuna benzer: 1234567890:AAH… (rakamlar + iki nokta + yaklaşık 35 harf).",tg_save:"Kaydet",
 tg_pending:"Son adım: Telegram'da botunu ({bot}) aç, 'Başlat'a bas (veya 'merhaba' yaz). Sonra aşağıdaki 'Bağla'ya bas.",
 tg_connect:"Bağla",tg_test:"Test mesajı gönder",tg_off:"Bildirimleri kapat",tg_off_q:"Telegram bildirimleri kapatılsın mı?",
 tg_on:"Bağlı ✓",tg_off_state:"Bağlı değil.",tg_pending_state:"Anahtar kaydedildi — son adım: bağla.",tg_sent:"Gönderildi ✓ Telefonuna bak.",tg_tile_on:"Telegram bağlı",tg_tile_off:"Telegram bağlı değil",
@@ -262,8 +262,8 @@ level_help:"Stufe 1: gestoppten Dienst starten, DNS-Cache leeren, alte temporär
 closed:"Panel geschlossen.",quit_q:"Panel schließen? Zum erneuten Öffnen am PC BONELIA-Baslat starten.",
 tg_title:"📱 Handy-Benachrichtigungen (Telegram)",
 tg_help:"Nach dem Verbinden kommen Nachrichten aufs Handy: wichtige Probleme (Plattendefekt, alte Sicherung…), durchgeführte Reparaturen, Reparaturen mit Freigabebedarf und PCs ohne Signal seit 30 Minuten.",
-tg_s1:"In Telegram @BotFather öffnen, /newbot senden, einen Namen geben (muss auf 'bot' enden). Sie erhalten einen langen Schlüssel (Token) — kopieren.",
-tg_s2:"Schlüssel unten einfügen und 'Speichern' drücken.",tg_save:"Speichern",
+tg_s1:"In Telegram @BotFather öffnen, /newbot senden, einen Namen geben (muss auf 'bot' enden). Die Nachricht mit dem Schlüssel (Token) gedrückt halten → Kopieren. (Bot schon vorhanden: /token senden.)",
+tg_s2:"Unten einfügen und 'Speichern' drücken — die ganze Nachricht geht auch, das Panel findet den Schlüssel selbst.",tg_len:"Eingefügt: {n} Zeichen. Ein Schlüssel sieht so aus: 1234567890:AAH… (Ziffern + Doppelpunkt + ca. 35 Zeichen).",tg_save:"Speichern",
 tg_pending:"Letzter Schritt: Ihren Bot ({bot}) in Telegram öffnen, 'Start' tippen (oder 'Hallo' schreiben). Dann unten 'Verbinden' drücken.",
 tg_connect:"Verbinden",tg_test:"Testnachricht senden",tg_off:"Benachrichtigungen aus",tg_off_q:"Telegram-Benachrichtigungen ausschalten?",
 tg_on:"Verbunden ✓",tg_off_state:"Nicht verbunden.",tg_pending_state:"Schlüssel gespeichert — letzter Schritt: verbinden.",tg_sent:"Gesendet ✓ Aufs Handy schauen.",tg_tile_on:"Telegram verbunden",tg_tile_off:"Telegram nicht verbunden",
@@ -378,7 +378,8 @@ $("#appSave").onclick=async()=>{const body={name:$("#appName").value.trim(),url:
 $("#appsEdit").onclick=()=>{EDIT=!EDIT;$("#appsEdit").textContent=t(EDIT?"done":"edit");renderApps()};
 
 // ---------- telegram ----------
-function tgRender(s){$("#tgOff").classList.toggle("hidden",s.state!=="off");$("#tgPending").classList.toggle("hidden",s.state!=="pending");
+let TG_STATE="off";
+function tgRender(s){TG_STATE=s.state;$("#tgOff").classList.toggle("hidden",s.state!=="off");$("#tgPending").classList.toggle("hidden",s.state!=="pending");
  $("#tgOn").classList.toggle("hidden",s.state!=="on");
  $("#tgState").innerHTML=s.state==="on"?`<span class="ok">${t("tg_on")}</span> @${esc(s.bot)}${s.chat_name?" → "+esc(s.chat_name):""}`:`<span class="small">${t(s.state==="pending"?"tg_pending_state":"tg_off_state")}</span>`;
  $("#tgPendingTxt").textContent=t("tg_pending").replace("{bot}","@"+(s.bot||""));
@@ -387,7 +388,7 @@ async function tgLoad(){try{tgRender(await api("/api/settings/telegram"))}catch(
 async function tgDo(path,body){$("#tgMsg").textContent="…";try{const s=await api(path,body===undefined?{}:body);
  $("#tgMsg").innerHTML=s.state?"":`<span class="ok">${t("tg_sent")}</span>`;if(s.state){tgRender(s);if(s.state==="on"&&path.endsWith("/connect"))$("#tgMsg").innerHTML=`<span class="ok">${t("tg_sent")}</span>`}}
  catch(e){$("#tgMsg").innerHTML=`<span class="bad">${esc(errT(e.message))}</span>`}}
-$("#tgSave").onclick=async()=>{await tgDo("/api/settings/telegram/token",{token:$("#tgToken").value.trim()});$("#tgToken").value=""};
+$("#tgSave").onclick=async()=>{const v=$("#tgToken").value;await tgDo("/api/settings/telegram/token",{token:v});if(TG_STATE!=="off")$("#tgToken").value="";else if($("#tgMsg .bad"))$("#tgMsg").insertAdjacentHTML("beforeend",`<div class="small">${t("tg_len").replace("{n}",v.trim().length)}</div>`)};
 $("#tgConnect").onclick=()=>tgDo("/api/settings/telegram/connect");
 $("#tgTest").onclick=()=>tgDo("/api/settings/telegram/test");
 $("#tgOffBtn").onclick=()=>{if(confirm(t("tg_off_q")))tgDo("/api/settings/telegram/off")};

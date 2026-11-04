@@ -262,3 +262,20 @@ def test_my_apps_launcher_add_edit_move_delete(tmp_path):
     actions = [x["action"] for x in store.audit_log()]
     assert "settings.app_saved" in actions and "settings.app_deleted" in actions
     assert c.get("/api/apps").status_code == 403  # token required like every other panel API
+
+
+def test_token_is_found_in_whatever_the_phone_pastes():
+    from bonelia.server.notify import extract_token
+
+    tok = "7234567890:AAHkx9Q2mPz7Lw3R5tYbV8nC1dE4fG6hJk0"
+    assert extract_token(tok) == tok
+    assert extract_token(f"⁨{tok}⁩​") == tok  # invisible marks added when copying on a phone
+    assert extract_token(f" {tok}\n") == tok
+    assert extract_token(tok.replace(":", "：")) == tok  # full-width colon
+    botfather = ("Done! Congratulations on your new bot. You will find it at t.me/bonelia_bildirim_bot. ...\n\n"
+                 f"Use this token to access the HTTP API:\n{tok}\nKeep your token secure and store it safely, ...\n"
+                 "For a description of the Bot API, see this page: https://core.telegram.org/bots/api")
+    assert extract_token(botfather) == tok  # the whole @BotFather message works too
+    assert extract_token("7234567890") is None  # only the number in front is not a token
+    assert extract_token("AAHkx9Q2mPz7Lw3R5tYbV8nC1dE4fG6hJk0") is None
+    assert extract_token("") is None

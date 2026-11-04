@@ -82,6 +82,18 @@ class Telegram:
 
 TELEGRAM_KEY = "telegram"
 TOKEN_RE = re.compile(r"^\d{5,12}:[A-Za-z0-9_-]{30,64}$")
+_TOKEN_IN_TEXT = re.compile(r"(?<![0-9])(\d{5,12})\s*:\s*([A-Za-z0-9_-]{30,64})(?![A-Za-z0-9_-])")
+
+
+def extract_token(raw: str) -> str | None:
+    """Find a bot token in whatever was pasted: the token alone, the whole @BotFather message,
+    or text with invisible characters that phones add when copying (zero-width, bidi marks)."""
+    import unicodedata
+
+    text = unicodedata.normalize("NFKC", raw or "")  # e.g. a full-width colon becomes ':'
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")  # drop invisible format characters
+    m = _TOKEN_IN_TEXT.search(text)
+    return f"{m.group(1)}:{m.group(2)}" if m else None
 
 
 class TelegramAPI:
