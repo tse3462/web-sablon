@@ -47,6 +47,24 @@ Komutla: `bonelia-server --config deployment\server.home.toml alerts --hours 24`
 | DNS ad çözümleme zaman aşımı | DNS önbelleğini temizle | DNS sorgusu çalışıyor |
 | Sistem diski %90+ dolu | 7 günden eski geçici dosyaları sil | eski geçici dosya kalmadı (kullanımdakiler hariç) |
 
+## Bildirimler
+Ev bilgisayarınızda Windows bildirimi (`deployment\server.home.toml` → `[notify] windows_toast = true`):
+* ⚠ önemli sorun bulundu (aynı sorun 6 saatte bir kez)
+* ✅ onarıldı / ❌ onarım başarısız
+* 🔒 bir onarım için izin gerekli (ör. müşteri seviye 1'de, hizmet yeniden başlatma gerekiyor)
+* 📴 bir bilgisayar 30 dakikadır sinyal vermiyor
+
+Telefona Telegram ile: bir Telegram botu oluşturun, token'ı `BONELIA_TELEGRAM_BOT_TOKEN` ortam değişkenine,
+sohbet numaranızı `[notify] telegram_chat_id` ayarına yazın. Deneme: `bonelia-server ... notify-test`.
+
+## Güncelleme (işletmelere gitmeden)
+Yeni sürümün USB paketini indirdikten sonra ev bilgisayarında:
+```bat
+bonelia-server --config deployment\server.home.toml publish-agent G:\BONELIA-AI-Portable\BoneliaAI-Konsol.exe
+```
+Kurulu bilgisayarlar yaklaşık 15 dakika içinde yeni sürümü indirir, **sunucunuzun imzasını doğrular** ve kendini
+yeniler. İmzası tutmayan bir dosya kurulmaz.
+
 ## Kaldırma
 USB'deki **Bu-Bilgisayardan-Kaldir.bat** (veya `BoneliaAI-Konsol.exe agent-uninstall`), sonra sunucuda
 `bonelia-server revoke <device_id>`.

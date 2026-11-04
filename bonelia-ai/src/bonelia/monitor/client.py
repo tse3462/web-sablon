@@ -72,6 +72,17 @@ class ServerClient:
                                   timeout=httpx.Timeout(timeout_s, connect=5.0))
 
     def _request(self, method: str, path: str, payload: Any = None, timeout_s: float | None = None) -> dict[str, Any]:
+        r = self._send(method, path, payload, timeout_s)
+        try:
+            data = r.json() if r.content else {}
+        except ValueError:
+            data = {}
+        if r.status_code >= 400:
+            raise ServerError(r.status_code, str(data.get("detail", "error")) if isinstance(data, dict) else "error")
+        return data
+
+    def _send(self, method: str, path: str, payload: Any = None, timeout_s: float | None = None) -> httpx.Response:
+        """Signed request; the response signature is verified before anything is returned."""
         body = b"" if payload is None else json.dumps(payload, default=str, ensure_ascii=False).encode("utf-8")
         headers = sign_request(self.creds.private_key, self.creds.device_id, method, path, body)
         headers["Content-Type"] = "application/json"
@@ -88,13 +99,16 @@ class ServerClient:
             verify_response(self._server_pub, r.status_code, headers[H_NONCE], r.content, r.headers.get(H_SERVER_SIG))
         except ValueError as exc:
             raise FakeServerError(str(exc)) from exc
-        try:
-            data = r.json() if r.content else {}
-        except ValueError:
-            data = {}
-        if r.status_code >= 400:
-            raise ServerError(r.status_code, str(data.get("detail", "error")) if isinstance(data, dict) else "error")
-        return data
+        return r
+
+    def agent_update_info(self) -> dict[str, Any]:
+        return self._request("GET", "/v1/agent/update")
+
+    def download_agent_update(self) -> bytes:
+        r = self._send("GET", "/v1/agent/update/file", timeout_s=300)
+        if r.status_code != 200:
+            raise ServerError(r.status_code, "update_download_failed")
+        return r.content
 
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/v1/health")

@@ -179,7 +179,9 @@ def _agent_command(args) -> int:
     except (OSError, ValueError) as exc:
         print(f"Agent kurulu değil / nicht installiert: {exc}", file=sys.stderr)
         return 2
-    agent = Agent(ServerClient(creds, ca_file=args.ca), AgentState(inst.state_path()), lang=args.lang or "tr")
+    frozen = getattr(sys, "frozen", False)
+    agent = Agent(ServerClient(creds, ca_file=args.ca), AgentState(inst.state_path()), lang=args.lang or "tr",
+                  own_exe=Path(sys.executable) if frozen else None, self_update=frozen)
     if args.once:
         print(json.dumps(agent.cycle(), indent=2, ensure_ascii=False, default=str))
         return 0

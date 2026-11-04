@@ -87,6 +87,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("notify-test", help="send a test notification through the configured channels")
 
+    pa = sub.add_parser("publish-agent", help="publish a new agent program; installed PCs update themselves")
+    pa.add_argument("exe", help="path to BoneliaAI-Konsol.exe from the new USB package")
+
     db = sub.add_parser("dashboard", help="open the local control panel (browser, this PC only)")
     db.add_argument("--port", type=int, default=0)
     db.add_argument("--no-browser", action="store_true")
@@ -117,6 +120,30 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     store = _store(cfg)
+    if args.cmd == "publish-agent":
+        import hashlib
+        import shutil
+
+        from ..contracts import utcnow
+        from ..security.crypto import sign_update
+        from .app import load_or_create_server_key
+
+        src = Path(args.exe)
+        if not src.is_file() or src.suffix.lower() != ".exe":
+            print("BoneliaAI-Konsol.exe bulunamadı / nicht gefunden", file=sys.stderr)
+            return 2
+        data = src.read_bytes()
+        sha = hashlib.sha256(data).hexdigest()
+        d = cfg.data_dir / "agent_update"
+        d.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, d / "BoneliaAI-Agent.exe")
+        manifest = {"sha256": sha, "size": len(data), "signature": sign_update(load_or_create_server_key(cfg), sha, len(data)),
+                    "published_at": utcnow().isoformat()}
+        (d / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        store.audit("admin", "agent.update_published", {"sha256": sha, "size": len(data)})
+        print(json.dumps({"published": True, "sha256": sha, "size": len(data),
+                          "note": "Kurulu bilgisayarlar 5 dakika içinde güncellenir / PCs aktualisieren sich binnen 5 Minuten"}, indent=2))
+        return 0
     if args.cmd == "notify-test":
         from .notify import build_notifier
 

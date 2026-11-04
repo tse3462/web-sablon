@@ -296,6 +296,34 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             raise HTTPException(403, "enrollment_rejected") from exc
         return EnrollResponse(server_public_key_b64=server_pub, **res).model_dump()
 
+    update_dir = cfg.data_dir / "agent_update"
+
+    def update_manifest() -> dict[str, Any] | None:
+        try:
+            return json.loads((update_dir / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    @app.get("/v1/agent/update")
+    async def agent_update(auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        need_scope(auth, "agent")
+        m = update_manifest()
+        if not m:
+            return {"available": False}
+        return {"available": True, "sha256": m["sha256"], "size": m["size"], "signature": m["signature"],
+                "published_at": m.get("published_at")}
+
+    @app.get("/v1/agent/update/file")
+    async def agent_update_file(auth: dict = Depends(device_auth)):
+        need_scope(auth, "agent")
+        f = update_dir / "BoneliaAI-Agent.exe"
+        if not update_manifest() or not f.is_file():
+            raise HTTPException(404, "no_update")
+        from starlette.responses import Response
+
+        store.audit("device", "agent.update_download", {}, tenant_id=auth["tenant"]["id"], device_id=auth["device"]["id"])
+        return Response(content=f.read_bytes(), media_type="application/octet-stream")
+
     class Heartbeat(BaseModel):
         status: dict[str, Any] = Field(default_factory=dict)
 

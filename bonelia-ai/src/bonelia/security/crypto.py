@@ -234,3 +234,21 @@ def hash_secret(value: str) -> str:
 
 def constant_time_equal(a: str, b: str) -> bool:
     return secrets.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+# --------------------------------------------------------------------------- agent updates
+
+def update_message(sha256_hex: str, size: int) -> bytes:
+    return f"BONELIA-AGENT-UPDATE-V1\n{sha256_hex}\n{size}".encode("ascii")
+
+
+def sign_update(key: Ed25519PrivateKey, sha256_hex: str, size: int) -> str:
+    return b64e(key.sign(update_message(sha256_hex, size)))
+
+
+def verify_update(pub: Ed25519PublicKey, sha256_hex: str, size: int, sig_b64: str) -> None:
+    """Raise ValueError unless the update manifest was signed by the pinned server key."""
+    try:
+        pub.verify(b64d(sig_b64), update_message(sha256_hex, size))
+    except (InvalidSignature, ValueError) as exc:
+        raise ValueError("update signature invalid") from exc

@@ -168,3 +168,29 @@ def test_clean_temp_dry_run_on_real_windows():
 
     res = wt.clean_temp({}, True)
     assert res.ok and "would_delete_files" in res.detail and res.detail["roots"]
+
+
+def test_agent_update_swap_task_replaces_the_program(tmp_path, monkeypatch):
+    """The one-shot SYSTEM task swaps the agent exe from outside the agent's own task, then removes itself."""
+    import time
+
+    from bonelia.agent import install as inst
+
+    monkeypatch.setenv("BONELIA_AGENT_DIR", str(tmp_path / "agent"))
+    d = inst.agent_dir()
+    d.mkdir(parents=True)
+    (d / "BoneliaAI-Agent.exe").write_bytes(b"old")
+    new = d / "BoneliaAI-Agent.new.exe"
+    new.write_bytes(b"new")
+    ok, msg = inst.schedule_swap(new)
+    assert ok, msg
+    for _ in range(60):
+        if (d / "BoneliaAI-Agent.exe").read_bytes() == b"new" and not new.exists():
+            break
+        time.sleep(0.5)
+    assert (d / "BoneliaAI-Agent.exe").read_bytes() == b"new"
+    for _ in range(20):
+        if subprocess.run(["schtasks", "/Query", "/TN", inst.UPDATE_TASK], capture_output=True).returncode != 0:
+            break
+        time.sleep(0.5)
+    assert subprocess.run(["schtasks", "/Query", "/TN", inst.UPDATE_TASK], capture_output=True).returncode != 0

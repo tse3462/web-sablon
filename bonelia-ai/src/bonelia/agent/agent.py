@@ -57,8 +57,9 @@ class AgentState:
 
 class Agent:
     def __init__(self, client: ServerClient, state: AgentState, lang: str = "tr", executors=None,
-                 scan: Callable[..., Any] = run_scan):
+                 scan: Callable[..., Any] = run_scan, own_exe: Path | None = None, self_update: bool = False):
         self.client, self.state, self.lang, self.executors, self.scan = client, state, lang, executors, scan
+        self.own_exe, self.self_update = own_exe, self_update
 
     def cycle(self) -> dict[str, Any]:
         summary: dict[str, Any] = {"new_findings": 0, "sent": False, "repairs": [], "offline": False}
@@ -113,6 +114,11 @@ class Agent:
         self.state.data["last_cycle"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), **summary}
         self.state.save()
         if not summary["offline"]:
+            if self.self_update and self.state.data["cycles"] % 3 == 1:  # every ~15 minutes
+                try:
+                    summary["update"] = self.check_update(self.own_exe)
+                except (ServerUnavailable, ServerError, ValueError, OSError) as exc:
+                    summary["update"] = f"error:{type(exc).__name__}"
             try:  # "alive" signal for the control panel, with a short summary of this cycle
                 self.client.heartbeat({"cycles": self.state.data["cycles"], "new_findings": summary["new_findings"],
                                        "repairs": [f"{r.get('tool_id')}:{r.get('outcome')}" for r in summary["repairs"]],
@@ -120,6 +126,32 @@ class Agent:
             except (ServerUnavailable, ServerError):
                 pass
         return summary
+
+    def check_update(self, own_exe: Path | None, apply: Callable[[Path], tuple[bool, str]] | None = None) -> dict[str, Any]:
+        """Self-update: only a program signed by the pinned server key is installed."""
+        import hashlib
+
+        from ..security.crypto import load_public_key, verify_update
+
+        if own_exe is None or not own_exe.is_file():
+            return {"update": "not_applicable"}
+        info = self.client.agent_update_info()
+        if not info.get("available"):
+            return {"update": "none_published"}
+        own = hashlib.sha256(own_exe.read_bytes()).hexdigest()
+        if info["sha256"] == own:
+            return {"update": "up_to_date"}
+        pub = load_public_key(self.client.creds.server_public_key_b64)
+        verify_update(pub, info["sha256"], int(info["size"]), info["signature"])  # raises on forgery
+        data = self.client.download_agent_update()
+        if len(data) != int(info["size"]) or hashlib.sha256(data).hexdigest() != info["sha256"]:
+            raise ValueError("downloaded update does not match the signed manifest")
+        new = own_exe.with_name(own_exe.stem + ".new.exe")
+        new.write_bytes(data)
+        if apply is None:
+            from .install import schedule_swap as apply
+        ok, msg = apply(new)
+        return {"update": "scheduled" if ok else "failed", "detail": msg[:200]}
 
     def run_forever(self, interval_s: int = 300) -> None:
         while True:

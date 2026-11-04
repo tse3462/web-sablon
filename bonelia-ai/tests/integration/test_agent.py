@@ -173,3 +173,60 @@ def test_agent_heartbeat_and_vetted_safe_tools_covered_by_level1(tmp_path, env):
     Agent(s.client, AgentState(tmp_path / "hb.json"), executors=pc.executors(), scan=pc.scan).cycle()
     dev = env["store"].device(s.creds.device_id)
     assert dev["last_seen_at"] and '"cycles": 1' in (dev["last_status"] or "")
+
+
+def _publish(env, data: bytes, key=None):
+    import hashlib
+
+    from bonelia.security.crypto import sign_update
+
+    d = env["cfg"].data_dir / "agent_update"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "BoneliaAI-Agent.exe").write_bytes(data)
+    sha = hashlib.sha256(data).hexdigest()
+    (d / "manifest.json").write_text(json.dumps({"sha256": sha, "size": len(data),
+                                                 "signature": sign_update(key or env["key"], sha, len(data))}))
+
+
+def test_agent_self_update_only_accepts_server_signed_programs(tmp_path, env):  # noqa: F811
+    import pytest
+
+    from bonelia.monitor.client import ServerClient, ServerError
+    from bonelia.security import crypto
+
+    owner = usb(tmp_path, env, "USB-OWNER", env["a"], scopes=("diagnose", "install:agent"))
+    agent_client = ServerClient(owner.client.enroll_agent("KASSE-1"))
+    own = tmp_path / "BoneliaAI-Agent.exe"
+    own.write_bytes(b"agent v1")
+    agent = Agent(agent_client, AgentState(tmp_path / "s.json"))
+    applied = []
+    apply = lambda p: (applied.append(p.read_bytes()) or True, "ok")  # noqa: E731
+
+    assert agent.check_update(own, apply) == {"update": "none_published"}
+    _publish(env, b"agent v1")
+    assert agent.check_update(own, apply) == {"update": "up_to_date"}
+    _publish(env, b"agent v2")
+    assert agent.check_update(own, apply)["update"] == "scheduled" and applied == [b"agent v2"]
+    # a forged update (signed by another key) is refused before anything is downloaded or installed
+    _publish(env, b"evil program", key=crypto.generate_keypair())
+    with pytest.raises(ValueError):
+        agent.check_update(own, apply)
+    assert applied == [b"agent v2"]
+    # only agents may download the agent program
+    with pytest.raises(ServerError) as e:
+        owner.client.agent_update_info()
+    assert e.value.status == 403
+
+
+def test_publish_agent_command(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    exe = tmp_path / "BoneliaAI-Konsol.exe"
+    exe.write_bytes(b"MZ new agent")
+    p = subprocess.run([sys.executable, "-m", "bonelia.server.cli", "--data-dir", str(tmp_path / "d"), "publish-agent", str(exe)],
+                       capture_output=True, text=True, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    assert p.returncode == 0, p.stderr
+    m = json.loads((tmp_path / "d" / "agent_update" / "manifest.json").read_text())
+    assert m["size"] == len(b"MZ new agent") and m["signature"]

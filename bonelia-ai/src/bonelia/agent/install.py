@@ -98,6 +98,33 @@ def install_task(start_now: bool = True) -> tuple[bool, str]:
     return True, command
 
 
+UPDATE_TASK = "BONELIA AI Agent Update"
+
+
+def schedule_swap(new_exe: Path) -> tuple[bool, str]:
+    """Replace the running agent from OUTSIDE its own task (a one-shot SYSTEM task), then restart it."""
+    d = agent_dir()
+    exe = d / "BoneliaAI-Agent.exe"
+    script = d / "update.ps1"
+    script.write_text("\r\n".join([
+        "Start-Sleep -Seconds 3",
+        f'schtasks /End /TN "{TASK_NAME}" | Out-Null',
+        "Start-Sleep -Seconds 3",
+        "Get-Process BoneliaAI-Agent -ErrorAction SilentlyContinue | Stop-Process -Force",
+        "Start-Sleep -Seconds 1",
+        f'Move-Item -Force -LiteralPath "{new_exe}" -Destination "{exe}"',
+        f'schtasks /Run /TN "{TASK_NAME}" | Out-Null',
+        f'schtasks /Delete /F /TN "{UPDATE_TASK}" | Out-Null',
+    ]), encoding="utf-8")
+    cmd = f'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{script}"'
+    p = _run(["schtasks", "/Create", "/F", "/TN", UPDATE_TASK, "/SC", "ONCE", "/ST", "00:00", "/SD", "01/01/2099",
+              "/RU", "SYSTEM", "/RL", "HIGHEST", "/TR", cmd])
+    if p.returncode != 0:
+        return False, (p.stderr or p.stdout).strip()
+    r = _run(["schtasks", "/Run", "/TN", UPDATE_TASK])
+    return r.returncode == 0, (r.stderr or r.stdout).strip()
+
+
 def task_installed() -> bool:
     return _run(["schtasks", "/Query", "/TN", TASK_NAME]).returncode == 0
 
