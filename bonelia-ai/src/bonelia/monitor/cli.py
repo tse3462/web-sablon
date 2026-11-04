@@ -187,9 +187,13 @@ def _agent_command(args) -> int:
     from ..agent.agent import Agent, AgentState
     from .client import ServerClient
 
-    inst.agent_dir().mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(level=logging.INFO, handlers=[RotatingFileHandler(inst.agent_dir() / "agent.log", maxBytes=1_000_000,
-                                                                          backupCount=3, encoding="utf-8")])
+    handlers: list[logging.Handler] = []
+    try:  # the log lives under %ProgramData% (admin area); fall back to the console if it is not writable
+        inst.agent_dir().mkdir(parents=True, exist_ok=True)
+        handlers.append(RotatingFileHandler(inst.agent_dir() / "agent.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"))
+    except OSError:
+        handlers.append(logging.StreamHandler())
+    logging.basicConfig(level=logging.INFO, handlers=handlers)
     try:
         creds = inst.load_credentials()
     except (OSError, ValueError) as exc:
