@@ -7,6 +7,7 @@ request body.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import secrets
@@ -66,6 +67,17 @@ create table if not exists knowledge (
   risk_level integer not null default 0, valid_versions text, test_result text not null,
   approved_by text not null, created_at text not null);
 """
+
+
+def new_enrollment_code() -> str:
+    """160-bit one-time code, base32 in groups of 4: letters/digits only, easy to type, never starts with '-'."""
+    raw = base64.b32encode(secrets.token_bytes(20)).decode("ascii")
+    return "-".join(raw[i:i + 4] for i in range(0, len(raw), 4))
+
+
+def normalize_code(code: str) -> str:
+    """Case-insensitive; ignores spaces and dashes the technician may type differently."""
+    return "".join(ch for ch in (code or "").upper() if ch.isalnum())
 
 
 def _iso(dt: datetime) -> str:
@@ -129,16 +141,16 @@ class Store:
     def create_enrollment_code(self, tenant_id: str, scopes: list[str], ttl_minutes: int = 30) -> str:
         if self.tenant(tenant_id) is None:
             raise ValueError("unknown tenant")
-        code = secrets.token_urlsafe(24)
+        code = new_enrollment_code()
         self._x("insert into enrollment_codes (code_hash, tenant_id, scopes, expires_at, created_at) values (?,?,?,?,?)",
-                (hash_secret(code), tenant_id, json.dumps(sorted(set(scopes))), _iso(utcnow() + timedelta(minutes=ttl_minutes)),
+                (hash_secret(normalize_code(code)), tenant_id, json.dumps(sorted(set(scopes))), _iso(utcnow() + timedelta(minutes=ttl_minutes)),
                  _iso(utcnow())))
         self.audit("admin", "enrollment.code_created", {"scopes": sorted(set(scopes)), "ttl_min": ttl_minutes}, tenant_id=tenant_id)
         return code
 
     def redeem_enrollment(self, code: str, label: str, public_key_b64: str) -> dict[str, Any]:
         with self._lock:
-            rows = self._q("select * from enrollment_codes where code_hash=?", (hash_secret(code),))
+            rows = self._q("select * from enrollment_codes where code_hash=?", (hash_secret(normalize_code(code)),))
             if not rows:
                 raise PermissionError("invalid_code")
             row = rows[0]

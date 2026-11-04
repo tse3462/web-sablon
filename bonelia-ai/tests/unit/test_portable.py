@@ -48,3 +48,17 @@ def test_cli_survives_windows_legacy_console_encoding(tmp_path):
                        capture_output=True, env=env, timeout=120)
     assert p.returncode == 0, p.stderr.decode(errors="replace")
     assert "BONEL" in p.stdout.decode("utf-8", errors="replace")
+
+
+def test_enrollment_codes_are_cli_safe_and_typo_tolerant(tmp_path):
+    """Regression (found on Windows CI): token_urlsafe codes could start with '-' and break `--code`."""
+    from bonelia.server.store import Store, new_enrollment_code
+
+    for _ in range(500):
+        c = new_enrollment_code()
+        assert c[0].isalnum() and set(c) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567-") and len(c) >= 16
+    store = Store(tmp_path / "db.sqlite")
+    t = store.create_tenant("T")
+    code = store.create_enrollment_code(t, ["diagnose"])
+    typed = code.lower().replace("-", " ")  # technician types it in lower case with spaces
+    assert store.redeem_enrollment(typed, "USB", "pk1")["tenant_id"] == t
