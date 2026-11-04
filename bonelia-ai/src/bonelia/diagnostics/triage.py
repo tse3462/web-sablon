@@ -8,6 +8,7 @@ entries come from the owner's first real scan (German Windows 11, 2026-11-04).
 from __future__ import annotations
 
 from ..contracts import DiagnosticEvent, ErrorCategory, Severity, Triage
+from .health_rules import triage_reason as _health_reason
 
 L = dict[str, str]
 
@@ -98,6 +99,9 @@ def classify(event: DiagnosticEvent, lang: str = "tr") -> tuple[Triage, str]:
         return Triage.harmless, HARMLESS[key].get(lang, HARMLESS[key]["en"])
     if key in CHECK:
         return Triage.check, CHECK[key].get(lang, CHECK[key]["en"])
+    health = _health_reason(event.rule_id, lang)  # disk health / backup findings
+    if health is not None:
+        return (Triage.important if health[0] else Triage.check), health[1]
     if event.rule_id in IMPORTANT_RULES:
         return Triage.important, t("service_stopped") if event.rule_id == "win.service_stopped" else t("important_sig")
     if event.rule_id in ("win.app_crash", "win.app_hang", "win.dotnet_unhandled"):

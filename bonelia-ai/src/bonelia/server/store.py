@@ -61,6 +61,8 @@ create table if not exists nonces (device_id text not null, nonce text not null,
 create table if not exists audit (
   id integer primary key autoincrement, at text not null, tenant_id text, device_id text, actor text not null,
   action text not null, detail text not null, prev_hash text not null, hash text not null);
+create table if not exists settings (
+  key text primary key, value text not null, updated_at text not null);
 create table if not exists notifications (
   key text primary key, last_at text not null, count integer not null default 1);
 create table if not exists knowledge (
@@ -101,6 +103,8 @@ class Store:
         cols = {r["name"] for r in self._q("pragma table_info(devices)")}
         if "last_status" not in cols:  # added after v0.1 first release
             self._x("alter table devices add column last_status text")
+        if "policy" not in cols:  # per-device settings pushed to the agent (e.g. backup folders)
+            self._x("alter table devices add column policy text")
 
     def _q(self, sql: str, args: tuple = ()) -> list[sqlite3.Row]:
         with self._lock:
@@ -201,10 +205,10 @@ class Store:
 
     def devices(self, tenant_id: str | None = None) -> list[dict[str, Any]]:
         if tenant_id:
-            rows = self._q("select id, tenant_id, label, scopes, status, created_at, last_seen_at, revoked_at, last_status "
+            rows = self._q("select id, tenant_id, label, scopes, status, created_at, last_seen_at, revoked_at, last_status, policy "
                            "from devices where tenant_id=?", (tenant_id,))
         else:
-            rows = self._q("select id, tenant_id, label, scopes, status, created_at, last_seen_at, revoked_at, last_status from devices")
+            rows = self._q("select id, tenant_id, label, scopes, status, created_at, last_seen_at, revoked_at, last_status, policy from devices")
         return [dict(r) for r in rows]
 
     def touch_device(self, device_id: str) -> None:
@@ -220,6 +224,40 @@ class Store:
 
     def clear_notification(self, key: str) -> None:
         self._x("delete from notifications where key=?", (key,))
+
+    def device_policy(self, device_id: str) -> dict[str, Any]:
+        rows = self._q("select policy from devices where id=?", (device_id,))
+        if not rows or not rows[0]["policy"]:
+            return {}
+        try:
+            return json.loads(rows[0]["policy"])
+        except ValueError:
+            return {}
+
+    def set_device_policy(self, device_id: str, policy: dict[str, Any], actor: str = "admin") -> bool:
+        dev = self.device(device_id)
+        if dev is None:
+            return False
+        self._x("update devices set policy=? where id=?", (json.dumps(policy, sort_keys=True) if policy else None, device_id))
+        self.audit(actor, "device.policy_changed", {"policy": policy}, tenant_id=dev["tenant_id"], device_id=device_id)
+        return True
+
+    # ------------------------------------------------------------------ settings (server-wide, e.g. Telegram)
+    def get_setting(self, key: str) -> Any:
+        rows = self._q("select value from settings where key=?", (key,))
+        if not rows:
+            return None
+        try:
+            return json.loads(rows[0]["value"])
+        except ValueError:
+            return None
+
+    def set_setting(self, key: str, value: Any) -> None:
+        self._x("insert into settings (key, value, updated_at) values (?,?,?) on conflict(key) do update set "
+                "value=excluded.value, updated_at=excluded.updated_at", (key, json.dumps(value), _iso(utcnow())))
+
+    def delete_setting(self, key: str) -> None:
+        self._x("delete from settings where key=?", (key,))
 
     def set_device_status(self, device_id: str, status: dict[str, Any]) -> None:
         self._x("update devices set last_status=? where id=?", (json.dumps(status, default=str)[:4000], device_id))

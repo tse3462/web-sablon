@@ -283,3 +283,54 @@ def test_publish_agent_command(tmp_path):
     assert p.returncode == 0, p.stderr
     m = json.loads((tmp_path / "d" / "agent_update" / "manifest.json").read_text())
     assert m["size"] == len(b"MZ new agent") and m["signature"]
+
+
+def test_backup_policy_from_the_panel_reaches_the_agent(tmp_path, env):  # noqa: F811
+    """Owner sets a backup folder in the panel -> heartbeat reply -> next scan checks it."""
+    s = usb(tmp_path, env, "AGENT-POL", env["a"], scopes=("diagnose", "repair:windows"))
+    calls: list[dict] = []
+
+    def scan(**kw):
+        calls.append(kw)
+        return ScanResult(system=SystemSnapshot(hostname_ref="ref_pc", os="Windows", os_version="11"), events=[])
+
+    agent = Agent(s.client, AgentState(tmp_path / "p.json"), scan=scan, maintenance_tools=())
+    agent.cycle()
+    assert calls[-1]["backup_policy"] is None  # nothing configured yet
+    pol = {"backup": {"paths": ["D:\\Kasa\\Yedek"], "max_age_days": 3}}
+    assert env["store"].set_device_policy(s.creds.device_id, pol)
+    agent.cycle()  # heartbeat reply delivers the policy ...
+    assert agent.state.data["policy"] == pol
+    agent.cycle()  # ... and the next scan uses it
+    assert calls[-1]["backup_policy"] == pol["backup"]
+    assert "device.policy_changed" in [a["action"] for a in env["store"].audit_log(env["a"])]
+
+
+def test_solved_problem_that_returns_is_reported_again(tmp_path, env):  # noqa: F811
+    s = usb(tmp_path, env, "AGENT-RE", env["a"], scopes=("diagnose", "repair:windows"))
+    present = {"on": True}
+
+    def scan(**kw):
+        evs = [_ev("bak", "Yedek eski: D:\\Yedek", Triage.important, source="backup_check")] if present["on"] else []
+        return ScanResult(system=SystemSnapshot(hostname_ref="ref_pc", os="Windows", os_version="11"), events=evs)
+
+    agent = Agent(s.client, AgentState(tmp_path / "r.json"), scan=scan, maintenance_tools=())
+    assert agent.cycle()["new_findings"] == 1
+    assert agent.cycle()["new_findings"] == 0  # still the same problem: no repeat
+    present["on"] = False
+    assert agent.cycle()["new_findings"] == 0  # solved
+    present["on"] = True
+    assert agent.cycle()["new_findings"] == 1  # it came back -> reported again
+
+
+def test_upgrade_keeps_already_reported_states_quiet(tmp_path, env):  # noqa: F811
+    """An older agent state (no 'states' list yet) must not re-report everything after the update."""
+    s = usb(tmp_path, env, "AGENT-UPG", env["a"], scopes=("diagnose", "repair:windows"))
+    p = tmp_path / "u.json"
+    p.write_text(json.dumps({"salt": "x", "seen": {"bak": FIXED.isoformat()}, "cycles": 7}))
+
+    def scan(**kw):
+        return ScanResult(system=SystemSnapshot(hostname_ref="ref_pc", os="Windows", os_version="11"),
+                          events=[_ev("bak", "Yedek eski", Triage.important, source="backup_check")])
+
+    assert Agent(s.client, AgentState(p), scan=scan, maintenance_tools=()).cycle()["new_findings"] == 0

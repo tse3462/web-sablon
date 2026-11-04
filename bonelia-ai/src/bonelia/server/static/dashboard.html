@@ -16,7 +16,7 @@
 header{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
 .logo{font-weight:800;font-size:18px}.logo span{color:var(--brand)}
 nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}nav button,.sec{background:var(--chip);border:0;color:var(--ink);padding:7px 12px;border-radius:7px;cursor:pointer;font:inherit}
-nav button{background:none;color:var(--muted)}nav button.active{background:var(--chip);color:var(--ink);font-weight:600}
+main button:not(.sec){background:var(--brand);color:#fff;border:0;padding:9px 14px;border-radius:7px;cursor:pointer;font:inherit;font-weight:600}nav button{background:none;color:var(--muted)}nav button.active{background:var(--chip);color:var(--ink);font-weight:600}
 main{max-width:1150px;margin:18px auto;padding:0 16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px}
@@ -31,7 +31,7 @@ th{font-size:12px;color:var(--muted);text-transform:uppercase}
 .ok{color:var(--ok);font-weight:600}.bad{color:var(--crit);font-weight:600}.small{font-size:12px;color:var(--muted)}
 .ev{font-size:12px;background:var(--chip);border-radius:6px;padding:6px 8px;margin:6px 0;word-break:break-word}
 .conf{font-size:11px;padding:1px 6px;border-radius:10px;background:var(--chip);margin-right:6px}
-.hidden{display:none}select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px}
+.hidden{display:none}input[type=text]{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:9px;width:100%;font:inherit;margin:6px 0}ol{padding-left:18px}select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px}
 </style>
 </head>
 <body>
@@ -43,6 +43,7 @@ th{font-size:12px;color:var(--muted);text-transform:uppercase}
     <button data-p="findings" data-i="n_findings"></button>
     <button data-p="repairs" data-i="n_repairs"></button>
     <button data-p="customers" data-i="n_customers"></button>
+    <button data-p="settings" data-i="n_settings"></button>
   </nav>
   <select id="lang"><option value="tr">TR</option><option value="de">DE</option></select>
   <button class="sec" id="quit" data-i="quit"></button>
@@ -66,6 +67,18 @@ th{font-size:12px;color:var(--muted);text-transform:uppercase}
   <section id="p-repairs" class="hidden"><table><thead><tr><th data-i="c_time"></th><th data-i="c_customer"></th><th data-i="c_device"></th><th data-i="c_repair"></th><th data-i="c_result"></th></tr></thead><tbody id="reps"></tbody></table></section>
   <section id="p-customers" class="hidden"><table><thead><tr><th data-i="c_customer"></th><th data-i="c_agents"></th><th data-i="c_level"></th></tr></thead><tbody id="custs"></tbody></table>
     <p class="small" data-i="level_help"></p></section>
+  <section id="p-settings" class="hidden">
+    <div class="card"><h3 data-i="tg_title"></h3>
+      <div id="tgState"></div>
+      <p class="small" data-i="tg_help"></p>
+      <div id="tgOff"><ol class="small"><li data-i="tg_s1"></li><li data-i="tg_s2"></li></ol>
+        <input id="tgToken" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="123456789:AA...">
+        <button id="tgSave" data-i="tg_save"></button></div>
+      <div id="tgPending" class="hidden"><p id="tgPendingTxt"></p><button id="tgConnect" data-i="tg_connect"></button></div>
+      <div id="tgOn" class="hidden"><button id="tgTest" data-i="tg_test"></button> <button class="sec" id="tgOffBtn" data-i="tg_off"></button></div>
+      <div id="tgMsg" class="small" style="margin-top:8px"></div>
+    </div>
+  </section>
 </main>
 <script>
 const T={tr:{panel:"Kontrol Paneli",n_home:"Genel bakış",n_devices:"Bilgisayarlar",n_findings:"Sorunlar",n_repairs:"Onarımlar",n_customers:"Müşteriler",quit:"Kapat",
@@ -77,7 +90,22 @@ show_check:"'Kontrol edin' kayıtlarını da göster",none:"Kayıt yok.",ai:"Ana
 l0:"0 – Sadece okuma",l1:"1 – Güvenli onarımlar otomatik",l2:"2 – + çöken hizmetleri yeniden başlatma (otomatik)",saved:"Kaydedildi",
 need_token:"Güvenlik anahtarı yok. Bilgisayardaki C:\\BoneliaAI\\server-data\\panel-url.txt dosyasındaki TAM adresi (sonundaki #… ile) telefonda bir kez açın; bu cihaz anahtarı hatırlar, sonra kısa adres yeter.",
 level_help:"Seviye 1: durmuş hizmeti başlatma, DNS önbelleği temizleme, eski geçici dosyaları silme kendiliğinden yapılır. Seviye 2: ayrıca tekrar tekrar çöken hizmetler kendiliğinden yeniden başlatılır (saatte en fazla 2). Kritik Windows hizmetlerine hiçbir seviyede dokunulmaz.",
-closed:"Panel kapatıldı.",quit_q:"Panel kapatılsın mı? Tekrar açmak için bilgisayarda BONELIA-Baslat gerekir."},
+closed:"Panel kapatıldı.",quit_q:"Panel kapatılsın mı? Tekrar açmak için bilgisayarda BONELIA-Baslat gerekir.",
+n_settings:"Ayarlar",tg_title:"📱 Telefon bildirimleri (Telegram)",
+tg_help:"Bağlandıktan sonra telefonuna mesaj gelir: önemli sorunlar (disk arızası, eski yedek…), yapılan onarımlar, izin gereken onarımlar ve 30 dakikadır sinyal vermeyen bilgisayarlar.",
+tg_s1:"Telegram'da @BotFather'ı aç, /newbot yaz, bota bir ad ver (sonu 'bot' ile bitmeli). Sana uzun bir anahtar (token) verir — onu kopyala.",
+tg_s2:"Anahtarı aşağıya yapıştır ve 'Kaydet'e bas.",tg_save:"Kaydet",
+tg_pending:"Son adım: Telegram'da botunu ({bot}) aç, 'Başlat'a bas (veya 'merhaba' yaz). Sonra aşağıdaki 'Bağla'ya bas.",
+tg_connect:"Bağla",tg_test:"Test mesajı gönder",tg_off:"Bildirimleri kapat",tg_off_q:"Telegram bildirimleri kapatılsın mı?",
+tg_on:"Bağlı ✓",tg_off_state:"Bağlı değil.",tg_pending_state:"Anahtar kaydedildi — son adım: bağla.",tg_sent:"Gönderildi ✓ Telefonuna bak.",
+err_invalid_token:"Bu bir bot anahtarına benzemiyor. @BotFather'ın verdiği anahtarı eksiksiz kopyala.",
+err_token_rejected:"Telegram bu anahtarı kabul etmedi (yanlış veya iptal edilmiş).",
+err_no_message:"Bota henüz mesaj gelmedi. Telegram'da botu açıp 'Başlat'a bas veya bir mesaj yaz, sonra tekrar 'Bağla'.",
+err_send_failed:"Telegram'a ulaşılamadı. İnternet bağlantısını kontrol et.",err_not_connected:"Önce bağla.",err_no_token:"Önce anahtarı kaydet.",
+err_invalid_path:"Geçersiz klasör. Örnek: D:\\Kasa\\Yedek , E:\\ veya \\\\NAS\\yedek",err_invalid:"Geçersiz giriş.",
+backup:"Yedek",backup_none:"yedek klasörü tanımlı değil",days:"gün",
+backup_q:"Bu bilgisayarın yedeklerinin yazıldığı klasör (birden fazlaysa ; ile ayır). Örnek: D:\\Kasa\\Yedek veya E:\\ — boş bırakırsan klasör kontrolü kapanır.",
+backup_days_q:"Son yedek kaç günden eski olursa uyarayım? (1-60)"},
 de:{panel:"Kontrollzentrum",n_home:"Übersicht",n_devices:"Computer",n_findings:"Probleme",n_repairs:"Reparaturen",n_customers:"Kunden",quit:"Schließen",
 k_customers:"Kunden",k_online:"Computer online",k_important:"Wichtige Probleme (24 h)",k_repairs:"Reparaturen (7 Tage)",latest:"Letzte wichtige Probleme",
 c_device:"Computer / USB",c_customer:"Kunde",c_kind:"Typ",c_seen:"Zuletzt gesehen",c_last:"Letzter Status",c_time:"Zeit",c_repair:"Reparatur",c_result:"Ergebnis",c_agents:"Installierte PCs",c_level:"Reparaturfreigabe",
@@ -87,7 +115,22 @@ show_check:"Auch 'Prüfen'-Einträge zeigen",none:"Keine Einträge.",ai:"Analyse
 l0:"0 – Nur lesen",l1:"1 – Sichere Reparaturen automatisch",l2:"2 – + abgestürzte Dienste neu starten (automatisch)",saved:"Gespeichert",
 need_token:"Kein Zugriffstoken. Öffnen Sie einmal die VOLLSTÄNDIGE Adresse (mit #… am Ende) aus C:\\BoneliaAI\\server-data\\panel-url.txt auf dem PC; dieses Gerät merkt sich den Schlüssel, danach genügt die kurze Adresse.",
 level_help:"Stufe 1: gestoppten Dienst starten, DNS-Cache leeren, alte temporäre Dateien löschen geschieht automatisch. Stufe 2: zusätzlich werden wiederholt abstürzende Dienste automatisch neu gestartet (max. 2/h). Kritische Windows-Dienste werden nie angefasst.",
-closed:"Panel geschlossen.",quit_q:"Panel schließen? Zum erneuten Öffnen am PC BONELIA-Baslat starten."}};
+closed:"Panel geschlossen.",quit_q:"Panel schließen? Zum erneuten Öffnen am PC BONELIA-Baslat starten.",
+n_settings:"Einstellungen",tg_title:"📱 Handy-Benachrichtigungen (Telegram)",
+tg_help:"Nach dem Verbinden kommen Nachrichten aufs Handy: wichtige Probleme (Plattendefekt, alte Sicherung…), durchgeführte Reparaturen, Reparaturen mit Freigabebedarf und PCs ohne Signal seit 30 Minuten.",
+tg_s1:"In Telegram @BotFather öffnen, /newbot senden, einen Namen geben (muss auf 'bot' enden). Sie erhalten einen langen Schlüssel (Token) — kopieren.",
+tg_s2:"Schlüssel unten einfügen und 'Speichern' drücken.",tg_save:"Speichern",
+tg_pending:"Letzter Schritt: Ihren Bot ({bot}) in Telegram öffnen, 'Start' tippen (oder 'Hallo' schreiben). Dann unten 'Verbinden' drücken.",
+tg_connect:"Verbinden",tg_test:"Testnachricht senden",tg_off:"Benachrichtigungen aus",tg_off_q:"Telegram-Benachrichtigungen ausschalten?",
+tg_on:"Verbunden ✓",tg_off_state:"Nicht verbunden.",tg_pending_state:"Schlüssel gespeichert — letzter Schritt: verbinden.",tg_sent:"Gesendet ✓ Aufs Handy schauen.",
+err_invalid_token:"Das sieht nicht wie ein Bot-Schlüssel aus. Den Schlüssel von @BotFather vollständig kopieren.",
+err_token_rejected:"Telegram hat den Schlüssel abgelehnt (falsch oder widerrufen).",
+err_no_message:"Der Bot hat noch keine Nachricht. In Telegram den Bot öffnen, 'Start' tippen oder schreiben, dann erneut 'Verbinden'.",
+err_send_failed:"Telegram nicht erreichbar. Internetverbindung prüfen.",err_not_connected:"Zuerst verbinden.",err_no_token:"Zuerst den Schlüssel speichern.",
+err_invalid_path:"Ungültiger Ordner. Beispiel: D:\\Kasse\\Sicherung , E:\\ oder \\\\NAS\\sicherung",err_invalid:"Ungültige Eingabe.",
+backup:"Sicherung",backup_none:"kein Sicherungsordner hinterlegt",days:"Tage",
+backup_q:"Ordner, in den die Sicherungen dieses PCs geschrieben werden (mehrere mit ; trennen). Beispiel: D:\\Kasse\\Sicherung oder E:\\ — leer lassen schaltet die Ordnerprüfung aus.",
+backup_days_q:"Ab wie vielen Tagen ohne neue Sicherung soll ich warnen? (1-60)"}};
 // Token may arrive as ?t=… (preferred: iOS "Add to Home Screen" keeps the query) or #… (older links).
 // It is kept in the URL on purpose so the home-screen shortcut captures it, and remembered per device.
 let TOKEN="";try{TOKEN=new URLSearchParams(location.search).get("t")||location.hash.slice(1)||localStorage.getItem("bt")||"";if(TOKEN)localStorage.setItem("bt",TOKEN);}catch(e){TOKEN=new URLSearchParams(location.search).get("t")||location.hash.slice(1)||""}
@@ -95,8 +138,8 @@ let L="tr";const $=s=>document.querySelector(s),$$=s=>[...document.querySelector
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const t=k=>(T[L]||T.tr)[k]??k;
 async function api(p,b){const r=await fetch(p,{method:b===undefined?"GET":"POST",headers:{"x-ui-token":TOKEN,"content-type":"application/json"},body:b===undefined?undefined:JSON.stringify(b)});
- const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.status);return j}
-function i18n(){$$("[data-i]").forEach(e=>e.textContent=t(e.dataset.i));$("#lang").value=L}
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(typeof j.detail==="string"?j.detail:(r.status===422?"invalid":String(r.status)));return j}
+function i18n(){document.documentElement.lang=L;$$("[data-i]").forEach(e=>e.textContent=t(e.dataset.i));$("#lang").value=L}
 function show(p){$$("main>section").forEach(s=>s.classList.toggle("hidden",s.id!=="p-"+p));$$("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.p===p))}
 const fmt=s=>s?String(s).replace("T"," ").slice(0,16):"–";
 function outcome(r){if(r.action==="tool.denied")return`<span class="bad">${t("denied")}</span> <span class="small">${esc((r.reasons||[]).join(", "))}</span>`;
@@ -113,24 +156,41 @@ async function load(){
  $("#kCust").textContent=o.tenants.length;$("#kOnline").textContent=agents.filter(d=>d.online).length+" / "+agents.length;
  $("#kImp").textContent=o.tenants.reduce((a,x)=>a+x.important_24h,0);$("#kRep").textContent=r.repairs.filter(x=>x.action==="tool.executed").length;
  $("#homeList").innerHTML=f.findings.filter(x=>x.triage==="important").slice(0,8).map(x=>`<div>• ${esc(fmt(x.at))} — <b>${esc(x.title)}</b> (${esc(x.customer)}, ${esc(x.device)})</div>`).join("")||t("none");
- $("#devs").innerHTML=o.devices.map(d=>`<tr><td><span class="dot ${d.kind!=="agent"?"na":d.online?"on":"off"}"></span></td><td>${esc(d.label)}<div class="small">${esc(d.id)}</div></td>
+ $("#devs").innerHTML=o.devices.map(d=>`<tr><td><span class="dot ${d.kind!=="agent"?"na":d.online?"on":"off"}"></span></td><td>${esc(d.label)}<div class="small">${esc(d.id)}</div>${d.kind==="agent"?`<div class="small">💾 ${d.backup?esc(d.backup.paths.join("; "))+" ("+d.backup.max_age_days+" "+t("days")+")":t("backup_none")}</div>`:""}</td>
   <td>${esc(d.customer)}</td><td>${esc(t(d.kind))}${d.status!=="active"?` <span class="bad">(${t("revoked")})</span>`:""}</td><td>${esc(fmt(d.last_seen_at))}</td>
   <td class="small">${d.last_status?esc((d.last_status.repairs||[]).join(", ")||("cycles "+d.last_status.cycles)):""}</td>
-  <td>${d.status==="active"?`<button class="sec" data-rev="${esc(d.id)}">${t("revoke")}</button> `:""}<button class="sec" data-del="${esc(d.id)}">${t("delete")}</button></td></tr>`).join("");
+  <td>${d.kind==="agent"&&d.status==="active"?`<button class="sec" data-bak="${esc(d.id)}">${t("backup")}</button> `:""}${d.status==="active"?`<button class="sec" data-rev="${esc(d.id)}">${t("revoke")}</button> `:""}<button class="sec" data-del="${esc(d.id)}">${t("delete")}</button></td></tr>`).join("");
  $$("[data-rev]").forEach(b=>b.onclick=async()=>{if(confirm(t("revoke_q"))){await api("/api/devices/"+encodeURIComponent(b.dataset.rev)+"/revoke",{});load()}});
  $$("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm(t("delete_q"))){await api("/api/devices/"+encodeURIComponent(b.dataset.del)+"/delete",{});load()}});
+ $$("[data-bak]").forEach(b=>b.onclick=async()=>{const cur=(o.devices.find(x=>x.id===b.dataset.bak)||{}).backup||{};
+  const pth=prompt(t("backup_q"),(cur.paths||[]).join("; "));if(pth===null)return;let days=cur.max_age_days||2;
+  if(pth.trim()){const n=prompt(t("backup_days_q"),String(days));if(n===null)return;days=Math.max(1,Math.min(60,parseInt(n,10)||2))}
+  try{await api("/api/devices/"+encodeURIComponent(b.dataset.bak)+"/backup-policy",{paths:pth.split(";").map(x=>x.trim()).filter(Boolean),max_age_days:days});load()}catch(e){alert(errT(e.message))}});
  $("#finds").innerHTML=f.findings.map(findCard).join("")||`<div class="card">${t("none")}</div>`;
  $("#reps").innerHTML=r.repairs.map(x=>`<tr><td>${esc(fmt(x.at))}</td><td>${esc(x.customer)}</td><td>${esc(x.device)}</td><td>${esc(x.tool_id)} <span class="small">${esc(Object.values(x.params||{}).join(" "))}</span></td><td>${outcome(x)}</td></tr>`).join("")||`<tr><td colspan="5">${t("none")}</td></tr>`;
  $("#custs").innerHTML=o.tenants.map(c=>`<tr><td><b>${esc(c.name)}</b><div class="small">${esc(c.id)}</div></td><td>${c.online} / ${c.agents}</td>
   <td><select data-lvl="${esc(c.id)}">${[0,1,2].map(l=>`<option value="${l}" ${l===c.repair_level?"selected":""}>${t("l"+l)}</option>`).join("")}</select> <span class="small" id="sv-${esc(c.id)}"></span></td></tr>`).join("");
  $$("[data-lvl]").forEach(s=>s.onchange=async()=>{await api("/api/tenants/"+encodeURIComponent(s.dataset.lvl)+"/repair-level",{level:+s.value});$("#sv-"+s.dataset.lvl).textContent=t("saved")})}
-$$("#nav button").forEach(b=>b.onclick=()=>show(b.dataset.p));
-$("#lang").onchange=e=>{L=e.target.value;i18n();load()};$("#allF").onchange=load;$("#hoursF").onchange=load;
+const errT=m=>{const k="err_"+m,v=t(k);return v===k?m:v};
+function tgRender(s){$("#tgOff").classList.toggle("hidden",s.state!=="off");$("#tgPending").classList.toggle("hidden",s.state!=="pending");
+ $("#tgOn").classList.toggle("hidden",s.state!=="on");
+ $("#tgState").innerHTML=s.state==="on"?`<span class="ok">${t("tg_on")}</span> @${esc(s.bot)}${s.chat_name?" → "+esc(s.chat_name):""}`:`<span class="small">${t(s.state==="pending"?"tg_pending_state":"tg_off_state")}</span>`;
+ $("#tgPendingTxt").textContent=t("tg_pending").replace("{bot}","@"+(s.bot||""))}
+async function tgLoad(){try{tgRender(await api("/api/settings/telegram"))}catch(e){}}
+async function tgDo(path,body){$("#tgMsg").textContent="…";try{const s=await api(path,body===undefined?{}:body);
+ $("#tgMsg").innerHTML=s.state?"":`<span class="ok">${t("tg_sent")}</span>`;if(s.state){tgRender(s);if(s.state==="on"&&path.endsWith("/connect"))$("#tgMsg").innerHTML=`<span class="ok">${t("tg_sent")}</span>`}}
+ catch(e){$("#tgMsg").innerHTML=`<span class="bad">${esc(errT(e.message))}</span>`}}
+$("#tgSave").onclick=async()=>{await tgDo("/api/settings/telegram/token",{token:$("#tgToken").value.trim()});$("#tgToken").value=""};
+$("#tgConnect").onclick=()=>tgDo("/api/settings/telegram/connect");
+$("#tgTest").onclick=()=>tgDo("/api/settings/telegram/test");
+$("#tgOffBtn").onclick=()=>{if(confirm(t("tg_off_q")))tgDo("/api/settings/telegram/off")};
+$$("#nav button").forEach(b=>b.onclick=()=>{show(b.dataset.p);if(b.dataset.p==="settings")tgLoad()});
+$("#lang").onchange=e=>{L=e.target.value;i18n();tgLoad();load()};$("#allF").onchange=load;$("#hoursF").onchange=load;
 // "Kapat" shuts the panel down and cannot be reopened from a browser, so hide it on remote
 // (phone) access; it is only shown on the PC itself (127.0.0.1), where the panel can be restarted.
 if(!["127.0.0.1","localhost","[::1]"].includes(location.hostname)){$("#quit").style.display="none"}
 $("#quit").onclick=async()=>{if(!confirm(t("quit_q")))return;try{await api("/api/quit",{})}catch(e){}document.querySelector("main").innerHTML=`<div class="card">${t("closed")}</div>`};
-i18n();load().catch(e=>document.querySelector("main").insertAdjacentHTML("afterbegin",`<div class="card bad">${esc(e.message==="bad_token"?t("need_token"):e.message)}</div>`));setInterval(()=>load().catch(()=>{}),60000);
+i18n();tgLoad();load().catch(e=>document.querySelector("main").insertAdjacentHTML("afterbegin",`<div class="card bad">${esc(e.message==="bad_token"?t("need_token"):e.message)}</div>`));setInterval(()=>load().catch(()=>{}),60000);
 </script>
 </body>
 </html>

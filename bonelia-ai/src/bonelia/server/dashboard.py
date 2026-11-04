@@ -10,6 +10,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import re
 import secrets
 import socket
 import threading
@@ -26,6 +27,7 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..contracts import Diagnosis, DiagnosticEvent, RiskLevel, utcnow
 from ..repair.builtin_tools import SAFE_AUTO_TOOLS
+from .notify import TELEGRAM_KEY, TOKEN_RE, TelegramAPI
 from .store import Store
 
 ONLINE_MINUTES = 15  # agents report every 5 minutes
@@ -75,7 +77,22 @@ class LevelBody(BaseModel):
     level: int = Field(ge=0, le=2)
 
 
-def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[str] | None = None) -> FastAPI:
+class BackupBody(BaseModel):
+    paths: list[str] = Field(default_factory=list, max_length=5)
+    max_age_days: int = Field(default=2, ge=1, le=60)
+
+
+class TokenBody(BaseModel):
+    token: str = Field(max_length=200)  # format checked in the endpoint for a clear message
+
+
+# absolute Windows paths only: "D:\Kasa\Yedek" or a network share "\\NAS\yedek"
+_WIN_PATH = re.compile(r"^(?:[A-Za-z]:\\|\\\\[^\\/:*?\"<>|]+\\[^\\/:*?\"<>|]+)[^:*?\"<>|]{0,250}$")
+
+
+def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[str] | None = None,
+                         telegram_api: TelegramAPI | None = None) -> FastAPI:
+    tg = telegram_api or TelegramAPI()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     for h in (extra_hosts or []):
@@ -114,7 +131,8 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
                 "id": d["id"], "tenant_id": d["tenant_id"], "customer": tenants.get(d["tenant_id"], {}).get("name"),
                 "label": d["label"], "kind": kind, "status": d["status"], "last_seen_at": d.get("last_seen_at"),
                 "online": bool(kind == "agent" and d["status"] == "active" and seen and now - seen < timedelta(minutes=ONLINE_MINUTES)),
-                "last_status": json.loads(d["last_status"]) if d.get("last_status") else None, "scopes": scopes})
+                "last_status": json.loads(d["last_status"]) if d.get("last_status") else None, "scopes": scopes,
+                "backup": (json.loads(d["policy"]) if d.get("policy") else {}).get("backup")})
         important = {}
         for r in store.findings(since(24)):
             ev = DiagnosticEvent.model_validate_json(r["payload"])
@@ -185,6 +203,80 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         if not store.delete_device(device_id, actor="admin:dashboard"):
             raise HTTPException(404, "unknown_device")
         return {"ok": True}
+
+    @app.post("/api/devices/{device_id}/backup-policy")
+    def set_backup_policy(device_id: str, body: BackupBody) -> dict[str, Any]:
+        """Backup folders this PC's agent checks (newest file age). Empty list = no folder check."""
+        if store.device(device_id) is None:
+            raise HTTPException(404, "unknown_device")
+        paths = []
+        for raw in body.paths:
+            p = raw.strip().strip('"')
+            if not p:
+                continue
+            if not _WIN_PATH.match(p) or any(ord(c) < 32 for c in p):
+                raise HTTPException(422, "invalid_path")
+            paths.append(p)
+        policy = store.device_policy(device_id)
+        if paths:
+            policy["backup"] = {"paths": paths[:5], "max_age_days": body.max_age_days}
+        else:
+            policy.pop("backup", None)
+        store.set_device_policy(device_id, policy, actor="admin:dashboard")
+        return {"ok": True, "backup": policy.get("backup")}
+
+    # ---------------------------------------------------------------- Telegram (phone notifications)
+    def tg_state() -> dict[str, Any]:
+        c = store.get_setting(TELEGRAM_KEY) or {}
+        state = "on" if c.get("token") and c.get("chat_id") else ("pending" if c.get("token") else "off")
+        return {"state": state, "bot": c.get("bot"), "chat_name": c.get("chat_name")}  # never the token
+
+    @app.get("/api/settings/telegram")
+    def telegram_get() -> dict[str, Any]:
+        return tg_state()
+
+    @app.post("/api/settings/telegram/token")
+    def telegram_token(body: TokenBody) -> dict[str, Any]:
+        tok = body.token.strip()
+        if not TOKEN_RE.match(tok):
+            raise HTTPException(422, "invalid_token")
+        bot = tg.bot_name(tok)
+        if not bot:
+            raise HTTPException(400, "token_rejected")
+        store.set_setting(TELEGRAM_KEY, {"token": tok, "bot": bot, "chat_id": None})
+        store.audit("admin:dashboard", "settings.telegram_token", {"bot": bot})
+        return tg_state()
+
+    @app.post("/api/settings/telegram/connect")
+    def telegram_connect() -> dict[str, Any]:
+        c = store.get_setting(TELEGRAM_KEY) or {}
+        if not c.get("token"):
+            raise HTTPException(409, "no_token")
+        found = tg.latest_chat(c["token"])
+        if not found:
+            raise HTTPException(409, "no_message")
+        c["chat_id"], c["chat_name"] = found
+        if not tg.send(c["token"], c["chat_id"], "✅ BONELİA AI: bildirimler artık bu sohbete gelecek. / "
+                                                 "Benachrichtigungen kommen ab jetzt in diesen Chat."):
+            raise HTTPException(502, "send_failed")
+        store.set_setting(TELEGRAM_KEY, c)
+        store.audit("admin:dashboard", "settings.telegram_on", {"bot": c.get("bot")})
+        return tg_state()
+
+    @app.post("/api/settings/telegram/test")
+    def telegram_test() -> dict[str, Any]:
+        c = store.get_setting(TELEGRAM_KEY) or {}
+        if not (c.get("token") and c.get("chat_id")):
+            raise HTTPException(409, "not_connected")
+        if not tg.send(c["token"], c["chat_id"], "🔔 BONELİA AI test bildirimi / Testbenachrichtigung"):
+            raise HTTPException(502, "send_failed")
+        return {"ok": True}
+
+    @app.post("/api/settings/telegram/off")
+    def telegram_off() -> dict[str, Any]:
+        store.delete_setting(TELEGRAM_KEY)
+        store.audit("admin:dashboard", "settings.telegram_off", {})
+        return tg_state()
 
     @app.post("/api/quit")
     def quit_app() -> dict[str, Any]:

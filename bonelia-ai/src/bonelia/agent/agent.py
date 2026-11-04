@@ -75,16 +75,26 @@ class Agent:
 
     def cycle(self) -> dict[str, Any]:
         summary: dict[str, Any] = {"new_findings": 0, "sent": False, "repairs": [], "offline": False}
-        res = self.scan(mode="recent", salt=self.state.data["salt"], lang=self.lang)
+        policy = self.state.data.get("policy") or {}  # settings from the panel, delivered with the heartbeat reply
+        res = self.scan(mode="recent", salt=self.state.data["salt"], lang=self.lang, backup_policy=policy.get("backup"))
         seen = self.state.data["seen"]
+        if "states" not in self.state.data:  # upgrade: states reported by an older version count as known
+            self.state.data["states"] = list(seen)
+        states_prev = set(self.state.data["states"])
+
+        def from_log(e) -> bool:
+            return any(ev.source.startswith(("windows_event_log", "logfile")) for ev in e.evidence)
+
         def is_new(e) -> bool:
-            if e.fingerprint not in seen:
-                return True
-            # log entries: new if a newer occurrence appeared; states (stopped service, full disk): report once
-            from_log = any(ev.source.startswith(("windows_event_log", "logfile")) for ev in e.evidence)
-            return from_log and seen[e.fingerprint] < e.occurred_at.isoformat()
+            if from_log(e):  # log entries: new if unseen or a newer occurrence appeared
+                return e.fingerprint not in seen or seen[e.fingerprint] < e.occurred_at.isoformat()
+            # states (stopped service, failing disk, old backup): new whenever they (re)appear,
+            # so a problem that was solved and comes back is reported again
+            return e.fingerprint not in states_prev
 
         new = [e for e in res.events if e.triage != Triage.harmless and is_new(e)]
+        states_now = {e.fingerprint for e in res.events if e.triage != Triage.harmless and not from_log(e)}
+        reported: set[str] = set()
         summary["new_findings"] = len(new)
         try:
             if new:
@@ -92,6 +102,7 @@ class Agent:
                 summary["sent"] = True
                 for e in new[:25]:
                     seen[e.fingerprint] = e.occurred_at.isoformat()
+                    reported.add(e.fingerprint)
             done: set[str] = set()
             denied = self.state.data["denied"]
             repaired = self.state.data["repaired"]
@@ -140,6 +151,8 @@ class Agent:
             summary["offline"] = True  # no repairs without the server; findings are retried next cycle
         except ServerError as exc:
             summary["error"] = f"{exc.status}:{exc.detail}"
+        # remember active states: solved ones drop out (re-reported if they return); unsent new ones are retried
+        self.state.data["states"] = sorted((states_prev & states_now) | (reported & states_now))
         self.state.data["cycles"] += 1
         self.state.data["last_cycle"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), **summary}
         self.state.save()
@@ -150,9 +163,12 @@ class Agent:
                 except (ServerUnavailable, ServerError, ValueError, OSError) as exc:
                     summary["update"] = f"error:{type(exc).__name__}"
             try:  # "alive" signal for the control panel, with a short summary of this cycle
-                self.client.heartbeat({"cycles": self.state.data["cycles"], "new_findings": summary["new_findings"],
-                                       "repairs": [f"{r.get('tool_id')}:{r.get('outcome')}" for r in summary["repairs"]],
-                                       "important_open": sum(1 for e in res.events if e.triage == Triage.important)})
+                resp = self.client.heartbeat({"cycles": self.state.data["cycles"], "new_findings": summary["new_findings"],
+                                              "repairs": [f"{r.get('tool_id')}:{r.get('outcome')}" for r in summary["repairs"]],
+                                              "important_open": sum(1 for e in res.events if e.triage == Triage.important)})
+                if isinstance(resp, dict) and isinstance(resp.get("policy"), dict) and resp["policy"] != self.state.data.get("policy"):
+                    self.state.data["policy"] = resp["policy"]  # used from the next cycle on
+                    self.state.save()
             except (ServerUnavailable, ServerError):
                 pass
         return summary

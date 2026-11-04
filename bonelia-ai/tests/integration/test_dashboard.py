@@ -157,3 +157,86 @@ def test_serve_dashboard_host_auto_uses_detected_tailscale(tmp_path, monkeypatch
     assert d.serve_dashboard(store, port=8751, open_browser=False, host="auto", data_dir=tmp_path) == 0
     assert captured["host"] == "100.68.212.97"
     assert (tmp_path / "panel-url.txt").read_text(encoding="utf-8").count("100.68.212.97:8751") == 1
+
+
+def test_backup_policy_is_set_per_pc_and_validated(tmp_path):
+    store, c, t, usb, agent = setup(tmp_path)
+    r = c.post(f"/api/devices/{agent}/backup-policy", json={"paths": ["D:\\Kasa\\Yedek", " \\\\NAS\\yedek "], "max_age_days": 3}, headers=H)
+    assert r.json()["backup"] == {"paths": ["D:\\Kasa\\Yedek", "\\\\NAS\\yedek"], "max_age_days": 3}
+    dev = next(d for d in c.get("/api/overview", headers=H).json()["devices"] if d["id"] == agent)
+    assert dev["backup"]["paths"] == ["D:\\Kasa\\Yedek", "\\\\NAS\\yedek"]
+    for bad in (["Yedek"], ["/etc"], ["D:\\a|b"], ["C:"]):
+        assert c.post(f"/api/devices/{agent}/backup-policy", json={"paths": bad}, headers=H).status_code == 422
+    assert c.post(f"/api/devices/{agent}/backup-policy", json={"paths": ["D:\\X"], "max_age_days": 0}, headers=H).status_code == 422
+    assert c.post(f"/api/devices/{agent}/backup-policy", json={"paths": []}, headers=H).json()["backup"] is None  # cleared
+    assert store.device_policy(agent) == {}
+    assert c.post("/api/devices/nope/backup-policy", json={"paths": []}, headers=H).status_code == 404
+
+
+class FakeTelegram:
+    """Stands in for api.telegram.org (no network)."""
+
+    TOKEN = "123456789:" + "A" * 35
+
+    def __init__(self):
+        self.sent: list[tuple[str, str]] = []
+        self.messages: list[dict] = []
+
+    def handler(self, request):
+        import json as _json
+
+        import httpx
+
+        path = request.url.path
+        if f"/bot{self.TOKEN}/" not in path:
+            return httpx.Response(401, json={"ok": False, "description": "Unauthorized"})
+        method = path.rsplit("/", 1)[-1]
+        body = _json.loads(request.content or b"{}")
+        if method == "getMe":
+            return httpx.Response(200, json={"ok": True, "result": {"username": "bonelia_test_bot"}})
+        if method == "getUpdates":
+            return httpx.Response(200, json={"ok": True, "result": [{"update_id": i, "message": m} for i, m in enumerate(self.messages)]})
+        if method == "sendMessage":
+            self.sent.append((str(body["chat_id"]), body["text"]))
+            return httpx.Response(200, json={"ok": True, "result": {}})
+        return httpx.Response(404, json={"ok": False})
+
+
+def test_telegram_is_connected_entirely_from_the_panel(tmp_path):
+    import httpx
+
+    from bonelia.server.notify import TelegramAPI, build_notifier
+
+    store = Store(tmp_path / "db.sqlite")
+    fake = FakeTelegram()
+    api = TelegramAPI(transport=httpx.MockTransport(fake.handler))
+    c = TestClient(create_dashboard_app(store, TOKEN, 9999, telegram_api=api), base_url="http://127.0.0.1:9999")
+    assert c.get("/api/settings/telegram", headers=H).json()["state"] == "off"
+    assert c.post("/api/settings/telegram/token", json={"token": "hello"}, headers=H).status_code == 422  # not a token
+    assert c.post("/api/settings/telegram/token", json={"token": "123456789:" + "B" * 35}, headers=H).json()["detail"] == "token_rejected"
+    r = c.post("/api/settings/telegram/token", json={"token": " " + fake.TOKEN + " "}, headers=H).json()
+    assert r == {"state": "pending", "bot": "bonelia_test_bot", "chat_name": None}
+    assert fake.TOKEN not in c.get("/api/settings/telegram", headers=H).text  # the token is never sent back
+    assert c.post("/api/settings/telegram/connect", headers=H).json()["detail"] == "no_message"  # owner has not written yet
+    fake.messages.append({"chat": {"id": 4242, "type": "private", "first_name": "Bonelia"}, "text": "/start"})
+    r = c.post("/api/settings/telegram/connect", headers=H).json()
+    assert r["state"] == "on" and r["chat_name"] == "Bonelia"
+    assert fake.sent[-1][0] == "4242" and "bildirimler" in fake.sent[-1][1]
+    assert c.post("/api/settings/telegram/test", headers=H).json()["ok"] and len(fake.sent) == 2
+    # the server's notifier uses it at once (no restart, no env var)
+    n = build_notifier(store, {"windows_toast": False})
+    n.channels[0].api = api
+    assert n.check_offline() == [] and n.test() and len(fake.sent) == 3
+    assert c.post("/api/settings/telegram/off", headers=H).json()["state"] == "off"
+    assert not n.test()  # switched off
+    actions = [a["action"] for a in store.audit_log()]
+    assert {"settings.telegram_token", "settings.telegram_on", "settings.telegram_off"} <= set(actions)
+
+
+def test_inactive_telegram_does_not_swallow_notifications(tmp_path):
+    from bonelia.server.notify import build_notifier
+
+    store = Store(tmp_path / "db.sqlite")
+    n = build_notifier(store, {"windows_toast": False})  # Telegram not connected, no other channel
+    assert n._send("k1", timedelta(hours=1), "t", "b") is False
+    assert store.notification_due("k1", timedelta(hours=1))  # still due: will be sent once a channel exists

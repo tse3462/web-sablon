@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..adapters.generic_windows import filter_apps
-from ..collectors import log_files, system, windows_events
+from ..collectors import health, log_files, system, windows_events
 from ..contracts import AppIdentity, DiagnosticEvent, ErrorCategory, Evidence, ScanResult, Severity, utcnow
 from ..diagnostics.engine import diagnose_with_rules, event_from_raw, group_events, metric_events
+from ..diagnostics.health_rules import backup_events, disk_health_events
 from ..diagnostics.recognize import correlate
 from ..diagnostics.triage import apply_triage
 from ..repair.windows_tools import CRITICAL_SERVICES, NORMALLY_STOPPED
@@ -95,7 +96,8 @@ def attach_generic_repairs(events: list[DiagnosticEvent], snap) -> list[Diagnost
 
 
 def run_scan(mode: str = "quick", salt: str = "", lang: str = "tr", app_query: str | None = None,
-             log_paths: list[str] | None = None, hours: int | None = None, include_eventlog: bool = True) -> ScanResult:
+             log_paths: list[str] | None = None, hours: int | None = None, include_eventlog: bool = True,
+             backup_policy: dict | None = None, include_health: bool = True) -> ScanResult:
     if mode not in MODES:
         raise ValueError(f"unknown scan mode: {mode}")
     res = ScanResult(mode=mode)
@@ -118,6 +120,13 @@ def run_scan(mode: str = "quick", salt: str = "", lang: str = "tr", app_query: s
         q = app_query.lower()
         events = [e for e in events if q in e.app.name.lower() or any(q in ev.text.lower() for ev in e.evidence)]
     events.extend(metric_events(res.system, lang))
+    if include_health and res.system.is_windows:  # disk health + backup freshness (cached, read-only)
+        disks, st_disk = health.cached_disk_health()
+        res.collector_status["disk_health"] = st_disk
+        events.extend(disk_health_events(disks, lang))
+        bstate, st_bak = health.cached_backup_state(backup_policy)
+        res.collector_status["backup"] = st_bak
+        events.extend(backup_events(backup_policy, bstate, lang))
     if include_eventlog:
         svcs, st_svc = system.services()
         res.collector_status["services"] = st_svc

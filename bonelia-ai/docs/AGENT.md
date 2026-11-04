@@ -36,10 +36,12 @@ Agent'ın kendi kimliği vardır (USB'den bağımsız, sunucuda ayrı cihaz). An
 ## Evden takip: Kontrol Paneli
 `deployment\windows\BONELIA-Kontrol-Paneli.bat` dosyasına çift tıklayın. Tarayıcıda (yalnızca bu bilgisayarda) açılır:
 * **Genel bakış:** müşteri sayısı, çevrimiçi bilgisayarlar, son 24 saatteki önemli sorunlar, son 7 gündeki onarımlar
-* **Bilgisayarlar:** çevrimiçi (yeşil) / sinyal yok (kırmızı, 15 dakikadan uzun), son durum; **İptal et**
+* **Bilgisayarlar:** çevrimiçi (yeşil) / sinyal yok (kırmızı, 15 dakikadan uzun), son durum;
+  **Yedek** (bu bilgisayarın yedek klasörü), **İptal et**, **Sil**
 * **Sorunlar:** önemli (isteğe bağlı "kontrol edin") bulgular ve yapay zekânın açıklaması
 * **Onarımlar:** ne yapıldı, doğrulandı mı, neyin izni yoktu
 * **Müşteriler:** onarım izni seviyesi (0 / 1 / 2) tek tıkla
+* **Ayarlar:** telefona Telegram bildirimi (aşağıya bakın)
 
 Komutla: `bonelia-server --config deployment\server.home.toml alerts --hours 24`.
 
@@ -50,6 +52,24 @@ Komutla: `bonelia-server --config deployment\server.home.toml alerts --hours 24`
 | DNS ad çözümleme zaman aşımı | DNS önbelleğini temizle | DNS sorgusu çalışıyor |
 | Sistem diski %90+ dolu | 7 günden eski geçici dosyaları sil | eski geçici dosya kalmadı (kullanımdakiler hariç) |
 | Düzenli bakım (günde bir, sorun beklenmeden) | 7 günden eski geçici dosyaları sil | eski geçici dosya kalmadı (kullanımdakiler hariç) |
+
+## Disk sağlığı ve yedek kontrolü (sadece okur, uyarır)
+Ajan bunları kendiliğinden kontrol eder; bir şey **onarmaz** (bozuk disk veya eksik yedek bir insan ister),
+ama **önemli** bulgu olarak panele ve telefona bildirir:
+
+| Kontrol | Ne zaman uyarır |
+|---|---|
+| Disk sağlığı (Windows / SMART) | disk "Uyarı/Sağlıksız", SMART arıza öngörüsü, düzeltilemeyen okuma/yazma hataları, SSD ömrü %90+ |
+| Disk erken uyarı (sadece panel) | SSD ömrü %80+, disk 65 °C üstü |
+| Yedek klasörü | klasör yok (harici disk takılı değil), klasör boş, son yedek sınırdan eski (varsayılan 2 gün) |
+| Windows yedeği | son başarılı yedek 8 günden eski, ya da hiç başarılı olmamış |
+| Hiç yedek yok (sadece panel) | ne klasör tanımlı ne Windows yedeği var |
+
+Yedek klasörünü panelde **Bilgisayarlar → Yedek** ile her bilgisayar için ayrı tanımlayın
+(ör. `D:\Kasa\Yedek`, `E:\` veya `\\NAS\yedek`). Ayar bir sonraki döngüde (≈5 dk) ajana ulaşır.
+Ajan yalnızca dosyaların **tarihlerine** bakar, içeriklerini okumaz. Disk sağlığı 6 saatte, yedekler saatte bir kontrol edilir.
+
+Bir sorun çözülüp sonra **tekrar** oluşursa yeniden bildirilir.
 
 ## Her açılışta otomatik (sunucu + panel)
 Bir kez `deployment\windows\BONELIA-Kur-Otomatik.bat` dosyasına çift tıklayın: ev sunucusu ve telefon paneli
@@ -62,8 +82,15 @@ Ev bilgisayarınızda Windows bildirimi (`deployment\server.home.toml` → `[not
 * 🔒 bir onarım için izin gerekli (ör. müşteri seviye 1'de, hizmet yeniden başlatma gerekiyor)
 * 📴 bir bilgisayar 30 dakikadır sinyal vermiyor
 
-Telefona Telegram ile: bir Telegram botu oluşturun, token'ı `BONELIA_TELEGRAM_BOT_TOKEN` ortam değişkenine,
-sohbet numaranızı `[notify] telegram_chat_id` ayarına yazın. Deneme: `bonelia-server ... notify-test`.
+### Telefona Telegram (tamamen panelden, telefonla)
+1. Telegram'da **@BotFather** → `/newbot` → bota bir ad verin (sonu `bot` ile bitmeli). Size bir **anahtar (token)** verir.
+2. Panel → **Ayarlar** → anahtarı yapıştırın → **Kaydet**.
+3. Telegram'da kendi botunuzu açıp **Başlat**'a basın (veya bir mesaj yazın) → panelde **Bağla**.
+4. Bota "bildirimler artık bu sohbete gelecek" mesajı gelir. **Test mesajı gönder** ile istediğiniz zaman deneyin.
+
+Yeniden başlatma veya komut gerekmez; sunucu bir sonraki bildirimden itibaren kullanır. Anahtar ev sunucusunun
+veritabanında saklanır ve panel onu bir daha göstermez. Kapatmak için **Bildirimleri kapat**.
+(Eski yöntem — `BONELIA_TELEGRAM_BOT_TOKEN` + `[notify] telegram_chat_id` — hâlâ çalışır.)
 
 ## Güncelleme (işletmelere gitmeden)
 Yeni sürümün USB paketini indirdikten sonra ev bilgisayarında:

@@ -329,10 +329,12 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
 
     @app.post("/v1/heartbeat")
     async def heartbeat(auth: dict = Depends(device_auth)) -> dict[str, Any]:
-        """Agents report 'alive' every cycle (device_auth already updates last_seen_at)."""
+        """Agents report 'alive' every cycle (device_auth already updates last_seen_at).
+        The reply carries this device's settings from the panel (e.g. backup folders), so a change
+        reaches the agent on its next cycle without any extra connection."""
         hb = parse(Heartbeat, auth["body"])
         store.set_device_status(auth["device"]["id"], redact_value(hb.status))
-        return {"ok": True}
+        return {"ok": True, "policy": store.device_policy(auth["device"]["id"])}
 
     @app.post("/v1/analyze")
     async def analyze(auth: dict = Depends(device_auth)) -> dict[str, Any]:

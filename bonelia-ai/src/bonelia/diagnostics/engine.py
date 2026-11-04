@@ -27,6 +27,7 @@ from ..contracts import (
 )
 from ..security.redact import redact_text
 from ..security.untrusted import injection_suspected
+from .health_rules import advice_for
 from .knowledge import EXCEPTION_CODES, SIGNATURES, find_signature
 
 _EXC_RE = re.compile(r"0x[0-9a-fA-F]{8}")
@@ -163,6 +164,10 @@ def diagnose_with_rules(event: DiagnosticEvent, lang: str = "tr") -> Diagnosis:
         recs.append(RecommendedAction(description={"tr": "Geçici dosyaları ve büyük günlükleri yetkili kişiyle temizleyin",
                                                    "de": "Temporäre Dateien und große Logs mit befugter Person bereinigen",
                                                    "en": "Clean temporary files and large logs with an authorised person"}[lang]))
+    elif advice_for(event.rule_id, lang) is not None:  # disk health / backup findings
+        cause, conf, actions = advice_for(event.rule_id, lang)
+        hypotheses.append(Hypothesis(cause=cause, confidence=conf, supporting_evidence=ev_codes))
+        recs = [RecommendedAction(description=a, manual=True) for a in actions]
     elif event.rule_id == "metric.memory_high":
         hypotheses.append(Hypothesis(cause={"tr": "Bellek tüketimi yüksek; donma ve çökme riski", "de": "Hoher Speicherverbrauch; Hänger möglich",
                                             "en": "High memory consumption; risk of hangs and crashes"}[lang],

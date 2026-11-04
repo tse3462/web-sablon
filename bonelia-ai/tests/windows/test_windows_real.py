@@ -216,3 +216,31 @@ def test_recover_cli_runs_readonly(tmp_path):
     p = subprocess.run([sys.executable, "-m", "bonelia", "recover", "disk-health"], capture_output=True, text=True,
                        env={**os.environ, "PYTHONIOENCODING": "utf-8"}, timeout=120)
     assert p.returncode == 0, p.stderr
+
+
+def test_real_disk_health_and_backup_detection(tmp_path):
+    """Windows' own storage health data and the Windows Backup log are readable (read-only)."""
+    from bonelia.collectors.health import backup_state, disk_health
+    from bonelia.diagnostics.health_rules import backup_events, disk_health_events
+
+    data, st = disk_health()
+    assert st.startswith("ok:"), st
+    assert data["disks"] and all(d.get("health") for d in data["disks"]), data
+    assert isinstance(disk_health_events(data, "tr"), list)
+
+    (tmp_path / "kasa-yedek.bak").write_text("backup")
+    state, st2 = backup_state({"paths": [str(tmp_path), str(tmp_path / "missing")]})
+    assert st2.startswith("ok:"), st2
+    assert state["windows"]["status"] in ("ok", "not_found"), state
+    assert state["folders"][0]["exists"] and state["folders"][0]["files"] == 1
+    rules = [e.rule_id for e in backup_events({"paths": ["x"], "max_age_days": 2}, state, "tr")]
+    assert "backup.folder_missing" in rules and "backup.stale" not in rules
+
+
+def test_scan_includes_health_checks():
+    from bonelia.monitor.scan import run_scan
+
+    res = run_scan(mode="recent", salt="t", lang="tr", backup_policy={"paths": ["Z:\\nicht-vorhanden"], "max_age_days": 2})
+    assert res.collector_status["disk_health"].startswith("ok:"), res.collector_status
+    assert res.collector_status["backup"].startswith("ok:"), res.collector_status
+    assert any(e.rule_id == "backup.folder_missing" and e.triage.value == "important" for e in res.events)

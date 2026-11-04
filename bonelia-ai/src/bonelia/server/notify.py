@@ -2,7 +2,9 @@
 
 Channels:
 * Windows toast on the home server PC (default on Windows; no extra software).
-* Telegram (optional): token from env BONELIA_TELEGRAM_BOT_TOKEN, chat id in server.toml.
+* Telegram: connected from the control panel (Settings tab) -- bot token + chat stored in the
+  server database, used from the next notification on (no restart). The older env-var setup
+  (BONELIA_TELEGRAM_BOT_TOKEN + telegram_chat_id in server.toml) still works.
 
 Every message is de-duplicated by a key with a quiet period, so a repeating
 problem produces one notification, not hundreds.
@@ -12,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta
@@ -77,6 +80,67 @@ class Telegram:
             return False
 
 
+TELEGRAM_KEY = "telegram"
+TOKEN_RE = re.compile(r"^\d{5,12}:[A-Za-z0-9_-]{30,64}$")
+
+
+class TelegramAPI:
+    """Minimal Bot API client. Errors never include the token (it is part of the URL)."""
+
+    BASE = "https://api.telegram.org"
+
+    def __init__(self, transport: httpx.BaseTransport | None = None):
+        self._client = httpx.Client(timeout=15.0, transport=transport)
+
+    def call(self, token: str, method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        try:
+            r = self._client.post(f"{self.BASE}/bot{token}/{method}", json=payload or {})
+            data = r.json()
+        except (httpx.HTTPError, ValueError):
+            return {"ok": False, "description": "unreachable"}
+        return data if isinstance(data, dict) else {"ok": False, "description": "bad_reply"}
+
+    def bot_name(self, token: str) -> str | None:
+        d = self.call(token, "getMe")
+        return str(d["result"].get("username") or "") if d.get("ok") and isinstance(d.get("result"), dict) else None
+
+    def latest_chat(self, token: str) -> tuple[str, str] | None:
+        """Chat id + name of the newest private message sent to the bot."""
+        d = self.call(token, "getUpdates", {"timeout": 0, "allowed_updates": ["message"]})
+        if not d.get("ok"):
+            return None
+        for upd in reversed(d.get("result") or []):
+            chat = ((upd or {}).get("message") or {}).get("chat") or {}
+            if chat.get("id") is not None and chat.get("type", "private") == "private":
+                name = " ".join(x for x in (chat.get("first_name"), chat.get("last_name")) if x) or chat.get("username") or ""
+                return str(chat["id"]), str(name)[:60]
+        return None
+
+    def send(self, token: str, chat_id: str, text: str) -> bool:
+        d = self.call(token, "sendMessage", {"chat_id": chat_id, "text": text[:3500], "disable_web_page_preview": True})
+        return bool(d.get("ok"))
+
+
+class StoredTelegram:
+    """Telegram channel configured from the panel; reads its settings on every message."""
+
+    name = "telegram"
+
+    def __init__(self, store, api: TelegramAPI | None = None):
+        self.store, self.api = store, api or TelegramAPI()
+
+    def _cfg(self) -> dict[str, Any] | None:
+        c = self.store.get_setting(TELEGRAM_KEY) or {}
+        return c if c.get("token") and c.get("chat_id") else None
+
+    def enabled(self) -> bool:
+        return self._cfg() is not None
+
+    def send(self, title: str, body: str) -> bool:
+        c = self._cfg()
+        return bool(c) and self.api.send(c["token"], c["chat_id"], f"{title}\n{body}")
+
+
 _T = {
     "finding": {"tr": "⚠ {customer} · {device}: önemli sorun", "de": "⚠ {customer} · {device}: wichtiges Problem"},
     "repaired": {"tr": "✅ {customer} · {device}: onarıldı", "de": "✅ {customer} · {device}: repariert"},
@@ -96,11 +160,22 @@ class Notifier:
     def _title(self, kind: str, **kw: Any) -> str:
         return _T[kind][self.lang].format(**kw)
 
+    def _active(self) -> list[Channel]:
+        out = []
+        for ch in self.channels:
+            try:
+                if getattr(ch, "enabled", lambda: True)():
+                    out.append(ch)
+            except Exception:  # a broken channel must never break the server
+                continue
+        return out
+
     def _send(self, key: str, quiet: timedelta, title: str, body: str) -> bool:
-        if not self.channels or not self.store.notification_due(key, quiet):
+        channels = self._active()  # nothing is "used up" while no channel is set up
+        if not channels or not self.store.notification_due(key, quiet):
             return False
         sent = False
-        for ch in self.channels:
+        for ch in channels:
             try:
                 sent = ch.send(title, body) or sent
             except Exception as exc:  # a broken channel must never break the server
@@ -147,7 +222,7 @@ class Notifier:
 
     def test(self) -> bool:
         sent = False
-        for ch in self.channels:
+        for ch in self._active():
             sent = ch.send(_T["test"][self.lang], "OK") or sent
         return sent
 
@@ -156,6 +231,7 @@ def build_notifier(store, cfg_notify: dict[str, Any], lang: str = "tr") -> Notif
     channels: list[Channel] = []
     if cfg_notify.get("windows_toast", False):  # enabled in deployment/server.home.toml
         channels.append(WindowsToast())
+    channels.append(StoredTelegram(store))  # set up from the panel; inactive until connected
     token = os.environ.get("BONELIA_TELEGRAM_BOT_TOKEN")
     if token and cfg_notify.get("telegram_chat_id"):
         channels.append(Telegram(token, str(cfg_notify["telegram_chat_id"])))
