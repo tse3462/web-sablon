@@ -20,28 +20,37 @@ if not exist "%PY%" (
   exit /b 1
 )
 
-echo [1/4] Sunucu calisiyor mu kontrol ediliyor...
+echo [1/5] Sunucu ve panel calisiyor mu kontrol ediliyor...
 call "%~dp0BONELIA-Server-Baslat.bat" /quiet
+call "%~dp0BONELIA-Panel-Baslat.bat" /quiet
 
 echo.
-echo [2/4] Ajan simdi bir kez calistiriliyor (panelde YESILE donmeli)...
-"%PY%" -m bonelia agent --once
+echo [2/5] Onceki ajan surecleri durduruluyor (cift calismasin)...
+schtasks /End /TN "BONELIA AI Agent" >nul 2>&1
+rem Stop only our own agent process(es), not other Python apps.
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe' OR Name='python.exe'\" | Where-Object { $_.CommandLine -like '*bonelia*agent*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 
 echo.
-echo [3/4] Her acilista otomatik baslatma ayarlaniyor (bu kullanici + yonetici)...
+echo [3/5] Ajan SIMDI surekli calisacak sekilde baslatiliyor (yonetici, arka plan)...
+rem Detached, windowless, elevated (inherits this admin window). Stays alive and heartbeats
+rem every 5 min, so the PC stays GREEN -- not just a one-off cycle.
+start "BONELIA-AGENT" /min "%PYW%" -m bonelia agent
+
+echo.
+echo [4/5] Her acilista otomatik baslatma ayarlaniyor (bu kullanici + yonetici, gizli)...
 schtasks /Delete /F /TN "BONELIA AI Agent" >nul 2>&1
 schtasks /Create /F /TN "BONELIA AI Agent" /SC ONLOGON /RL HIGHEST /IT /TR "\"%PYW%\" -m bonelia agent"
-rem Hide the task in Task Scheduler (best effort; it still works if this fails).
 powershell -NoProfile -Command "try{$t=Get-ScheduledTask -TaskName 'BONELIA AI Agent' -ErrorAction Stop; $t.Settings.Hidden=$true; Set-ScheduledTask -InputObject $t | Out-Null}catch{}" >nul 2>&1
-schtasks /Run /TN "BONELIA AI Agent" >nul 2>&1
 
 echo.
-echo [4/4] Durum:
+echo [5/5] Kontrol (ajan sureci ayakta mi + durum)...
+timeout /t 6 /nobreak >nul
+tasklist /FI "IMAGENAME eq pythonw.exe" | find /I "pythonw.exe" >nul && (echo AJAN SURECI: CALISIYOR) || (echo AJAN SURECI: BULUNAMADI ^(sorun var^))
 "%PY%" -m bonelia agent-status
 
 echo.
 echo ================================================================
-echo  Bitti. Panelde bu bilgisayar birkac dakika icinde YESILE donmeli.
-echo  Bundan sonra her bilgisayar acilisinda kendiliginden calisacak.
+echo  Bitti. Panelde bu bilgisayar birkac dakika icinde YESILE donmeli
+echo  ve oyle kalmali. Hala kirmizi ise bu ekranin fotografini gonderin.
 echo ================================================================
 pause
