@@ -233,7 +233,7 @@ $("#btnAsk").onclick=async()=>{busy(true);$("#answer").textContent=t("working");
  $("#answer").textContent=r.answer+"\n\n["+r.produced_by+", "+r.grounded_on+"]"}catch(e){$("#answer").textContent=e.message}busy(false)};
 async function loadTools(){const r=await api("/api/tools");$("#tools").innerHTML=r.tools.map(x=>`<tr><td><b>${esc(x.tool_id)}</b><div class="small">${esc(x.description)}</div></td>
  <td class="lvl lvl${x.risk_level}">${esc(t("lvl")[x.risk_level])}</td><td>${x.enabled?t("enabled"):t("disabled")}</td>
- <td>${x.supports_dry_run?`<button class="sec" data-tool="${esc(x.tool_id)}">${t("dry")}</button>`:""}</td></tr>`).join("");
+ <td>${x.supports_dry_run&&!Object.values(x.params||{}).some(p=>p.required)?`<button class="sec" data-tool="${esc(x.tool_id)}">${t("dry")}</button>`:""}</td></tr>`).join("");
  $$("[data-tool]").forEach(b=>b.onclick=async()=>{const box=$("#fixres");box.classList.remove("hidden");try{const res=await api("/api/tools/"+encodeURIComponent(b.dataset.tool)+"/dry-run",{});
  box.textContent=JSON.stringify(res,null,2)}catch(e){box.textContent=e.message}})}
 $("#btnOpenRep").onclick=async()=>{const r=await fetch("/api/report.html",{headers:{"x-ui-token":TOKEN}});if(!r.ok)return;const w=window.open("","_blank");w.document.write(await r.text());w.document.close()};

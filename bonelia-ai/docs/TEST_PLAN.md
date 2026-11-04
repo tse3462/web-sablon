@@ -54,6 +54,13 @@ Gözlem: 3B model ilk teşhis için kullanılabilir ama açıklamaları genel ka
 
 Henüz yapılmadı: AI Sohbet, rapor dışa aktarma, USB çıkarma ve ikinci bilgisayar adımları gerçek USB ile; kayıp USB (iptal) senaryosu.
 
+### Sahibin bilgisayarında kendi kendine onarım (2026-11-04)
+USB'den `Bu-Bilgisayara-Kur.bat` ile Agent kuruldu (USB parolası bir kez). Yazdırma biriktiricisi (Spooler) elle durduruldu;
+kimse dokunmadan Agent **13:06:54**'te "Hizmet durmuş: Druckwarteschlange" (Önemli) buldu, **13:08:36**'da başlattı,
+`stopped → running` bağımsız olarak doğrulandı (`executed_verified`), sunucu denetim kaydına yazıldı (`alerts`).
+Bulunan kusurlar: kurulum dosyası ikinci kez çalışınca WinError 32 (düzeltildi); arayüzdeki "Dene" düğmesi parametre gerektiren
+araçlarda gereksiz `denied` kaydı üretiyordu (düzeltildi).
+
 ### Gerçek Windows'ta doğrulanan onarım ve Agent (GitHub Actions run #15–16, 2026-11-04)
 * Yazdırma biriktiricisi (Spooler) gerçekten durduruldu; `windows.start_service` başlattı, `windows.restart_service` yeniden başlattı; her ikisi bağımsız durum kontrolüyle doğrulandı.
 * Agent: `agent-install` (DPAPI makine kapsamı + SYSTEM zamanlanmış görevi), durdurulan hizmeti tek döngüde **kendi kendine** onardı (`executed_verified`), sunucu denetim kaydına yazıldı, `agent-uninstall` görevi ve dosyaları kaldırdı.
