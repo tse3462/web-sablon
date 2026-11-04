@@ -22,7 +22,9 @@ main{max-width:1150px;margin:18px auto;padding:0 16px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px}
 .card h3{margin:0 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 .big{font-size:24px;font-weight:700}
-table{width:100%;border-collapse:collapse;background:var(--panel)}td,th{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+main>section{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;min-width:560px;border-collapse:collapse;background:var(--panel)}td,th{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
+td .small{white-space:normal}
 th{font-size:12px;color:var(--muted);text-transform:uppercase}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}.on{background:var(--ok)}.off{background:var(--crit)}.na{background:var(--muted)}
 .tri{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;color:#fff;margin-right:6px}.important{background:var(--crit)}.check{background:var(--warn)}
