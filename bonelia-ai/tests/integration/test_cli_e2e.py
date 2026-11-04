@@ -99,3 +99,10 @@ def test_server_refuses_public_bind_without_tls(tmp_path):
 def test_hw_check_outputs_recommendation(tmp_path):
     out = json.loads(run(["-m", "bonelia.server.cli", "--data-dir", str(tmp_path), "hw-check"], {**os.environ}).stdout)
     assert out["recommended_local_model"] and "not guaranteed" in out["disclaimer"]
+
+
+def test_build_script_imports_and_parses_arguments():
+    """Guards the release script against API renames (it is only executed in the Windows CI job)."""
+    root = Path(__file__).resolve().parents[2]
+    p = subprocess.run([PY, str(root / "scripts" / "build_portable.py"), "--help"], capture_output=True, text=True, timeout=60)
+    assert p.returncode == 0, p.stderr

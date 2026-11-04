@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "bonelia"
 sys.path.insert(0, str(ROOT / "src"))
 from bonelia import __version__  # noqa: E402
-from bonelia.adapters import all_manifests  # noqa: E402
+from bonelia.adapters import core_manifests  # noqa: E402
 
 README = """BONELİA AI Portable Monitor {version}
 
@@ -81,7 +81,7 @@ def main() -> int:
     for d in ("config", "adapters", "resources", "reports", "manifests", "queue"):
         (pkg / d).mkdir(parents=True)
     shutil.copy2(work / "bin" / exe_name, pkg / exe_name)
-    for m in all_manifests():
+    for m in core_manifests():  # only core + planned manifests ship on the USB
         (pkg / "adapters" / f"{m.adapter_id}.json").write_text(json.dumps(m.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     (pkg / "config" / "settings.json").write_text(json.dumps({"language": "tr", "allow_cloud_default": False, "log_paths": []}, indent=2),
                                                   encoding="utf-8")
