@@ -30,11 +30,22 @@ Agent, Windows açılınca **SYSTEM** hesabıyla arka planda başlar (pencere yo
 Agent'ın kendi kimliği vardır (USB'den bağımsız, sunucuda ayrı cihaz). Anahtarı Windows DPAPI ile o bilgisayara bağlı
 şifrelenir; dosya başka bir bilgisayara kopyalanırsa işe yaramaz.
 
-## Evden takip
-```bat
-bonelia-server --config deployment\server.home.toml alerts --hours 24
-```
-Son 24 saatteki önemli bulguları ve yapılan/reddedilen onarımları gösterir.
+## Evden takip: Kontrol Paneli
+`deployment\windows\BONELIA-Kontrol-Paneli.bat` dosyasına çift tıklayın. Tarayıcıda (yalnızca bu bilgisayarda) açılır:
+* **Genel bakış:** müşteri sayısı, çevrimiçi bilgisayarlar, son 24 saatteki önemli sorunlar, son 7 gündeki onarımlar
+* **Bilgisayarlar:** çevrimiçi (yeşil) / sinyal yok (kırmızı, 15 dakikadan uzun), son durum; **İptal et**
+* **Sorunlar:** önemli (isteğe bağlı "kontrol edin") bulgular ve yapay zekânın açıklaması
+* **Onarımlar:** ne yapıldı, doğrulandı mı, neyin izni yoktu
+* **Müşteriler:** onarım izni seviyesi (0 / 1 / 2) tek tıkla
+
+Komutla: `bonelia-server --config deployment\server.home.toml alerts --hours 24`.
+
+## Kendi kendine yapılan onarımlar (seviye 1)
+| Durum | Onarım | Doğrulama |
+|---|---|---|
+| Otomatik çalışması gereken hizmet durmuş | hizmeti başlat | hizmet "running" |
+| DNS ad çözümleme zaman aşımı | DNS önbelleğini temizle | DNS sorgusu çalışıyor |
+| Sistem diski %90+ dolu | 7 günden eski geçici dosyaları sil | eski geçici dosya kalmadı (kullanımdakiler hariç) |
 
 ## Kaldırma
 USB'deki **Bu-Bilgisayardan-Kaldir.bat** (veya `BoneliaAI-Konsol.exe agent-uninstall`), sonra sunucuda

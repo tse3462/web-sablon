@@ -115,6 +115,7 @@ def main() -> int:
                "--paths", str(ROOT / "src"),
                "--add-data", f"{SRC / 'monitor' / 'static'}{sep}bonelia/monitor/static",
                "--add-data", f"{SRC / 'resources'}{sep}bonelia/resources",
+               "--add-data", f"{SRC / 'server' / 'static'}{sep}bonelia/server/static",
                "--collect-submodules", "uvicorn", "--collect-submodules", "bonelia",
                "--exclude-module", "tkinter", str(ROOT / "scripts" / "boneliaai_entry.py")]
         print(" ".join(cmd))

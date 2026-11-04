@@ -85,6 +85,10 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("hw-check", help="assess hardware and recommend a local model size")
 
+    db = sub.add_parser("dashboard", help="open the local control panel (browser, this PC only)")
+    db.add_argument("--port", type=int, default=0)
+    db.add_argument("--no-browser", action="store_true")
+
     utf8_console()
     args = p.parse_args(argv)
     cfg = ServerConfig.load(args.config, args.data_dir)
@@ -111,6 +115,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     store = _store(cfg)
+    if args.cmd == "dashboard":
+        from .dashboard import serve_dashboard
+
+        return serve_dashboard(store, port=args.port, open_browser=not args.no_browser)
     if args.cmd == "tenant-add":
         print(store.create_tenant(args.name, args.cloud_ai, args.daily_budget, args.monthly_budget, args.environment))
     elif args.cmd == "tenants":

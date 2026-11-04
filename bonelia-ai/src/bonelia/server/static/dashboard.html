@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BONELİA AI Kontrol Paneli</title>
+<style>
+:root{--bg:#f4f6f9;--panel:#fff;--ink:#132030;--muted:#5a6b7d;--line:#dde3ea;--brand:#0b5cad;--crit:#b00020;--warn:#b98900;--ok:#1b7f3a;--chip:#eef2f6}
+@media (prefers-color-scheme:dark){:root{--bg:#0e141b;--panel:#151d26;--ink:#e6edf3;--muted:#93a4b5;--line:#253241;--brand:#4ea1ff;--chip:#1d2834}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 "Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.logo{font-weight:800;font-size:18px}.logo span{color:var(--brand)}
+nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}nav button,.sec{background:var(--chip);border:0;color:var(--ink);padding:7px 12px;border-radius:7px;cursor:pointer;font:inherit}
+nav button{background:none;color:var(--muted)}nav button.active{background:var(--chip);color:var(--ink);font-weight:600}
+main{max-width:1150px;margin:18px auto;padding:0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.card h3{margin:0 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.big{font-size:24px;font-weight:700}
+table{width:100%;border-collapse:collapse;background:var(--panel)}td,th{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);text-transform:uppercase}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}.on{background:var(--ok)}.off{background:var(--crit)}.na{background:var(--muted)}
+.tri{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;color:#fff;margin-right:6px}.important{background:var(--crit)}.check{background:var(--warn)}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--crit);font-weight:600}.small{font-size:12px;color:var(--muted)}
+.ev{font-size:12px;background:var(--chip);border-radius:6px;padding:6px 8px;margin:6px 0;word-break:break-word}
+.conf{font-size:11px;padding:1px 6px;border-radius:10px;background:var(--chip);margin-right:6px}
+.hidden{display:none}select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">BONELİA <span>AI</span> · <span data-i="panel"></span></div>
+  <nav id="nav">
+    <button data-p="home" class="active" data-i="n_home"></button>
+    <button data-p="devices" data-i="n_devices"></button>
+    <button data-p="findings" data-i="n_findings"></button>
+    <button data-p="repairs" data-i="n_repairs"></button>
+    <button data-p="customers" data-i="n_customers"></button>
+  </nav>
+  <select id="lang"><option value="tr">TR</option><option value="de">DE</option></select>
+  <button class="sec" id="quit" data-i="quit"></button>
+</header>
+<main>
+  <section id="p-home">
+    <div class="grid">
+      <div class="card"><h3 data-i="k_customers"></h3><div class="big" id="kCust">–</div></div>
+      <div class="card"><h3 data-i="k_online"></h3><div class="big" id="kOnline">–</div></div>
+      <div class="card"><h3 data-i="k_important"></h3><div class="big" id="kImp">–</div></div>
+      <div class="card"><h3 data-i="k_repairs"></h3><div class="big" id="kRep">–</div></div>
+    </div>
+    <div class="card"><h3 data-i="latest"></h3><div id="homeList" class="small"></div></div>
+  </section>
+  <section id="p-devices" class="hidden"><table><thead><tr><th></th><th data-i="c_device"></th><th data-i="c_customer"></th><th data-i="c_kind"></th><th data-i="c_seen"></th><th data-i="c_last"></th><th></th></tr></thead><tbody id="devs"></tbody></table></section>
+  <section id="p-findings" class="hidden">
+    <div class="small"><label><input type="checkbox" id="allF"> <span data-i="show_check"></span></label> ·
+      <select id="hoursF"><option value="24">24 h</option><option value="168">7 d</option><option value="720">30 d</option></select></div>
+    <div id="finds"></div>
+  </section>
+  <section id="p-repairs" class="hidden"><table><thead><tr><th data-i="c_time"></th><th data-i="c_customer"></th><th data-i="c_device"></th><th data-i="c_repair"></th><th data-i="c_result"></th></tr></thead><tbody id="reps"></tbody></table></section>
+  <section id="p-customers" class="hidden"><table><thead><tr><th data-i="c_customer"></th><th data-i="c_agents"></th><th data-i="c_level"></th></tr></thead><tbody id="custs"></tbody></table>
+    <p class="small" data-i="level_help"></p></section>
+</main>
+<script>
+const T={tr:{panel:"Kontrol Paneli",n_home:"Genel bakış",n_devices:"Bilgisayarlar",n_findings:"Sorunlar",n_repairs:"Onarımlar",n_customers:"Müşteriler",quit:"Kapat",
+k_customers:"Müşteri",k_online:"Çevrimiçi bilgisayar",k_important:"Önemli sorun (24 saat)",k_repairs:"Onarım (7 gün)",latest:"Son önemli sorunlar",
+c_device:"Bilgisayar / USB",c_customer:"Müşteri",c_kind:"Tür",c_seen:"Son görülme",c_last:"Son durum",c_time:"Zaman",c_repair:"Onarım",c_result:"Sonuç",c_agents:"Kurulu bilgisayar",c_level:"Onarım izni",
+agent:"Kurulu bilgisayar",usb:"USB",install_key:"Kurulum anahtarı",revoked:"iptal",revoke:"İptal et",revoke_q:"Bu cihazın yetkisi iptal edilsin mi?",
+show_check:"'Kontrol edin' kayıtlarını da göster",none:"Kayıt yok.",ai:"Analiz",verified:"Onarıldı ✓",unverified:"Yapıldı, doğrulanamadı",failed:"Başarısız",denied:"İzin yok",
+l0:"0 – Sadece okuma",l1:"1 – Güvenli onarımlar otomatik",l2:"2 – + hizmet yeniden başlatma (teknisyen tıklar)",saved:"Kaydedildi",
+level_help:"Seviye 1: durmuş hizmeti başlatma, DNS önbelleği temizleme, eski geçici dosyaları silme kendiliğinden yapılır. Seviye 2 işlemlerini kurulu bilgisayarlar kendi başına yapmaz.",
+closed:"Panel kapatıldı."},
+de:{panel:"Kontrollzentrum",n_home:"Übersicht",n_devices:"Computer",n_findings:"Probleme",n_repairs:"Reparaturen",n_customers:"Kunden",quit:"Schließen",
+k_customers:"Kunden",k_online:"Computer online",k_important:"Wichtige Probleme (24 h)",k_repairs:"Reparaturen (7 Tage)",latest:"Letzte wichtige Probleme",
+c_device:"Computer / USB",c_customer:"Kunde",c_kind:"Typ",c_seen:"Zuletzt gesehen",c_last:"Letzter Status",c_time:"Zeit",c_repair:"Reparatur",c_result:"Ergebnis",c_agents:"Installierte PCs",c_level:"Reparaturfreigabe",
+agent:"Installierter PC",usb:"USB",install_key:"Installationsschlüssel",revoked:"widerrufen",revoke:"Widerrufen",revoke_q:"Berechtigung dieses Geräts widerrufen?",
+show_check:"Auch 'Prüfen'-Einträge zeigen",none:"Keine Einträge.",ai:"Analyse",verified:"Repariert ✓",unverified:"Ausgeführt, nicht bestätigt",failed:"Fehlgeschlagen",denied:"Nicht erlaubt",
+l0:"0 – Nur lesen",l1:"1 – Sichere Reparaturen automatisch",l2:"2 – + Dienst-Neustart (Techniker klickt)",saved:"Gespeichert",
+level_help:"Stufe 1: gestoppten Dienst starten, DNS-Cache leeren, alte temporäre Dateien löschen geschieht automatisch. Stufe-2-Aktionen führen installierte PCs nie selbst aus.",
+closed:"Panel geschlossen."}};
+let TOKEN=location.hash.slice(1);try{if(TOKEN)sessionStorage.setItem("bt",TOKEN);else TOKEN=sessionStorage.getItem("bt")||""}catch(e){}
+history.replaceState(null,"",location.pathname);
+let L="tr";const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const t=k=>(T[L]||T.tr)[k]??k;
+async function api(p,b){const r=await fetch(p,{method:b===undefined?"GET":"POST",headers:{"x-ui-token":TOKEN,"content-type":"application/json"},body:b===undefined?undefined:JSON.stringify(b)});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.status);return j}
+function i18n(){$$("[data-i]").forEach(e=>e.textContent=t(e.dataset.i));$("#lang").value=L}
+function show(p){$$("main>section").forEach(s=>s.classList.toggle("hidden",s.id!=="p-"+p));$$("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.p===p))}
+const fmt=s=>s?String(s).replace("T"," ").slice(0,16):"–";
+function outcome(r){if(r.action==="tool.denied")return`<span class="bad">${t("denied")}</span> <span class="small">${esc((r.reasons||[]).join(", "))}</span>`;
+ if(r.outcome==="executed_verified")return`<span class="ok">${t("verified")}</span>`;if(r.outcome==="executed_unverified")return`<span class="bad">${t("unverified")}</span>`;return`<span class="bad">${t("failed")}</span>`}
+function findCard(f){const d=f.diagnosis;return`<div class="card"><div><span class="tri ${esc(f.triage)}">${esc(f.triage==="important"?"!":"?")}</span><b>${esc(f.title)}</b></div>
+ <div class="small">${esc(fmt(f.at))} · ${esc(f.customer)} · ${esc(f.device)} · ${esc(f.app)} · ×${f.occurrences}${f.repair_tool?" · 🔧 "+esc(f.repair_tool):""}</div>
+ ${(f.evidence||[]).map(e=>`<div class="ev">${esc(e.source)} ${esc(e.code||"")} ${esc(e.text)}</div>`).join("")}
+ ${d?`<div class="small">${t("ai")}: ${esc(d.produced_by)}</div><div>${esc(d.summary)}</div>
+ ${d.hypotheses.map(h=>`<div><span class="conf">${esc(h.confidence)}</span>${esc(h.cause)}</div>`).join("")}
+ ${d.recommendations.map(r=>`<div class="small">→ ${esc(r)}</div>`).join("")}`:""}</div>`}
+async function load(){
+ const o=await api("/api/overview"),f=await api("/api/findings?hours="+$("#hoursF").value+"&all="+$("#allF").checked),r=await api("/api/repairs?hours=168");
+ const agents=o.devices.filter(d=>d.kind==="agent"&&d.status==="active");
+ $("#kCust").textContent=o.tenants.length;$("#kOnline").textContent=agents.filter(d=>d.online).length+" / "+agents.length;
+ $("#kImp").textContent=o.tenants.reduce((a,x)=>a+x.important_24h,0);$("#kRep").textContent=r.repairs.filter(x=>x.action==="tool.executed").length;
+ $("#homeList").innerHTML=f.findings.filter(x=>x.triage==="important").slice(0,8).map(x=>`<div>• ${esc(fmt(x.at))} — <b>${esc(x.title)}</b> (${esc(x.customer)}, ${esc(x.device)})</div>`).join("")||t("none");
+ $("#devs").innerHTML=o.devices.map(d=>`<tr><td><span class="dot ${d.kind!=="agent"?"na":d.online?"on":"off"}"></span></td><td>${esc(d.label)}<div class="small">${esc(d.id)}</div></td>
+  <td>${esc(d.customer)}</td><td>${esc(t(d.kind))}${d.status!=="active"?` <span class="bad">(${t("revoked")})</span>`:""}</td><td>${esc(fmt(d.last_seen_at))}</td>
+  <td class="small">${d.last_status?esc((d.last_status.repairs||[]).join(", ")||("cycles "+d.last_status.cycles)):""}</td>
+  <td>${d.status==="active"?`<button class="sec" data-rev="${esc(d.id)}">${t("revoke")}</button>`:""}</td></tr>`).join("");
+ $$("[data-rev]").forEach(b=>b.onclick=async()=>{if(confirm(t("revoke_q"))){await api("/api/devices/"+encodeURIComponent(b.dataset.rev)+"/revoke",{});load()}});
+ $("#finds").innerHTML=f.findings.map(findCard).join("")||`<div class="card">${t("none")}</div>`;
+ $("#reps").innerHTML=r.repairs.map(x=>`<tr><td>${esc(fmt(x.at))}</td><td>${esc(x.customer)}</td><td>${esc(x.device)}</td><td>${esc(x.tool_id)} <span class="small">${esc(Object.values(x.params||{}).join(" "))}</span></td><td>${outcome(x)}</td></tr>`).join("")||`<tr><td colspan="5">${t("none")}</td></tr>`;
+ $("#custs").innerHTML=o.tenants.map(c=>`<tr><td><b>${esc(c.name)}</b><div class="small">${esc(c.id)}</div></td><td>${c.online} / ${c.agents}</td>
+  <td><select data-lvl="${esc(c.id)}">${[0,1,2].map(l=>`<option value="${l}" ${l===c.repair_level?"selected":""}>${t("l"+l)}</option>`).join("")}</select> <span class="small" id="sv-${esc(c.id)}"></span></td></tr>`).join("");
+ $$("[data-lvl]").forEach(s=>s.onchange=async()=>{await api("/api/tenants/"+encodeURIComponent(s.dataset.lvl)+"/repair-level",{level:+s.value});$("#sv-"+s.dataset.lvl).textContent=t("saved")})}
+$$("#nav button").forEach(b=>b.onclick=()=>show(b.dataset.p));
+$("#lang").onchange=e=>{L=e.target.value;i18n();load()};$("#allF").onchange=load;$("#hoursF").onchange=load;
+$("#quit").onclick=async()=>{try{await api("/api/quit",{})}catch(e){}document.querySelector("main").innerHTML=`<div class="card">${t("closed")}</div>`};
+i18n();load().catch(e=>document.querySelector("main").insertAdjacentHTML("afterbegin",`<div class="card bad">${esc(e.message)}</div>`));setInterval(()=>load().catch(()=>{}),60000);
+</script>
+</body>
+</html>
