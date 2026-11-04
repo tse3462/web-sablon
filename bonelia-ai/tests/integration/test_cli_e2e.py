@@ -106,3 +106,13 @@ def test_build_script_imports_and_parses_arguments():
     root = Path(__file__).resolve().parents[2]
     p = subprocess.run([PY, str(root / "scripts" / "build_portable.py"), "--help"], capture_output=True, text=True, timeout=60)
     assert p.returncode == 0, p.stderr
+
+
+def test_enroll_with_placeholder_code_gives_friendly_message(tmp_path):
+    """Regression (seen in the owner's first real USB test): a typo printed a Python traceback."""
+    p = run(["-m", "bonelia", "--home", str(tmp_path / "usb"), "enroll", "--server", "http://127.0.0.1:9",
+             "--code", "KODUNUZ", "--label", "USB 01"], {**os.environ, "PYTHONIOENCODING": "utf-8"}, check=False)
+    assert p.returncode == 2 and "Traceback" not in p.stderr and "ABCD-EFGH" in p.stderr
+    p = run(["-m", "bonelia", "--home", str(tmp_path / "usb"), "enroll", "--server", "http://127.0.0.1:9",
+             "--code", "AAAA-BBBB-CCCC-DDDD-EEEE", "--label", "USB 01"], {**os.environ, "PYTHONIOENCODING": "utf-8"}, check=False)
+    assert p.returncode == 3 and "Traceback" not in p.stderr

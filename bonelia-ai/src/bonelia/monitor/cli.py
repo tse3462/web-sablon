@@ -15,7 +15,9 @@ from pathlib import Path
 from .. import PRODUCT_NAME, __version__
 from ..security.crypto import Vault
 from . import reports
-from .client import ServerError, ServerUnavailable, enroll
+from pydantic import ValidationError
+
+from .client import FakeServerError, ServerError, ServerUnavailable, enroll
 from .portable import PortableHome, utf8_console
 from .session import Session
 
@@ -107,7 +109,27 @@ def main(argv: list[str] | None = None) -> int:
         if vault.exists():
             print("Bu USB zaten kayıtlı / bereits registriert. (config/device.vault)", file=sys.stderr)
             return 2
-        creds = enroll(args.server, args.code, args.label, args.server_key, ca_file=args.ca)
+        try:
+            creds = enroll(args.server, args.code, args.label, args.server_key, ca_file=args.ca)
+        except (ValidationError, ValueError) as exc:
+            msg = "Kayıt kodu veya sunucu adresi geçersiz / Code oder Serveradresse ungültig"
+            if isinstance(exc, ValidationError) and any("enrollment_code" in str(e.get("loc")) for e in exc.errors()):
+                msg = ("Kayıt kodu geçersiz: sunucunun verdiği ABCD-EFGH-... kodunu yazın / "
+                       "Registrierungscode ungültig: den vom Server erzeugten Code ABCD-EFGH-... eingeben")
+            elif not isinstance(exc, ValidationError):
+                msg = f"{msg}: {exc}"
+            print(msg, file=sys.stderr)
+            return 2
+        except ServerUnavailable:
+            print("Sunucuya ulaşılamıyor / Server nicht erreichbar: " + args.server, file=sys.stderr)
+            return 3
+        except ServerError:
+            print("Sunucu kaydı reddetti: kod yanlış, kullanılmış veya süresi dolmuş (30 dk) / "
+                  "Registrierung abgelehnt: Code falsch, bereits benutzt oder abgelaufen (30 Min.)", file=sys.stderr)
+            return 4
+        except FakeServerError as exc:
+            print(f"Sunucu kimliği doğrulanamadı / Serveridentität nicht bestätigt: {exc}", file=sys.stderr)
+            return 5
         vault.save(creds, _passphrase(confirm=True))
         print(json.dumps({"device_id": creds.device_id, "tenant_id": creds.tenant_id, "scopes": creds.scopes}, indent=2))
         return 0
