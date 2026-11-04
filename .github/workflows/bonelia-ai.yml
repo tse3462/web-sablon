@@ -41,6 +41,18 @@ jobs:
           pip uninstall -y bonelia-adapter-veedelkorb
           python -m pytest -q tests/integration/test_modularity.py tests/integration/test_cli_e2e.py
 
+  windows-server-py314:
+    # The home AI server may run on a newer Python than the build (owner's PC has 3.14).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install -e ".[server]" pytest
+      - name: Server + client tests on Windows with Python 3.14
+        run: python -m pytest -q -rs tests
+
   windows:
     # Real Windows verification: event log access, controlled error via eventcreate,
     # frozen BoneliaAI.exe smoke test. A Linux build is never accepted as proof for Windows.
