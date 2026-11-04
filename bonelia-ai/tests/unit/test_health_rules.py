@@ -114,3 +114,19 @@ def test_folder_state_reads_timestamps_only(tmp_path):
     (deep / "too-deep.bak").write_text("z")
     assert folder_state(str(root), max_depth=2)["files"] == 2  # bounded walk
     assert folder_state(str(old))["files"] == 1  # a single backup file works too
+
+
+def test_a_broken_health_check_never_breaks_the_scan(monkeypatch):
+    import bonelia.monitor.scan as scan
+    from bonelia.contracts import SystemSnapshot
+
+    monkeypatch.setattr(scan.system, "snapshot", lambda salt: SystemSnapshot(hostname_ref="r", os="Windows", os_version="11", is_windows=True))
+    monkeypatch.setattr(scan.system, "installed_apps", lambda: ([], "ok:0"))
+
+    def boom(*a, **k):
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(scan.health, "cached_disk_health", boom)
+    monkeypatch.setattr(scan.health, "cached_backup_state", boom)
+    res = scan.run_scan(mode="recent", include_eventlog=False)
+    assert res.collector_status["disk_health"] == "error:RuntimeError" and res.collector_status["backup"] == "error:RuntimeError"

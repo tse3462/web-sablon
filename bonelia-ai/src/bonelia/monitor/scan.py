@@ -121,12 +121,19 @@ def run_scan(mode: str = "quick", salt: str = "", lang: str = "tr", app_query: s
         events = [e for e in events if q in e.app.name.lower() or any(q in ev.text.lower() for ev in e.evidence)]
     events.extend(metric_events(res.system, lang))
     if include_health and res.system.is_windows:  # disk health + backup freshness (cached, read-only)
-        disks, st_disk = health.cached_disk_health()
-        res.collector_status["disk_health"] = st_disk
-        events.extend(disk_health_events(disks, lang))
-        bstate, st_bak = health.cached_backup_state(backup_policy)
-        res.collector_status["backup"] = st_bak
-        events.extend(backup_events(backup_policy, bstate, lang))
+        # An unexpected error here must never break the scan (or the agent's heartbeat).
+        try:
+            disks, st_disk = health.cached_disk_health()
+            res.collector_status["disk_health"] = st_disk
+            events.extend(disk_health_events(disks, lang))
+        except Exception as exc:  # noqa: BLE001
+            res.collector_status["disk_health"] = f"error:{type(exc).__name__}"
+        try:
+            bstate, st_bak = health.cached_backup_state(backup_policy)
+            res.collector_status["backup"] = st_bak
+            events.extend(backup_events(backup_policy, bstate, lang))
+        except Exception as exc:  # noqa: BLE001
+            res.collector_status["backup"] = f"error:{type(exc).__name__}"
     if include_eventlog:
         svcs, st_svc = system.services()
         res.collector_status["services"] = st_svc
