@@ -52,6 +52,9 @@ def list_restore_points() -> OpResult:
     r = _ps("Get-ComputerRestorePoint | Select-Object SequenceNumber,Description,"
             "@{n='CreationTime';e={$_.ConvertToDateTime($_.CreationTime)}} | ConvertTo-Json -Compress", 60)
     if not r.ok:
+        # System Restore is off or unavailable (common on Windows Server): not an error, just no points.
+        if "not supported" in r.output or "nicht unterstützt" in r.output or "desteklenmiyor" in r.output:
+            return OpResult(True, output=r.output, data={"restore_points": [], "system_restore_available": False})
         return r
     import json
 

@@ -33,3 +33,13 @@ def test_readonly_and_repair_ops_report_not_windows_off_windows():
 def test_bootrec_guide_has_all_languages():
     for lang in ("tr", "de", "en"):
         assert any("bootrec" in line for line in wr.BOOTREC_GUIDE[lang])
+
+
+def test_list_restore_points_treats_unsupported_as_empty(monkeypatch):
+    from bonelia.recovery import windows_recovery as wr
+
+    monkeypatch.setattr(wr, "_ps", lambda script, t: wr.OpResult(
+        False, output="Get-ComputerRestorePoint : This functionality is not supported on this operating system.",
+        data={"exit_code": 1}))
+    r = wr.list_restore_points()
+    assert r.ok and r.data["restore_points"] == [] and r.data["system_restore_available"] is False

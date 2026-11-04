@@ -200,6 +200,7 @@ def test_recovery_readonly_inspections_on_real_windows():
     from bonelia.recovery import windows_recovery as wr
 
     rp = wr.list_restore_points()
+    # On Windows Server (CI) System Restore is unavailable; the function reports that cleanly instead of erroring.
     assert rp.ok and isinstance(rp.data.get("restore_points"), list)
     assert wr.disk_health().ok
     assert wr.pending_reboot().ok
