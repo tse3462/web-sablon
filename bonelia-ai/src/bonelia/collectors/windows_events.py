@@ -108,7 +108,8 @@ def decode_tool_output(raw: bytes) -> str:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
         pass
-    for codec in ("oem", "mbcs", "cp1252"):  # oem/mbcs exist only on Windows
+    # mbcs = system ANSI code page (cp1252 on German/English Windows), oem = console code page; both Windows-only
+    for codec in ("mbcs", "cp1252", "oem"):
         try:
             return raw.decode(codec)
         except (LookupError, UnicodeDecodeError):
