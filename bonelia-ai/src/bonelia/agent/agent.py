@@ -41,7 +41,8 @@ class AgentState:
         self.data.setdefault("salt", secrets.token_hex(16))
         self.data.setdefault("seen", {})  # fingerprint -> last reported occurred_at (iso)
         self.data.setdefault("cycles", 0)
-        self.data.setdefault("denied", {})  # repair key -> epoch seconds of the last denial
+        self.data.setdefault("denied", {})
+        self.data.setdefault("repaired", {})  # repair key + log occurrence -> epoch seconds  # repair key -> epoch seconds of the last denial
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -80,20 +81,29 @@ class Agent:
                     seen[e.fingerprint] = e.occurred_at.isoformat()
             done: set[str] = set()
             denied = self.state.data["denied"]
+            repaired = self.state.data["repaired"]
             now = time.time()
+            for k in [k for k, v in repaired.items() if now - v > 7 * 86400]:
+                repaired.pop(k, None)
             for e in res.events:
                 if not e.repair_tool:
                     continue
                 key = f"{e.repair_tool}|{json.dumps(e.repair_params, sort_keys=True)}"
-                if key in done or now - denied.get(key, 0) < DENIED_RETRY_S:
+                # A log entry (e.g. "service crashed at 10:02") is repaired once per occurrence; a state
+                # (e.g. "service is stopped") is repaired whenever it is still present.
+                from_log = any(ev.source.startswith(("windows_event_log", "logfile")) for ev in e.evidence)
+                occ_key = f"{key}|{e.occurred_at.isoformat()}" if from_log else None
+                if key in done or now - denied.get(key, 0) < DENIED_RETRY_S or (occ_key and occ_key in repaired):
                     continue  # not twice per cycle; denied repairs are not retried for a while (no alert spam)
                 done.add(key)
-                # technician_confirmed is always False: the agent never self-approves level-2 actions
+                # technician_confirmed is always False: the agent never claims a human click
                 r = run_repair(self.client, e.repair_tool, dict(e.repair_params), False, self.executors)
                 if r.get("outcome") == "denied":
                     denied[key] = now
                 else:
                     denied.pop(key, None)
+                    if occ_key:
+                        repaired[occ_key] = now
                 summary["repairs"].append({k: r.get(k) for k in ("tool_id", "params", "outcome", "verified", "reasons")})
         except ServerUnavailable:
             summary["offline"] = True  # no repairs without the server; findings are retried next cycle

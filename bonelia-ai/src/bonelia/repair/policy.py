@@ -100,10 +100,12 @@ def evaluate(tool: ToolSpec | None, params: dict[str, Any], dry_run: bool, ctx: 
         if tool.tool_id in ctx.auto_tools:
             return Decision(True, False, False, ["auto_allowed"])
         # level-1 tool not on the tenant's auto list: needs an explicit approval like level 2
-    # Level 2: allowed when the customer allowed level 2 once (tenant setting) AND the on-site
-    # technician confirmed this run after seeing what it does. No per-run remote admin approval.
-    if tool.risk_level == RiskLevel.ADMIN_APPROVED and ctx.technician_confirmed and not needs_admin:
-        return Decision(True, False, False, ["technician_confirmed"])
+    # Level 2 (e.g. restart a service): the owner allowed level 2 for this customer once (tenant
+    # setting). That consent covers unattended runs by the agent too — the owner decided that a
+    # per-run confirmation adds nothing for his own businesses. Rate limits and the critical-service
+    # deny list still apply; level 3 stays blocked above.
+    if tool.risk_level == RiskLevel.ADMIN_APPROVED and not needs_admin:
+        return Decision(True, False, False, ["technician_confirmed" if ctx.technician_confirmed else "customer_level2"])
     ap = ctx.approval
     if ap is None:
         return Decision(False, False, True, ["approval_required"])

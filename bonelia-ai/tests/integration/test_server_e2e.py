@@ -374,7 +374,7 @@ def test_one_click_repair_requires_one_time_customer_consent_and_is_verified_and
     assert s2.repair(e2.event_id, executors=fake)["reasons"] == ["missing_scope"]
 
 
-def test_level2_restart_needs_customer_level2_and_technician_click(tmp_path, env):
+def test_level2_restart_needs_customer_level2(tmp_path, env):
     from bonelia.repair.tools import ExecResult
 
     fake = {"windows.restart_service": (lambda p, d: ExecResult(True, {}), lambda p, r: True)}
@@ -384,8 +384,7 @@ def test_level2_restart_needs_customer_level2_and_technician_click(tmp_path, env
     env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])
     assert s.repair(e.event_id, technician_confirmed=True, executors=fake)["reasons"] == ["tenant_level_exceeded"]
     env["store"].update_tenant(env["a"], max_auto_level=2)
-    assert s.repair(e.event_id, technician_confirmed=False, executors=fake)["outcome"] == "denied"
-    assert s.repair(e.event_id, technician_confirmed=True, executors=fake)["outcome"] == "executed_verified"
+    assert s.repair(e.event_id, technician_confirmed=False, executors=fake)["outcome"] == "executed_verified"
 
 
 def test_tool_report_must_match_the_grant(tmp_path, env):

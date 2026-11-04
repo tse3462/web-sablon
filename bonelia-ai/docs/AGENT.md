@@ -7,8 +7,8 @@ Amaç: Her küçük sorun için işletmeye gitmek zorunda kalmamak.
 bonelia-server --config deployment\server.home.toml allow-repairs ten_... --level 1 --include-devices
 ```
 * `--level 1`: güvenli onarımlar kendiliğinden yapılır (ör. otomatik çalışması gereken ama durmuş bir hizmeti başlatmak).
-* `--level 2`: ayrıca "hizmeti yeniden başlat" ekranda tek tıkla yapılabilir. Agent seviye-2 işlemleri **kendi başına yapmaz**,
-  sunucuya uyarı olarak bildirir.
+* `--level 2`: ayrıca tekrar tekrar çöken hizmetler **kendiliğinden** yeniden başlatılır (sahibin kararı: kendi işletmeleri
+  için tıklama onayı bir şey katmıyor). Saatte en fazla 2 kez; her çökme için bir kez; kritik Windows hizmetlerine dokunulmaz.
 * `--include-devices`: bu müşterinin USB'lerine onarım ve "bilgisayara kur" yetkisi verir.
 
 ## Her bilgisayarda (USB ile, sessiz kurulum)

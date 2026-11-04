@@ -1,4 +1,4 @@
-"""Unattended agent: detects, reports, self-repairs level-1 issues, never self-confirms level 2."""
+"""Unattended agent: detects, reports, self-repairs within the customer's consent level."""
 
 from __future__ import annotations
 
@@ -50,9 +50,9 @@ class FakePC:
                 "windows.restart_service": (restart, lambda p, r: True)}
 
 
-def test_agent_self_repairs_level1_reports_and_does_not_self_confirm_level2(tmp_path, env):  # noqa: F811
+def test_agent_level1_repairs_and_level2_needs_level2_consent(tmp_path, env):  # noqa: F811
     s = usb(tmp_path, env, "AGENT-PC1", env["a"], scopes=("diagnose", "repair:windows"))
-    env["store"].update_tenant(env["a"], max_auto_level=2, auto_tools=["windows.start_service"])
+    env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])
     pc = FakePC()
     agent = Agent(s.client, AgentState(tmp_path / "state.json"), lang="tr", executors=pc.executors(), scan=pc.scan)
 
@@ -60,17 +60,26 @@ def test_agent_self_repairs_level1_reports_and_does_not_self_confirm_level2(tmp_
     assert first["sent"] and first["new_findings"] == 2  # harmless noise is never reported
     by_tool = {r["tool_id"]: r for r in first["repairs"]}
     assert by_tool["windows.start_service"]["outcome"] == "executed_verified"  # fixed with nobody at the PC
-    assert by_tool["windows.restart_service"]["outcome"] == "denied"  # level 2 needs a technician's click
+    assert by_tool["windows.restart_service"]["outcome"] == "denied"  # customer allowed only level 1
     assert pc.calls == ["start:PosKasseSync"]
 
-    second = agent.cycle()  # nothing new: no duplicate reports, no repeated repair, denied level 2 not retried
+    second = agent.cycle()  # nothing new: no duplicate reports, no repeated repair, denied not retried
     assert second["new_findings"] == 0 and not second["sent"] and second["repairs"] == []
     assert pc.calls == ["start:PosKasseSync"]
     assert sum(1 for a in env["store"].audit_log(env["a"]) if a["action"] == "tool.denied") == 1
-
-    actions = [a["action"] for a in env["store"].audit_log(env["a"])]
-    assert "tool.executed" in actions and "tool.denied" in actions
     assert json.loads((tmp_path / "state.json").read_text())["cycles"] == 2
+
+
+def test_agent_level2_restarts_crashed_service_once_per_crash(tmp_path, env):  # noqa: F811
+    s = usb(tmp_path, env, "AGENT-PC4", env["a"], scopes=("diagnose", "repair:windows"))
+    env["store"].update_tenant(env["a"], max_auto_level=2, auto_tools=["windows.start_service"])
+    pc = FakePC()
+    agent = Agent(s.client, AgentState(tmp_path / "state.json"), executors=pc.executors(), scan=pc.scan)
+    out = agent.cycle()
+    assert {r["tool_id"]: r["outcome"] for r in out["repairs"]} == {
+        "windows.start_service": "executed_verified", "windows.restart_service": "executed_verified"}
+    agent.cycle()  # the same crash entry is still in the last hour of the log: no second restart
+    assert pc.calls.count("restart:Spooler") == 1
 
 
 def test_agent_without_server_repairs_nothing_and_survives(tmp_path, env):  # noqa: F811

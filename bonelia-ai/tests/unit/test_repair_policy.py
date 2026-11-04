@@ -95,7 +95,8 @@ def test_rate_limit():
 
 
 def test_level2_approval_rules():
-    t = tool(level=RiskLevel.ADMIN_APPROVED, idempotent=False)
+    # Admin-role tools (none built in today) still need a single-use admin approval
+    t = tool(level=RiskLevel.ADMIN_APPROVED, idempotent=False, required_role="admin")
     c = ctx(tenant_max_level=RiskLevel.ADMIN_APPROVED)
     assert evaluate(t, P, False, c).requires_approval
     good = Approval("a", "t1", t.tool_id, params_hash(t.tool_id, P), "admin", utcnow() + timedelta(minutes=5))
@@ -140,7 +141,7 @@ def test_gateway_timeout_and_executor_crash_fail_safely():
 
 
 def test_approval_consumed_before_execution():
-    t = tool(level=RiskLevel.ADMIN_APPROVED)
+    t = tool(level=RiskLevel.ADMIN_APPROVED, required_role="admin")
     reg = ToolRegistry()
     reg.register(t)
     used = []
@@ -173,10 +174,12 @@ def test_client_side_tools_one_click_and_technician_confirmation():
     base = dict(device_scopes={"repair:windows"}, auto_tools={"windows.start_service"})
     # level 1: one click once the customer allowed level 1 (no executor needed on the server)
     assert evaluate(start, p, False, ctx(tenant_max_level=RiskLevel.SAFE_AUTO, **base)).reasons == ["auto_allowed"]
-    # level 2: needs customer level 2 AND the technician's confirmation; no remote admin approval
+    # level 2: the customer's level-2 consent is enough, also unattended (owner's decision)
     assert evaluate(restart, p, False, ctx(tenant_max_level=RiskLevel.SAFE_AUTO, technician_confirmed=True, **base)).reasons == ["tenant_level_exceeded"]
-    assert evaluate(restart, p, False, ctx(tenant_max_level=RiskLevel.ADMIN_APPROVED, **base)).requires_approval
+    assert evaluate(restart, p, False, ctx(tenant_max_level=RiskLevel.ADMIN_APPROVED, **base)).reasons == ["customer_level2"]
     assert evaluate(restart, p, False, ctx(tenant_max_level=RiskLevel.ADMIN_APPROVED, technician_confirmed=True, **base)).allowed
+    # still bounded by the rate limit
+    assert evaluate(restart, p, False, ctx(tenant_max_level=RiskLevel.ADMIN_APPROVED, runs_last_hour=2, **base)).reasons == ["rate_limited"]
     # injection-shaped names never pass
     assert not evaluate(start, {"service_name": "x; shutdown /s"}, False, ctx(tenant_max_level=RiskLevel.SAFE_AUTO, **base)).allowed
     # level 3 stays blocked even with confirmation

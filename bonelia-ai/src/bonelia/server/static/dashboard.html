@@ -66,16 +66,16 @@ k_customers:"Müşteri",k_online:"Çevrimiçi bilgisayar",k_important:"Önemli s
 c_device:"Bilgisayar / USB",c_customer:"Müşteri",c_kind:"Tür",c_seen:"Son görülme",c_last:"Son durum",c_time:"Zaman",c_repair:"Onarım",c_result:"Sonuç",c_agents:"Kurulu bilgisayar",c_level:"Onarım izni",
 agent:"Kurulu bilgisayar",usb:"USB",install_key:"Kurulum anahtarı",revoked:"iptal",revoke:"İptal et",revoke_q:"Bu cihazın yetkisi iptal edilsin mi?",
 show_check:"'Kontrol edin' kayıtlarını da göster",none:"Kayıt yok.",ai:"Analiz",verified:"Onarıldı ✓",unverified:"Yapıldı, doğrulanamadı",failed:"Başarısız",denied:"İzin yok",
-l0:"0 – Sadece okuma",l1:"1 – Güvenli onarımlar otomatik",l2:"2 – + hizmet yeniden başlatma (teknisyen tıklar)",saved:"Kaydedildi",
-level_help:"Seviye 1: durmuş hizmeti başlatma, DNS önbelleği temizleme, eski geçici dosyaları silme kendiliğinden yapılır. Seviye 2 işlemlerini kurulu bilgisayarlar kendi başına yapmaz.",
+l0:"0 – Sadece okuma",l1:"1 – Güvenli onarımlar otomatik",l2:"2 – + çöken hizmetleri yeniden başlatma (otomatik)",saved:"Kaydedildi",
+level_help:"Seviye 1: durmuş hizmeti başlatma, DNS önbelleği temizleme, eski geçici dosyaları silme kendiliğinden yapılır. Seviye 2: ayrıca tekrar tekrar çöken hizmetler kendiliğinden yeniden başlatılır (saatte en fazla 2). Kritik Windows hizmetlerine hiçbir seviyede dokunulmaz.",
 closed:"Panel kapatıldı."},
 de:{panel:"Kontrollzentrum",n_home:"Übersicht",n_devices:"Computer",n_findings:"Probleme",n_repairs:"Reparaturen",n_customers:"Kunden",quit:"Schließen",
 k_customers:"Kunden",k_online:"Computer online",k_important:"Wichtige Probleme (24 h)",k_repairs:"Reparaturen (7 Tage)",latest:"Letzte wichtige Probleme",
 c_device:"Computer / USB",c_customer:"Kunde",c_kind:"Typ",c_seen:"Zuletzt gesehen",c_last:"Letzter Status",c_time:"Zeit",c_repair:"Reparatur",c_result:"Ergebnis",c_agents:"Installierte PCs",c_level:"Reparaturfreigabe",
 agent:"Installierter PC",usb:"USB",install_key:"Installationsschlüssel",revoked:"widerrufen",revoke:"Widerrufen",revoke_q:"Berechtigung dieses Geräts widerrufen?",
 show_check:"Auch 'Prüfen'-Einträge zeigen",none:"Keine Einträge.",ai:"Analyse",verified:"Repariert ✓",unverified:"Ausgeführt, nicht bestätigt",failed:"Fehlgeschlagen",denied:"Nicht erlaubt",
-l0:"0 – Nur lesen",l1:"1 – Sichere Reparaturen automatisch",l2:"2 – + Dienst-Neustart (Techniker klickt)",saved:"Gespeichert",
-level_help:"Stufe 1: gestoppten Dienst starten, DNS-Cache leeren, alte temporäre Dateien löschen geschieht automatisch. Stufe-2-Aktionen führen installierte PCs nie selbst aus.",
+l0:"0 – Nur lesen",l1:"1 – Sichere Reparaturen automatisch",l2:"2 – + abgestürzte Dienste neu starten (automatisch)",saved:"Gespeichert",
+level_help:"Stufe 1: gestoppten Dienst starten, DNS-Cache leeren, alte temporäre Dateien löschen geschieht automatisch. Stufe 2: zusätzlich werden wiederholt abstürzende Dienste automatisch neu gestartet (max. 2/h). Kritische Windows-Dienste werden nie angefasst.",
 closed:"Panel geschlossen."}};
 let TOKEN=location.hash.slice(1);try{if(TOKEN)sessionStorage.setItem("bt",TOKEN);else TOKEN=sessionStorage.getItem("bt")||""}catch(e){}
 history.replaceState(null,"",location.pathname);
