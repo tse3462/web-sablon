@@ -253,6 +253,17 @@ class Store:
         self.audit(actor, "device.revoked", {}, tenant_id=dev["tenant_id"], device_id=device_id)
         return True
 
+    def delete_device(self, device_id: str, actor: str = "admin") -> bool:
+        """Permanently remove a device from the list (e.g. an old test or revoked entry).
+        The tamper-evident audit log keeps a record of the deletion."""
+        dev = self.device(device_id)
+        if dev is None:
+            return False
+        self._x("delete from devices where id=?", (device_id,))
+        self._x("delete from nonces where device_id=?", (device_id,))
+        self.audit(actor, "device.deleted", {"label": dev.get("label")}, tenant_id=dev["tenant_id"], device_id=device_id)
+        return True
+
     def use_nonce(self, device_id: str, nonce: str) -> bool:
         """Return False if the nonce was already seen (replay)."""
         with self._lock:

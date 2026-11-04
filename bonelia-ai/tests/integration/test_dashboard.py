@@ -70,6 +70,16 @@ def test_level_change_and_revoke(tmp_path):
     assert store.device(agent)["status"] == "revoked"
 
 
+def test_delete_device_removes_it_from_the_list(tmp_path):
+    store, c, t, usb, agent = setup(tmp_path)
+    assert c.post(f"/api/devices/{usb}/delete", json={}, headers=H).json()["ok"]  # clean up an old test entry
+    assert store.device(usb) is None  # gone for good
+    assert all(d["id"] != usb for d in store.devices())
+    assert store.device(agent) is not None  # the working PC is untouched
+    assert c.post(f"/api/devices/{usb}/delete", json={}, headers=H).status_code == 404  # already gone
+    assert "device.deleted" in [a["action"] for a in store.audit_log(t)]  # recorded in the audit log
+
+
 def test_remote_host_allowlist_and_bind_safety(tmp_path):
     from bonelia.server.dashboard import create_dashboard_app, is_safe_bind
 

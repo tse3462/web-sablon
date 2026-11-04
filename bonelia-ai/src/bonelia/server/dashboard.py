@@ -180,6 +180,12 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
             raise HTTPException(404, "unknown_device")
         return {"ok": True}
 
+    @app.post("/api/devices/{device_id}/delete")
+    def delete_device(device_id: str) -> dict[str, Any]:
+        if not store.delete_device(device_id, actor="admin:dashboard"):
+            raise HTTPException(404, "unknown_device")
+        return {"ok": True}
+
     @app.post("/api/quit")
     def quit_app() -> dict[str, Any]:
         threading.Timer(0.5, lambda: os._exit(0)).start()

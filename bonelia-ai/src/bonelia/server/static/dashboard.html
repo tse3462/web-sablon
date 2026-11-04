@@ -70,6 +70,7 @@ const T={tr:{panel:"Kontrol Paneli",n_home:"Genel bakış",n_devices:"Bilgisayar
 k_customers:"Müşteri",k_online:"Çevrimiçi bilgisayar",k_important:"Önemli sorun (24 saat)",k_repairs:"Onarım (7 gün)",latest:"Son önemli sorunlar",
 c_device:"Bilgisayar / USB",c_customer:"Müşteri",c_kind:"Tür",c_seen:"Son görülme",c_last:"Son durum",c_time:"Zaman",c_repair:"Onarım",c_result:"Sonuç",c_agents:"Kurulu bilgisayar",c_level:"Onarım izni",
 agent:"Kurulu bilgisayar",usb:"USB",install_key:"Kurulum anahtarı",revoked:"iptal",revoke:"İptal et",revoke_q:"Bu cihazın yetkisi iptal edilsin mi?",
+delete:"Sil",delete_q:"Bu cihaz listeden kalıcı olarak silinsin mi?",
 show_check:"'Kontrol edin' kayıtlarını da göster",none:"Kayıt yok.",ai:"Analiz",verified:"Onarıldı ✓",unverified:"Yapıldı, doğrulanamadı",failed:"Başarısız",denied:"İzin yok",
 l0:"0 – Sadece okuma",l1:"1 – Güvenli onarımlar otomatik",l2:"2 – + çöken hizmetleri yeniden başlatma (otomatik)",saved:"Kaydedildi",
 need_token:"Güvenlik anahtarı yok. Bilgisayardaki C:\\BoneliaAI\\server-data\\panel-url.txt dosyasındaki TAM adresi (sonundaki #… ile) telefonda bir kez açın; bu cihaz anahtarı hatırlar, sonra kısa adres yeter.",
@@ -79,6 +80,7 @@ de:{panel:"Kontrollzentrum",n_home:"Übersicht",n_devices:"Computer",n_findings:
 k_customers:"Kunden",k_online:"Computer online",k_important:"Wichtige Probleme (24 h)",k_repairs:"Reparaturen (7 Tage)",latest:"Letzte wichtige Probleme",
 c_device:"Computer / USB",c_customer:"Kunde",c_kind:"Typ",c_seen:"Zuletzt gesehen",c_last:"Letzter Status",c_time:"Zeit",c_repair:"Reparatur",c_result:"Ergebnis",c_agents:"Installierte PCs",c_level:"Reparaturfreigabe",
 agent:"Installierter PC",usb:"USB",install_key:"Installationsschlüssel",revoked:"widerrufen",revoke:"Widerrufen",revoke_q:"Berechtigung dieses Geräts widerrufen?",
+delete:"Löschen",delete_q:"Dieses Gerät dauerhaft aus der Liste löschen?",
 show_check:"Auch 'Prüfen'-Einträge zeigen",none:"Keine Einträge.",ai:"Analyse",verified:"Repariert ✓",unverified:"Ausgeführt, nicht bestätigt",failed:"Fehlgeschlagen",denied:"Nicht erlaubt",
 l0:"0 – Nur lesen",l1:"1 – Sichere Reparaturen automatisch",l2:"2 – + abgestürzte Dienste neu starten (automatisch)",saved:"Gespeichert",
 need_token:"Kein Zugriffstoken. Öffnen Sie einmal die VOLLSTÄNDIGE Adresse (mit #… am Ende) aus C:\\BoneliaAI\\server-data\\panel-url.txt auf dem PC; dieses Gerät merkt sich den Schlüssel, danach genügt die kurze Adresse.",
@@ -112,8 +114,9 @@ async function load(){
  $("#devs").innerHTML=o.devices.map(d=>`<tr><td><span class="dot ${d.kind!=="agent"?"na":d.online?"on":"off"}"></span></td><td>${esc(d.label)}<div class="small">${esc(d.id)}</div></td>
   <td>${esc(d.customer)}</td><td>${esc(t(d.kind))}${d.status!=="active"?` <span class="bad">(${t("revoked")})</span>`:""}</td><td>${esc(fmt(d.last_seen_at))}</td>
   <td class="small">${d.last_status?esc((d.last_status.repairs||[]).join(", ")||("cycles "+d.last_status.cycles)):""}</td>
-  <td>${d.status==="active"?`<button class="sec" data-rev="${esc(d.id)}">${t("revoke")}</button>`:""}</td></tr>`).join("");
+  <td>${d.status==="active"?`<button class="sec" data-rev="${esc(d.id)}">${t("revoke")}</button> `:""}<button class="sec" data-del="${esc(d.id)}">${t("delete")}</button></td></tr>`).join("");
  $$("[data-rev]").forEach(b=>b.onclick=async()=>{if(confirm(t("revoke_q"))){await api("/api/devices/"+encodeURIComponent(b.dataset.rev)+"/revoke",{});load()}});
+ $$("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm(t("delete_q"))){await api("/api/devices/"+encodeURIComponent(b.dataset.del)+"/delete",{});load()}});
  $("#finds").innerHTML=f.findings.map(findCard).join("")||`<div class="card">${t("none")}</div>`;
  $("#reps").innerHTML=r.repairs.map(x=>`<tr><td>${esc(fmt(x.at))}</td><td>${esc(x.customer)}</td><td>${esc(x.device)}</td><td>${esc(x.tool_id)} <span class="small">${esc(Object.values(x.params||{}).join(" "))}</span></td><td>${outcome(x)}</td></tr>`).join("")||`<tr><td colspan="5">${t("none")}</td></tr>`;
  $("#custs").innerHTML=o.tenants.map(c=>`<tr><td><b>${esc(c.name)}</b><div class="small">${esc(c.id)}</div></td><td>${c.online} / ${c.agents}</td>
