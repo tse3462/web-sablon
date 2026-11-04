@@ -21,6 +21,14 @@ class ServerUnavailable(RuntimeError):
     """Network-level failure: server down, timeout, DNS, TLS."""
 
 
+class ServerTimeout(ServerUnavailable):
+    """The server was reached but did not answer in time (e.g. slow local AI model)."""
+
+
+# Local models on CPU-only home PCs can need several minutes for one analysis.
+AI_TIMEOUT_S = 600.0
+
+
 class ServerError(RuntimeError):
     def __init__(self, status: int, detail: str):
         super().__init__(f"{status}: {detail}")
@@ -63,12 +71,17 @@ class ServerClient:
         self._http = httpx.Client(base_url=self.base, transport=transport, verify=ca_file or True,
                                   timeout=httpx.Timeout(timeout_s, connect=5.0))
 
-    def _request(self, method: str, path: str, payload: Any = None) -> dict[str, Any]:
+    def _request(self, method: str, path: str, payload: Any = None, timeout_s: float | None = None) -> dict[str, Any]:
         body = b"" if payload is None else json.dumps(payload, default=str, ensure_ascii=False).encode("utf-8")
         headers = sign_request(self.creds.private_key, self.creds.device_id, method, path, body)
         headers["Content-Type"] = "application/json"
         try:
-            r = self._http.request(method, path, content=body, headers=headers)
+            kw = {"timeout": httpx.Timeout(timeout_s, connect=5.0)} if timeout_s else {}
+            r = self._http.request(method, path, content=body, headers=headers, **kw)
+        except httpx.TimeoutException as exc:
+            if isinstance(exc, httpx.ConnectTimeout):
+                raise ServerUnavailable(type(exc).__name__) from exc
+            raise ServerTimeout(type(exc).__name__) from exc
         except httpx.HTTPError as exc:
             raise ServerUnavailable(type(exc).__name__) from exc
         try:
@@ -88,16 +101,16 @@ class ServerClient:
 
     def analyze(self, events: list[DiagnosticEvent], system: SystemSnapshot | None, allow_cloud: bool, lang: str) -> AnalyzeResponse:
         req = AnalyzeRequest(events=events[:25], system=system, allow_cloud=allow_cloud, language=lang)
-        return AnalyzeResponse.model_validate(self._request("POST", "/v1/analyze", req.model_dump(mode="json")))
+        return AnalyzeResponse.model_validate(self._request("POST", "/v1/analyze", req.model_dump(mode="json"), AI_TIMEOUT_S))
 
     def chat(self, question: str, lang: str) -> dict[str, Any]:
-        return self._request("POST", "/v1/chat", {"question": question, "language": lang})
+        return self._request("POST", "/v1/chat", {"question": question, "language": lang}, AI_TIMEOUT_S)
 
     def adapter_health(self, adapter_id: str, lang: str, allow_cloud: bool = False) -> dict[str, Any]:
         """Server-side health analysis through an optional application adapter."""
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,40}", adapter_id):
             raise ValueError("invalid adapter id")
-        return self._request("POST", f"/v1/adapters/{adapter_id}/health", {"language": lang, "allow_cloud": allow_cloud})
+        return self._request("POST", f"/v1/adapters/{adapter_id}/health", {"language": lang, "allow_cloud": allow_cloud}, AI_TIMEOUT_S)
 
     def events(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/events").get("events", [])

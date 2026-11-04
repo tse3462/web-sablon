@@ -8,7 +8,8 @@ port = 8742
 [ai]
 ollama_url = "http://127.0.0.1:11434"
 ollama_model = "qwen2.5:3b-instruct"
-max_ai_events_per_request = 5
+# CPU-only PCs: keep this small so one analysis stays within a few minutes
+max_ai_events_per_request = 3
 
 [repair]
 enabled_tools = []

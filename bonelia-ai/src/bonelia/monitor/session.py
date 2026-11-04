@@ -9,7 +9,7 @@ from typing import Any
 from ..contracts import ScanResult
 from ..security.crypto import DataKey, DeviceCredentials, Vault
 from . import reports
-from .client import FakeServerError, ServerClient, ServerError, ServerUnavailable
+from .client import FakeServerError, ServerClient, ServerError, ServerTimeout, ServerUnavailable
 from .offline_queue import OfflineQueue
 from .portable import PortableHome
 from .scan import run_scan
@@ -18,6 +18,9 @@ MSG = {
     "offline": {"tr": "Merkezi BONELİA AI Server'a bağlanılamadı — çevrimdışı mod. Olaylar şifreli kuyruğa alındı; yerel kural teşhisi gösteriliyor.",
                 "de": "BONELİA AI Server nicht erreichbar — Offline-Modus. Ereignisse verschlüsselt zwischengespeichert; lokale Regeldiagnose.",
                 "en": "BONELİA AI Server unreachable — offline mode. Events queued (encrypted); showing local rule diagnosis."},
+    "timeout": {"tr": "Sunucu bağlı, ancak yapay zekâ analizi zamanında bitmedi. Yerel kural teşhisi gösteriliyor; daha küçük bir model veya daha az olay deneyin.",
+                "de": "Server verbunden, aber die KI-Analyse wurde nicht rechtzeitig fertig. Lokale Regeldiagnose wird angezeigt; kleineres Modell oder weniger Ereignisse versuchen.",
+                "en": "Server connected, but the AI analysis did not finish in time. Showing local rule diagnosis; try a smaller model or fewer events."},
     "fake": {"tr": "UYARI: Sunucu imzası doğrulanamadı — sahte sunucu olabilir. Bağlantı kesildi.",
              "de": "WARNUNG: Serversignatur ungültig — möglicher gefälschter Server. Verbindung abgebrochen.",
              "en": "WARNING: server signature invalid — possible fake server. Connection aborted."},
@@ -86,9 +89,8 @@ class Session:
         to_send = [e for e in scan.events][:25]
         try:
             if to_send:
-                q = OfflineQueue(self.home.path("queue"), self.data_key)  # type: ignore[arg-type]
-                q.drain(lambda evs: self.client.analyze(evs, None, False, self.lang))  # type: ignore[union-attr]
                 res = self.client.analyze(to_send, scan.system, allow_cloud, self.lang)
+                self._drain_queue(max_entries=1)  # catch up on earlier offline events without delaying this result
                 diags = res.diagnoses + [d for d in scan.diagnoses if d.event_id not in {x.event_id for x in res.diagnoses}]
                 self.last_report = reports.build_report(scan, self.creds.tenant_id, self.lang, diagnoses=diags,  # type: ignore[union-attr]
                                                         ai_mode=res.ai_mode, notices=res.notices, interventions=self.interventions)
@@ -97,6 +99,9 @@ class Session:
         except FakeServerError:
             notices.append(MSG["fake"][self.lang])
             self.last_report = reports.build_report(scan, self.creds.tenant_id, self.lang, notices=notices)  # type: ignore[union-attr]
+        except ServerTimeout:
+            notices.append(MSG["timeout"][self.lang])  # server got the events; do not queue duplicates
+            self.last_report = reports.build_report(scan, self.creds.tenant_id, self.lang, ai_mode="rules-timeout", notices=notices)  # type: ignore[union-attr]
         except ServerUnavailable:
             OfflineQueue(self.home.path("queue"), self.data_key).push(to_send)  # type: ignore[arg-type]
             notices.append(MSG["offline"][self.lang])
@@ -106,6 +111,15 @@ class Session:
             self.last_report = reports.build_report(scan, self.creds.tenant_id, self.lang, notices=notices)  # type: ignore[union-attr]
         self._persist()
         return self.last_report
+
+    def _drain_queue(self, max_entries: int) -> None:
+        if self.client is None or self.data_key is None:
+            return
+        try:
+            OfflineQueue(self.home.path("queue"), self.data_key).drain(
+                lambda evs: self.client.analyze(evs, None, False, self.lang), max_entries=max_entries)  # type: ignore[union-attr]
+        except Exception:
+            pass  # the queue is best effort; the current result is already available
 
     def _persist(self) -> None:
         """Reports on the USB are stored encrypted only. Without a vault nothing is written."""

@@ -314,3 +314,18 @@ def test_chat_is_grounded(tmp_path, env):
     s.analyze()
     res = s.client.chat("Son yarım saatteki hataları incele.", "tr")
     assert res["grounded_on"] >= 1 and "printdrv" in res["answer"]
+
+
+def test_slow_ai_is_reported_as_timeout_not_offline(tmp_path, env, monkeypatch):
+    """Regression (owner's first real run): a slow CPU model made the USB claim the server was offline."""
+    import bonelia.monitor.client as client_mod
+
+    env["ollama"]["mode"] = "slow"  # model needs ~3 s, server waits up to 2 s
+    monkeypatch.setattr(client_mod, "AI_TIMEOUT_S", 0.5)  # client gives up first
+    s = usb(tmp_path, env, "USB-01", env["a"])
+    s.scan(log_paths=[controlled_error_log(tmp_path)], include_eventlog=False)
+    rep = s.analyze()
+    assert rep["ai_mode"] == "rules-timeout"
+    assert any("KI-Analyse" in n for n in rep["notices"]) and not any("Offline" in n for n in rep["notices"])
+    assert OfflineQueue(s.home.path("queue"), s.data_key).size() == 0  # server already has the events
+    assert rep["findings"]  # local diagnosis still shown

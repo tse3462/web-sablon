@@ -95,6 +95,27 @@ def parse_rendered_events(xml_text: str, log: str) -> list[RawEvent]:
     return events
 
 
+def decode_tool_output(raw: bytes) -> str:
+    """Decode wevtutil output: UTF-16 (with /uni:true), UTF-8, or the Windows OEM/ANSI code page.
+
+    A wrong guess here turned German umlauts into U+FFFD on a real German Windows.
+    """
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16", errors="replace")
+    if len(raw) >= 4 and raw[1:4:2] == b"\x00\x00" and raw[0:1] != b"\x00":
+        return raw.decode("utf-16-le", errors="replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    for codec in ("oem", "mbcs", "cp1252"):  # oem/mbcs exist only on Windows
+        try:
+            return raw.decode(codec)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
 def build_query(hours: int, max_level: int = 3) -> str:
     ms = max(1, min(hours, 24 * 30)) * 3600 * 1000
     levels = " or ".join(f"Level={i}" for i in range(1, max(1, min(max_level, 4)) + 1))
@@ -112,7 +133,8 @@ def collect(hours: int = 24, logs: tuple[str, ...] = ALLOWED_LOGS, max_events: i
         if log not in ALLOWED_LOGS:
             status[f"eventlog:{log}"] = "denied:not_allowed"
             continue
-        cmd = ["wevtutil.exe", "qe", log, f"/q:{build_query(hours)}", f"/c:{max_events}", "/rd:true", "/f:RenderedXml"]
+        cmd = ["wevtutil.exe", "qe", log, f"/q:{build_query(hours)}", f"/c:{max_events}", "/rd:true", "/f:RenderedXml",
+               "/uni:true"]
         try:
             proc = subprocess.run(cmd, capture_output=True, timeout=TIMEOUT_S, check=False,
                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -122,7 +144,7 @@ def collect(hours: int = 24, logs: tuple[str, ...] = ALLOWED_LOGS, max_events: i
         if proc.returncode != 0:
             status[f"eventlog:{log}"] = f"error:exit_{proc.returncode}"
             continue
-        text = proc.stdout[:MAX_XML_BYTES].decode("utf-8", errors="replace")
+        text = decode_tool_output(proc.stdout[: MAX_XML_BYTES * 2])
         parsed = parse_rendered_events(text, log)
         out.extend(parsed)
         status[f"eventlog:{log}"] = f"ok:{len(parsed)}"

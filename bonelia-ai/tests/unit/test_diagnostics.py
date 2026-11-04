@@ -104,3 +104,14 @@ def test_log_tail_is_bounded(tmp_path: Path):
     bad = tmp_path / "bin.log"
     bad.write_bytes(b"\xff\xfe\x00 fatal \x00\x81 error")
     assert tail_error_lines(bad)[1] == "ok:1"
+
+
+def test_event_log_output_decoding_handles_windows_encodings():
+    """Regression (owner's German Windows): umlauts became U+FFFD."""
+    from bonelia.collectors.windows_events import decode_tool_output
+
+    text = "<Event>Fehler bei der Gerätezuordnung – Größe ÄÖÜ ß</Event>"
+    assert decode_tool_output(b"\xff\xfe" + text.encode("utf-16-le")) == text
+    assert decode_tool_output(text.encode("utf-16-le")) == text
+    assert decode_tool_output(text.encode("utf-8")) == text
+    assert "Gerätezuordnung" in decode_tool_output("Fehler bei der Gerätezuordnung".encode("cp1252"))

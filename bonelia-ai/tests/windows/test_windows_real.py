@@ -51,3 +51,15 @@ def test_full_scan_on_windows():
 
     res = run_scan(mode="quick", salt="s", lang="de")
     assert res.system.is_windows and res.collector_status["installed_apps"].startswith("ok:")
+
+
+def test_german_umlauts_survive_event_log_reading():
+    """Regression (owner's German Windows): 'Gerätezuordnung' was read as 'Ger�tezuordnung'."""
+    from bonelia.collectors.windows_events import collect
+
+    subprocess.run(["eventcreate", "/T", "ERROR", "/ID", "996", "/L", "APPLICATION", "/SO", "BoneliaAIUmlaut",
+                    "/D", "Fehler bei der Gerätezuordnung: Größe Ä Ö Ü ß"], check=True, capture_output=True)
+    events, status = collect(hours=1, logs=("Application",), max_events=100)
+    assert status["eventlog:Application"].startswith("ok:"), status
+    hit = [e for e in events if e.provider == "BoneliaAIUmlaut"]
+    assert hit and "Gerätezuordnung" in hit[0].message and "�" not in hit[0].message, hit[0].message if hit else events[:3]

@@ -112,3 +112,10 @@ def test_response_signature_detects_fake_server():
         crypto.verify_response(crypto.load_public_key(crypto.public_key_b64(real)), 200, "n1", b"{}", sig)
     with pytest.raises(ValueError):
         crypto.verify_response(crypto.load_public_key(crypto.public_key_b64(real)), 200, "n1", b"{}", None)
+
+
+def test_mac_addresses_are_redacted_and_ids_are_not_phones():
+    out = redact_text("Bluetooth-Adapteradresse (6c:af:ab:88:67:cf) und 6C-AF-AB-88-67-CF")
+    assert "6c:af" not in out and "6C-AF" not in out and out.count("[mac]") == 2
+    assert "[phone]" not in redact_text("Telemetry EventId: 12345 status=Completed durationMs=127")
+    assert "1234567" not in redact_text("Rückruf 0221 1234567 bitte")

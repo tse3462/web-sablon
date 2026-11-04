@@ -46,10 +46,10 @@ class OfflineQueue:
             dropped += 1
         return dropped
 
-    def drain(self, send) -> tuple[int, int]:
+    def drain(self, send, max_entries: int | None = None) -> tuple[int, int]:
         """Call `send(events)` for each entry; delete on success. Stops at first failure."""
         sent = failed = 0
-        for f in self._files():
+        for f in self._files()[:max_entries]:
             try:
                 events = [DiagnosticEvent.model_validate(x) for x in json.loads(self.key.decrypt(f.read_bytes(), aad=b"bonelia-queue"))]
             except (ValueError, OSError):
