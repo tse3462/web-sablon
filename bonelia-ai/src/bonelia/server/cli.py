@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from ..repair.policy import params_hash
+from ..monitor.portable import utf8_console
 from .config import ServerConfig
 from .store import Store
 
@@ -67,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("hw-check", help="assess hardware and recommend a local model size")
 
+    utf8_console()
     args = p.parse_args(argv)
     cfg = ServerConfig.load(args.config, args.data_dir)
 

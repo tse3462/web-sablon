@@ -78,7 +78,8 @@ def services() -> tuple[list[dict], str]:
     try:
         for svc in psutil.win_service_iter():  # type: ignore[attr-defined]
             try:
-                info = svc.as_dict(attrs=["name", "display_name", "status", "start_type"])
+                full = svc.as_dict()
+                info = {k: full.get(k) for k in ("name", "display_name", "status", "start_type")}
             except (psutil.Error, OSError):
                 continue
             items.append(info)

@@ -36,11 +36,11 @@ def assess(data_path: str = ".") -> dict:
     gpus = _gpus()
     vram_gb = round(max((g["vram_mb"] for g in gpus), default=0) / 1024, 1)
     if vram_gb >= 22:
-        rec, note = "~32B (e.g. qwen2.5:32b-instruct)", "GPU with ≥24 GB VRAM"
+        rec, note = "~32B (e.g. qwen2.5:32b-instruct)", "GPU with >=24 GB VRAM"
     elif vram_gb >= 11:
-        rec, note = "~14B (e.g. qwen2.5:14b-instruct)", "GPU with ≥12 GB VRAM"
+        rec, note = "~14B (e.g. qwen2.5:14b-instruct)", "GPU with >=12 GB VRAM"
     elif vram_gb >= 7 or ram_gb >= 16:
-        rec, note = "~7-8B (e.g. qwen2.5:7b-instruct, llama3.1:8b)", "8 GB VRAM or ≥16 GB RAM (CPU will be slow)"
+        rec, note = "~7-8B (e.g. qwen2.5:7b-instruct, llama3.1:8b)", "8 GB VRAM or >=16 GB RAM (CPU will be slow)"
     elif ram_gb >= 8:
         rec, note = "~3B (e.g. qwen2.5:3b-instruct)", "small model; limited reasoning quality"
     else:

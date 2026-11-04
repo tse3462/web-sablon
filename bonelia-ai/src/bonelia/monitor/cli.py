@@ -16,7 +16,7 @@ from .. import PRODUCT_NAME, __version__
 from ..security.crypto import Vault
 from . import reports
 from .client import ServerError, ServerUnavailable, enroll
-from .portable import PortableHome
+from .portable import PortableHome, utf8_console
 from .session import Session
 
 
@@ -98,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     ui.add_argument("--no-browser", action="store_true")
     ui.add_argument("--port", type=int, default=0)
 
+    utf8_console()
     args = p.parse_args(argv)
 
     if args.cmd == "enroll":

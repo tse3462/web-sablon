@@ -7,6 +7,7 @@ a live, authenticated connection).
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -32,7 +33,9 @@ class OfflineQueue:
     def push(self, events: list[DiagnosticEvent]) -> int:
         """Store events; drops the OLDEST entries when limits are exceeded. Returns dropped count."""
         blob = self.key.encrypt(json.dumps([e.model_dump(mode="json") for e in events[:25]]).encode(), aad=b"bonelia-queue")
-        (self.dir / f"{time.time_ns()}.bnq").write_bytes(blob)
+        # time prefix keeps FIFO order; random suffix prevents same-tick collisions (data loss) on Windows
+        name = f"{time.time_ns():020d}-{os.urandom(6).hex()}.bnq"
+        (self.dir / name).write_bytes(blob)
         dropped = 0
         files = self._files()
         total = sum(f.stat().st_size for f in files)

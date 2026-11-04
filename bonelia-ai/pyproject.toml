@@ -34,7 +34,6 @@ bonelia = ["resources/*", "monitor/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_default_fixture_loop_scope = "function"
 markers = [
   "windows: requires a real Windows host",
 ]

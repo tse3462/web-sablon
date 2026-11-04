@@ -88,3 +88,12 @@ def watch_removal(root: Path, on_removed: Callable[[], None], interval_s: float 
     t = threading.Thread(target=loop, name="bonelia-usb-watch", daemon=True)
     t.start()
     return t
+
+
+def utf8_console() -> None:
+    """Windows consoles often use cp1252; never crash on Turkish/German/symbol output."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass
