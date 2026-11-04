@@ -43,8 +43,10 @@ def load_credentials() -> DeviceCredentials:
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, check=False,
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        # errors="replace": schtasks/icacls output on a non-UTF-8 code page (e.g. German cp1252) must
+        # never raise a UnicodeDecodeError while being read.
+        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except OSError as exc:  # schtasks/icacls missing (not Windows)
         return subprocess.CompletedProcess(cmd, 1, "", str(exc))
 

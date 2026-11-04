@@ -78,3 +78,20 @@ def test_agent_reinstall_does_not_fail_on_identical_running_program(tmp_path):
     src.write_bytes(b"v2")  # update
     inst._copy_program(src, dst)
     assert dst.read_bytes() == b"v2"
+
+
+def test_agent_install_run_decodes_non_utf8_output(monkeypatch):
+    """Regression (owner's German Windows): schtasks cp1252 output raised UnicodeDecodeError."""
+    import subprocess
+
+    from bonelia.agent import install as inst
+
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured.update(kw)
+        return subprocess.CompletedProcess(cmd, 0, "ok", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    inst._run(["schtasks", "/Query"])
+    assert captured.get("encoding") == "utf-8" and captured.get("errors") == "replace"
