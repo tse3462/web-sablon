@@ -7,97 +7,233 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="BONELİA AI">
-<meta name="theme-color" content="#0e141b">
+<meta name="theme-color" content="#07090d">
 <title>BONELİA AI Kontrol Paneli</title>
 <style>
-:root{--bg:#f4f6f9;--panel:#fff;--ink:#132030;--muted:#5a6b7d;--line:#dde3ea;--brand:#0b5cad;--crit:#b00020;--warn:#b98900;--ok:#1b7f3a;--chip:#eef2f6}
-@media (prefers-color-scheme:dark){:root{--bg:#0e141b;--panel:#151d26;--ink:#e6edf3;--muted:#93a4b5;--line:#253241;--brand:#4ea1ff;--chip:#1d2834}}
-*{box-sizing:border-box}body{margin:0;font:14px/1.5 "Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
-header{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
-.logo{font-weight:800;font-size:18px}.logo span{color:var(--brand)}
-nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}nav button,.sec{background:var(--chip);border:0;color:var(--ink);padding:7px 12px;border-radius:7px;cursor:pointer;font:inherit}
-main button:not(.sec){background:var(--brand);color:#fff;border:0;padding:9px 14px;border-radius:7px;cursor:pointer;font:inherit;font-weight:600}nav button{background:none;color:var(--muted)}nav button.active{background:var(--chip);color:var(--ink);font-weight:600}
-main{max-width:1150px;margin:18px auto;padding:0 16px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px}
-.card h3{margin:0 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-.big{font-size:24px;font-weight:700}
-main>section{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table{width:100%;min-width:560px;border-collapse:collapse;background:var(--panel)}td,th{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
-td .small{white-space:normal}
-th{font-size:12px;color:var(--muted);text-transform:uppercase}
-.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}.on{background:var(--ok)}.off{background:var(--crit)}.na{background:var(--muted)}
-.tri{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;color:#fff;margin-right:6px}.important{background:var(--crit)}.check{background:var(--warn)}
-.ok{color:var(--ok);font-weight:600}.bad{color:var(--crit);font-weight:600}.small{font-size:12px;color:var(--muted)}
-.ev{font-size:12px;background:var(--chip);border-radius:6px;padding:6px 8px;margin:6px 0;word-break:break-word}
-.conf{font-size:11px;padding:1px 6px;border-radius:10px;background:var(--chip);margin-right:6px}
-.hidden{display:none}input[type=text]{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:9px;width:100%;font:inherit;margin:6px 0}ol{padding-left:18px}select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px}
+:root{--bg:#07090d;--panel:#121820;--panel2:#18202b;--ink:#eef2f7;--muted:#8b97a8;--line:#222b37;--brand:#3d8bff;
+ --ok:#33c26f;--warn:#f0b429;--crit:#ff5a5f;--chip:#1c2430;--accent:var(--brand)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+.hidden{display:none!important}
+
+/* ---------- hero ---------- */
+.hero{position:relative;overflow:hidden;padding:calc(env(safe-area-inset-top) + 12px) 18px 22px;text-align:center;
+ background:
+  radial-gradient(1.4px 1.4px at 9% 14%,#ffffffb0 50%,transparent 52%),radial-gradient(1px 1px at 21% 38%,#ffffff80 50%,transparent 52%),
+  radial-gradient(1.2px 1.2px at 34% 9%,#ffffff99 50%,transparent 52%),radial-gradient(1px 1px at 47% 27%,#ffffff70 50%,transparent 52%),
+  radial-gradient(1.5px 1.5px at 63% 16%,#ffffffb0 50%,transparent 52%),radial-gradient(1px 1px at 76% 33%,#ffffff80 50%,transparent 52%),
+  radial-gradient(1.2px 1.2px at 88% 11%,#ffffff99 50%,transparent 52%),radial-gradient(1px 1px at 93% 41%,#ffffff60 50%,transparent 52%),
+  radial-gradient(1px 1px at 4% 46%,#ffffff60 50%,transparent 52%),radial-gradient(1.2px 1.2px at 55% 44%,#ffffff70 50%,transparent 52%),
+  radial-gradient(90% 60% at 50% 100%,color-mix(in srgb,var(--accent) 26%,transparent) 0%,transparent 70%),
+  linear-gradient(180deg,#0b1a33 0%,#0a1322 52%,var(--bg) 100%)}
+.hero.s-ok{--accent:var(--ok)}.hero.s-warn{--accent:var(--warn)}.hero.s-crit{--accent:var(--crit)}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;position:relative;z-index:2}
+.topbar .title{font-weight:700;font-size:17px;letter-spacing:.2px;white-space:nowrap}
+.topbar .title span{color:var(--brand)}
+.iconbtn{position:relative;background:none;border:0;padding:6px;color:var(--ink);width:40px}
+.iconbtn svg{width:26px;height:26px}
+.badge{position:absolute;top:0;right:2px;background:var(--crit);color:#fff;border-radius:10px;font-size:11px;font-weight:700;min-width:18px;height:18px;line-height:18px;padding:0 5px}
+.tools{display:flex;gap:6px;align-items:center;justify-content:flex-end;min-width:40px}
+select{background:#ffffff14;color:var(--ink);border:1px solid #ffffff22;border-radius:8px;padding:5px 6px;font:inherit;font-size:13px}
+select option{background:var(--panel);color:var(--ink)}
+.updated{margin-top:14px;font-size:14px;color:#c8d3e3cc}
+.headline{margin:4px 0 0;padding-top:.12em;font-weight:900;font-size:clamp(46px,15vw,104px);line-height:.98;letter-spacing:-1.5px;
+ background:linear-gradient(180deg,#fff 30%,#c4d2e8);-webkit-background-clip:text;background-clip:text;color:transparent}
+.emblem{position:relative;width:150px;height:150px;margin:18px auto 6px}
+.ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--accent) 55%,transparent)}
+.ring.r2{inset:22px;border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.ring.r1{animation:pulse 3.2s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.82);opacity:.9}100%{transform:scale(1.12);opacity:0}}
+.core{position:absolute;inset:44px;border-radius:50%;display:grid;place-items:center;color:#fff;
+ background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--accent) 85%,#fff),var(--accent));
+ box-shadow:0 0 40px color-mix(in srgb,var(--accent) 60%,transparent),0 0 90px color-mix(in srgb,var(--accent) 30%,transparent)}
+.core svg{width:34px;height:34px}
+.subline{color:#c8d3e3;font-size:14px;max-width:520px;margin:6px auto 0}
+.hero.compact .big{display:none}.big.tap{cursor:pointer}
+.hero.compact{padding-bottom:14px}
+
+/* ---------- navigation ---------- */
+nav{display:flex;justify-content:center;gap:4px;padding:8px 12px;position:sticky;top:0;z-index:20;background:#07090dee;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;color:var(--muted);display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:10px;position:relative}
+nav button svg{width:20px;height:20px}
+nav button.active{color:var(--ink);background:var(--chip);font-weight:600}
+@media (max-width:820px){
+ nav{position:fixed;top:auto;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(6,1fr);gap:0;padding:6px 2px calc(env(safe-area-inset-bottom) + 4px);border-top:1px solid var(--line);border-bottom:0}
+ nav button{flex-direction:column;gap:3px;font-size:10px;padding:6px 0;border-radius:0}
+ nav button svg{width:24px;height:24px}
+ nav button.active{background:none}
+ nav button.active::after{content:"";position:absolute;bottom:-2px;left:30%;right:30%;height:3px;border-radius:2px;background:var(--ink)}
+ main{padding-bottom:calc(92px + env(safe-area-inset-bottom))!important}
+}
+
+/* ---------- content ---------- */
+main{max-width:1100px;margin:0 auto;padding:16px 14px 40px}
+h2{font-size:20px;margin:22px 4px 12px;font-weight:700}
+.ph{margin-top:6px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (min-width:821px){.tiles{grid-template-columns:repeat(4,1fr)}.tile.wide{grid-column:span 2}}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;min-height:120px;text-align:left;display:flex;flex-direction:column;position:relative;transition:transform .12s}
+.tile:active{transform:scale(.98)}
+.tile.wide{grid-column:span 2}
+.tt{font-weight:700;font-size:16px}
+.tv{color:var(--muted);font-size:14px;margin-top:1px}
+.tfoot{margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;padding-top:14px}
+.tfoot svg{width:28px;height:28px;color:var(--ink);opacity:.9}
+.tbig{font-size:34px;font-weight:800;line-height:1}
+.tbig small{font-size:15px;font-weight:600;color:var(--muted);margin-left:3px}
+.tile.s-ok .tbig{color:var(--ok)}.tile.s-warn .tbig{color:var(--warn)}.tile.s-crit .tbig{color:var(--crit)}
+.block{margin-top:6px}
+.bh{display:flex;align-items:center;justify-content:space-between}
+.link{background:none;border:0;color:var(--brand);font-weight:600;padding:8px 4px}
+.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:12px}
+.app{display:flex;flex-direction:column;align-items:center;gap:6px;text-decoration:none;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px 8px 12px;position:relative;min-height:116px;text-align:center}
+.app .ic{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;font-size:28px;background:linear-gradient(145deg,#25324a,#141b26);box-shadow:inset 0 1px 0 #ffffff14}
+.app .an{font-size:13px;font-weight:600;line-height:1.2;word-break:break-word}
+.app .ah{font-size:11px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app.add{border-style:dashed;color:var(--muted);background:transparent;justify-content:center;font:inherit}
+.app.add .ic{background:var(--chip);font-size:26px;color:var(--ink)}
+.app .ed{display:none;gap:4px;margin-top:4px}
+.editing .app .ed{display:flex}
+.editing a.app{pointer-events:none}.editing a.app .ed{pointer-events:auto}
+.ed button{background:var(--chip);border:0;border-radius:8px;padding:3px 7px;font-size:13px}
+.hint{color:var(--muted);font-size:13px;margin:10px 4px 0}
+.item{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:10px}
+.ih{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.meta{color:var(--muted);font-size:13px;margin-top:4px;word-break:break-word}
+.tiny{font-size:11px;opacity:.7}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.chip{background:var(--chip);color:var(--muted);font-size:12px;border-radius:20px;padding:2px 9px}
+.btn{background:var(--brand);color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:600}
+.sec{background:var(--chip);color:var(--ink);border:0;padding:9px 14px;border-radius:10px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}.off{background:var(--crit)}.na{background:var(--muted)}
+.tri{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;color:#fff}.important{background:var(--crit)}.check{background:var(--warn);color:#111}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--crit);font-weight:600}.small{font-size:13px;color:var(--muted)}
+.ev{font-size:12px;background:var(--chip);border-radius:8px;padding:6px 9px;margin:8px 0;word-break:break-word}
+.conf{font-size:11px;padding:1px 7px;border-radius:10px;background:var(--chip);margin-right:6px}
+.filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 4px 12px;color:var(--muted);font-size:14px}
+input[type=text],input[type=url]{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:11px;width:100%;font:inherit;margin:6px 0 12px}
+label.f{display:block;font-size:13px;color:var(--muted);margin-top:4px}
+ol{padding-left:20px}
+.list a{color:var(--ink)}
+/* ---------- bottom sheet (app editor) ---------- */
+.sheet{position:fixed;inset:0;z-index:50;background:#000a;display:flex;align-items:flex-end;justify-content:center}
+.sheet-card{background:var(--panel);border:1px solid var(--line);border-radius:22px 22px 0 0;width:100%;max-width:560px;padding:20px 18px calc(env(safe-area-inset-bottom) + 18px);max-height:92vh;overflow:auto}
+@media (min-width:821px){.sheet{align-items:center}.sheet-card{border-radius:22px}}
+.sheet-card h3{margin:0 0 10px;font-size:18px}
+.icons{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin:6px 0 14px}
+.icons button{background:var(--chip);border:2px solid transparent;border-radius:10px;font-size:22px;padding:6px 0}
+.icons button.sel{border-color:var(--brand)}
+.sheet-actions{display:flex;gap:10px;justify-content:flex-end}
 </style>
 </head>
 <body>
-<header>
-  <div class="logo">BONELİA <span>AI</span> · <span data-i="panel"></span></div>
-  <nav id="nav">
-    <button data-p="home" class="active" data-i="n_home"></button>
-    <button data-p="devices" data-i="n_devices"></button>
-    <button data-p="findings" data-i="n_findings"></button>
-    <button data-p="repairs" data-i="n_repairs"></button>
-    <button data-p="customers" data-i="n_customers"></button>
-    <button data-p="settings" data-i="n_settings"></button>
-  </nav>
-  <select id="lang"><option value="tr">TR</option><option value="de">DE</option></select>
-  <button class="sec" id="quit" data-i="quit"></button>
+<header class="hero" id="hero">
+  <div class="topbar">
+    <button class="iconbtn" id="bell" aria-label="!"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="badge hidden" id="bellN"></span></button>
+    <div class="title">BONELİA <span>AI</span> <span data-i="platform" style="color:inherit;font-weight:500"></span></div>
+    <div class="tools"><select id="lang"><option value="tr">TR</option><option value="de">DE</option></select><button class="sec" id="quit" data-i="quit" style="padding:5px 9px;font-size:13px"></button></div>
+  </div>
+  <div class="big">
+    <div class="updated" id="updated">&nbsp;</div>
+    <h1 class="headline" id="headline">&nbsp;</h1>
+    <div class="emblem"><div class="ring r1"></div><div class="ring r2"></div><div class="core" id="core"></div></div>
+    <div class="subline" id="subline"></div>
+  </div>
 </header>
+
+<nav id="nav">
+  <button data-p="home" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span data-i="n_home"></span></button>
+  <button data-p="devices"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span data-i="n_devices"></span></button>
+  <button data-p="findings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5v.01"/></svg><span data-i="n_findings"></span></button>
+  <button data-p="repairs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg><span data-i="n_repairs"></span></button>
+  <button data-p="customers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></svg><span data-i="n_customers"></span></button>
+  <button data-p="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg><span data-i="n_settings"></span></button>
+</nav>
+
 <main>
   <section id="p-home">
-    <div class="grid">
-      <div class="card"><h3 data-i="k_customers"></h3><div class="big" id="kCust">–</div></div>
-      <div class="card"><h3 data-i="k_online"></h3><div class="big" id="kOnline">–</div></div>
-      <div class="card"><h3 data-i="k_important"></h3><div class="big" id="kImp">–</div></div>
-      <div class="card"><h3 data-i="k_repairs"></h3><div class="big" id="kRep">–</div></div>
+    <div class="tiles">
+      <button class="tile wide" data-go="findings" id="tileStatus"><div class="tt" data-i="t_status"></div><div class="tv" id="tStatus">–</div>
+        <div class="tfoot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg><div class="tbig" id="kImp">–</div></div></button>
+      <button class="tile" data-go="devices" id="tileDev"><div class="tt" data-i="n_devices"></div><div class="tv" data-i="t_online"></div>
+        <div class="tfoot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><div class="tbig" id="kOnline">–</div></div></button>
+      <button class="tile" data-go="repairs"><div class="tt" data-i="n_repairs"></div><div class="tv" data-i="t_7d"></div>
+        <div class="tfoot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg><div class="tbig" id="kRep">–</div></div></button>
+      <button class="tile" data-go="settings"><div class="tt" data-i="t_notify"></div><div class="tv" id="tTg">–</div>
+        <div class="tfoot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><div class="tbig" id="kTg"></div></div></button>
+      <button class="tile" data-go="customers"><div class="tt" data-i="n_customers"></div><div class="tv" data-i="t_level"></div>
+        <div class="tfoot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></svg><div class="tbig" id="kCust">–</div></div></button>
     </div>
-    <div class="card"><h3 data-i="latest"></h3><div id="homeList" class="small"></div></div>
+
+    <div class="block">
+      <div class="bh"><h2 data-i="my_apps"></h2><button class="link" id="appsEdit" data-i="edit"></button></div>
+      <div class="apps" id="apps"></div>
+      <p class="hint" data-i="apps_hint"></p>
+    </div>
+
+    <div class="block"><h2 data-i="latest"></h2><div id="homeList"></div></div>
   </section>
-  <section id="p-devices" class="hidden"><table><thead><tr><th></th><th data-i="c_device"></th><th data-i="c_customer"></th><th data-i="c_kind"></th><th data-i="c_seen"></th><th data-i="c_last"></th><th></th></tr></thead><tbody id="devs"></tbody></table></section>
-  <section id="p-findings" class="hidden">
-    <div class="small"><label><input type="checkbox" id="allF"> <span data-i="show_check"></span></label> ·
+
+  <section id="p-devices" class="hidden"><h2 class="ph" data-i="n_devices"></h2><div id="devs"></div></section>
+  <section id="p-findings" class="hidden"><h2 class="ph" data-i="n_findings"></h2>
+    <div class="filters"><label><input type="checkbox" id="allF"> <span data-i="show_check"></span></label>
       <select id="hoursF"><option value="24">24 h</option><option value="168">7 d</option><option value="720">30 d</option></select></div>
     <div id="finds"></div>
   </section>
-  <section id="p-repairs" class="hidden"><table><thead><tr><th data-i="c_time"></th><th data-i="c_customer"></th><th data-i="c_device"></th><th data-i="c_repair"></th><th data-i="c_result"></th></tr></thead><tbody id="reps"></tbody></table></section>
-  <section id="p-customers" class="hidden"><table><thead><tr><th data-i="c_customer"></th><th data-i="c_agents"></th><th data-i="c_level"></th></tr></thead><tbody id="custs"></tbody></table>
-    <p class="small" data-i="level_help"></p></section>
-  <section id="p-settings" class="hidden">
-    <div class="card"><h3 data-i="tg_title"></h3>
-      <div id="tgState"></div>
+  <section id="p-repairs" class="hidden"><h2 class="ph" data-i="n_repairs"></h2><div id="reps"></div></section>
+  <section id="p-customers" class="hidden"><h2 class="ph" data-i="n_customers"></h2><div id="custs"></div><p class="hint" data-i="level_help"></p></section>
+  <section id="p-settings" class="hidden"><h2 class="ph" data-i="n_settings"></h2>
+    <div class="item"><div class="ih"><b data-i="tg_title"></b></div>
+      <div id="tgState" style="margin-top:6px"></div>
       <p class="small" data-i="tg_help"></p>
       <div id="tgOff"><ol class="small"><li data-i="tg_s1"></li><li data-i="tg_s2"></li></ol>
         <input id="tgToken" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="123456789:AA...">
-        <button id="tgSave" data-i="tg_save"></button></div>
-      <div id="tgPending" class="hidden"><p id="tgPendingTxt"></p><button id="tgConnect" data-i="tg_connect"></button></div>
-      <div id="tgOn" class="hidden"><button id="tgTest" data-i="tg_test"></button> <button class="sec" id="tgOffBtn" data-i="tg_off"></button></div>
-      <div id="tgMsg" class="small" style="margin-top:8px"></div>
+        <button class="btn" id="tgSave" data-i="tg_save"></button></div>
+      <div id="tgPending" class="hidden"><p id="tgPendingTxt"></p><button class="btn" id="tgConnect" data-i="tg_connect"></button></div>
+      <div id="tgOn" class="hidden acts"><button class="btn" id="tgTest" data-i="tg_test"></button><button class="sec" id="tgOffBtn" data-i="tg_off"></button></div>
+      <div id="tgMsg" class="small" style="margin-top:10px"></div>
     </div>
   </section>
 </main>
+
+<div class="sheet hidden" id="sheet">
+  <div class="sheet-card">
+    <h3 id="sheetTitle"></h3>
+    <label class="f" data-i="app_name"></label><input id="appName" type="text" maxlength="40" autocomplete="off">
+    <label class="f" data-i="app_url"></label><input id="appUrl" type="url" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://…">
+    <label class="f" data-i="app_icon"></label><div class="icons" id="iconPick"></div>
+    <div class="sheet-actions"><button class="sec" id="appCancel" data-i="cancel"></button><button class="btn" id="appSave" data-i="tg_save"></button></div>
+    <div id="appMsg" class="small bad" style="margin-top:10px"></div>
+  </div>
+</div>
+
 <script>
-const T={tr:{panel:"Kontrol Paneli",n_home:"Genel bakış",n_devices:"Bilgisayarlar",n_findings:"Sorunlar",n_repairs:"Onarımlar",n_customers:"Müşteriler",quit:"Kapat",
-k_customers:"Müşteri",k_online:"Çevrimiçi bilgisayar",k_important:"Önemli sorun (24 saat)",k_repairs:"Onarım (7 gün)",latest:"Son önemli sorunlar",
+const T={tr:{panel:"Kontrol Paneli",platform:"Platformu",n_home:"Ana sayfa",n_devices:"Bilgisayarlar",n_findings:"Sorunlar",n_repairs:"Onarımlar",n_customers:"Müşteriler",n_settings:"Ayarlar",quit:"Kapat",
+h_ok:"HER ŞEY<br>TAMAM",h_issue1:"1 ÖNEMLİ<br>SORUN",h_issue:"{n} ÖNEMLİ<br>SORUN",h_off:"{n} BİLGİSAYAR<br>SESSİZ",h_empty:"HENÜZ<br>BİLGİSAYAR YOK",
+s_ok:"{on} / {all} bilgisayar çevrimiçi · son 24 saatte önemli sorun yok",s_issue:"Son 24 saatte {n} önemli sorun — görmek için dokun",
+s_off:"{n} bilgisayar 15 dakikadır sinyal vermiyor",s_empty:"İlk bilgisayarı USB ile kur",updated:"Bilgisayarlardan güncellendi {t}",
+t_status:"Durum",st_ok:"Her şey tamam",st_issue:"{n} önemli sorun",st_off:"{n} bilgisayar sessiz",st_empty:"Bilgisayar yok",
+t_online:"çevrimiçi",t_7d:"son 7 gün",t_notify:"Bildirimler",t_level:"müşteri",
+my_apps:"Uygulamalarım",edit:"Düzenle",done:"Bitti",add:"Ekle",app_add:"Uygulama ekle",app_edit:"Uygulamayı düzenle",app_name:"Ad",app_url:"Adres (https://…)",app_icon:"Simge",cancel:"Vazgeç",
+apps_hint:"Programlarının ve admin panellerinin adreslerini ekle; tek dokunuşla açılır. Şifre burada tutulmaz — giriş her programın kendi sayfasında yapılır (telefonun şifreyi hatırlar).",
+app_del_q:"Bu uygulama listeden kaldırılsın mı?",err_invalid_url:"Adres https:// veya http:// ile başlamalı (ör. https://admin.ornek.de).",err_too_many_apps:"En fazla 40 uygulama.",
+k_customers:"Müşteri",latest:"Son önemli sorunlar",
 c_device:"Bilgisayar / USB",c_customer:"Müşteri",c_kind:"Tür",c_seen:"Son görülme",c_last:"Son durum",c_time:"Zaman",c_repair:"Onarım",c_result:"Sonuç",c_agents:"Kurulu bilgisayar",c_level:"Onarım izni",
 agent:"Kurulu bilgisayar",usb:"USB",install_key:"Kurulum anahtarı",revoked:"iptal",revoke:"İptal et",revoke_q:"Bu cihazın yetkisi iptal edilsin mi?",
 delete:"Sil",delete_q:"Bu cihaz listeden kalıcı olarak silinsin mi?",
 show_check:"'Kontrol edin' kayıtlarını da göster",none:"Kayıt yok.",ai:"Analiz",verified:"Onarıldı ✓",unverified:"Yapıldı, doğrulanamadı",failed:"Başarısız",denied:"İzin yok",
 l0:"0 – Sadece okuma",l1:"1 – Güvenli onarımlar otomatik",l2:"2 – + çöken hizmetleri yeniden başlatma (otomatik)",saved:"Kaydedildi",
-need_token:"Güvenlik anahtarı yok. Bilgisayardaki C:\\BoneliaAI\\server-data\\panel-url.txt dosyasındaki TAM adresi (sonundaki #… ile) telefonda bir kez açın; bu cihaz anahtarı hatırlar, sonra kısa adres yeter.",
+need_token:"Güvenlik anahtarı yok. Bilgisayardaki C:\\BoneliaAI\\server-data\\panel-url.txt dosyasındaki TAM adresi telefonda bir kez aç; bu cihaz anahtarı hatırlar.",
 level_help:"Seviye 1: durmuş hizmeti başlatma, DNS önbelleği temizleme, eski geçici dosyaları silme kendiliğinden yapılır. Seviye 2: ayrıca tekrar tekrar çöken hizmetler kendiliğinden yeniden başlatılır (saatte en fazla 2). Kritik Windows hizmetlerine hiçbir seviyede dokunulmaz.",
 closed:"Panel kapatıldı.",quit_q:"Panel kapatılsın mı? Tekrar açmak için bilgisayarda BONELIA-Baslat gerekir.",
-n_settings:"Ayarlar",tg_title:"📱 Telefon bildirimleri (Telegram)",
+tg_title:"📱 Telefon bildirimleri (Telegram)",
 tg_help:"Bağlandıktan sonra telefonuna mesaj gelir: önemli sorunlar (disk arızası, eski yedek…), yapılan onarımlar, izin gereken onarımlar ve 30 dakikadır sinyal vermeyen bilgisayarlar.",
 tg_s1:"Telegram'da @BotFather'ı aç, /newbot yaz, bota bir ad ver (sonu 'bot' ile bitmeli). Sana uzun bir anahtar (token) verir — onu kopyala.",
 tg_s2:"Anahtarı aşağıya yapıştır ve 'Kaydet'e bas.",tg_save:"Kaydet",
 tg_pending:"Son adım: Telegram'da botunu ({bot}) aç, 'Başlat'a bas (veya 'merhaba' yaz). Sonra aşağıdaki 'Bağla'ya bas.",
 tg_connect:"Bağla",tg_test:"Test mesajı gönder",tg_off:"Bildirimleri kapat",tg_off_q:"Telegram bildirimleri kapatılsın mı?",
-tg_on:"Bağlı ✓",tg_off_state:"Bağlı değil.",tg_pending_state:"Anahtar kaydedildi — son adım: bağla.",tg_sent:"Gönderildi ✓ Telefonuna bak.",
+tg_on:"Bağlı ✓",tg_off_state:"Bağlı değil.",tg_pending_state:"Anahtar kaydedildi — son adım: bağla.",tg_sent:"Gönderildi ✓ Telefonuna bak.",tg_tile_on:"Telegram bağlı",tg_tile_off:"Telegram bağlı değil",
 err_invalid_token:"Bu bir bot anahtarına benzemiyor. @BotFather'ın verdiği anahtarı eksiksiz kopyala.",
 err_token_rejected:"Telegram bu anahtarı kabul etmedi (yanlış veya iptal edilmiş).",
 err_no_message:"Bota henüz mesaj gelmedi. Telegram'da botu açıp 'Başlat'a bas veya bir mesaj yaz, sonra tekrar 'Bağla'.",
@@ -106,23 +242,31 @@ err_invalid_path:"Geçersiz klasör. Örnek: D:\\Kasa\\Yedek , E:\\ veya \\\\NAS
 backup:"Yedek",backup_none:"yedek klasörü tanımlı değil",days:"gün",
 backup_q:"Bu bilgisayarın yedeklerinin yazıldığı klasör (birden fazlaysa ; ile ayır). Örnek: D:\\Kasa\\Yedek veya E:\\ — boş bırakırsan klasör kontrolü kapanır.",
 backup_days_q:"Son yedek kaç günden eski olursa uyarayım? (1-60)"},
-de:{panel:"Kontrollzentrum",n_home:"Übersicht",n_devices:"Computer",n_findings:"Probleme",n_repairs:"Reparaturen",n_customers:"Kunden",quit:"Schließen",
-k_customers:"Kunden",k_online:"Computer online",k_important:"Wichtige Probleme (24 h)",k_repairs:"Reparaturen (7 Tage)",latest:"Letzte wichtige Probleme",
+de:{panel:"Kontrollzentrum",platform:"Plattform",n_home:"Start",n_devices:"Computer",n_findings:"Probleme",n_repairs:"Reparaturen",n_customers:"Kunden",n_settings:"Einstellungen",quit:"Schließen",
+h_ok:"ALLES IN<br>ORDNUNG",h_issue1:"1 WICHTIGES<br>PROBLEM",h_issue:"{n} WICHTIGE<br>PROBLEME",h_off:"{n} PC OHNE<br>SIGNAL",h_empty:"NOCH<br>KEIN PC",
+s_ok:"{on} / {all} PCs online · keine wichtigen Probleme in 24 h",s_issue:"{n} wichtige Probleme in 24 h — antippen zum Ansehen",
+s_off:"{n} PC(s) seit 15 Minuten ohne Signal",s_empty:"Ersten PC per USB einrichten",updated:"Von den PCs aktualisiert {t}",
+t_status:"Status",st_ok:"Alles in Ordnung",st_issue:"{n} wichtige Probleme",st_off:"{n} PC(s) ohne Signal",st_empty:"Kein PC",
+t_online:"online",t_7d:"letzte 7 Tage",t_notify:"Benachrichtigungen",t_level:"Kunden",
+my_apps:"Meine Anwendungen",edit:"Bearbeiten",done:"Fertig",add:"Hinzufügen",app_add:"Anwendung hinzufügen",app_edit:"Anwendung bearbeiten",app_name:"Name",app_url:"Adresse (https://…)",app_icon:"Symbol",cancel:"Abbrechen",
+apps_hint:"Adressen Ihrer Programme und Admin-Panels hinzufügen; ein Tipp öffnet sie. Passwörter werden hier nicht gespeichert — die Anmeldung erfolgt im jeweiligen Programm (das Handy merkt sich das Passwort).",
+app_del_q:"Diese Anwendung aus der Liste entfernen?",err_invalid_url:"Die Adresse muss mit https:// oder http:// beginnen (z. B. https://admin.beispiel.de).",err_too_many_apps:"Höchstens 40 Anwendungen.",
+k_customers:"Kunden",latest:"Letzte wichtige Probleme",
 c_device:"Computer / USB",c_customer:"Kunde",c_kind:"Typ",c_seen:"Zuletzt gesehen",c_last:"Letzter Status",c_time:"Zeit",c_repair:"Reparatur",c_result:"Ergebnis",c_agents:"Installierte PCs",c_level:"Reparaturfreigabe",
 agent:"Installierter PC",usb:"USB",install_key:"Installationsschlüssel",revoked:"widerrufen",revoke:"Widerrufen",revoke_q:"Berechtigung dieses Geräts widerrufen?",
 delete:"Löschen",delete_q:"Dieses Gerät dauerhaft aus der Liste löschen?",
 show_check:"Auch 'Prüfen'-Einträge zeigen",none:"Keine Einträge.",ai:"Analyse",verified:"Repariert ✓",unverified:"Ausgeführt, nicht bestätigt",failed:"Fehlgeschlagen",denied:"Nicht erlaubt",
 l0:"0 – Nur lesen",l1:"1 – Sichere Reparaturen automatisch",l2:"2 – + abgestürzte Dienste neu starten (automatisch)",saved:"Gespeichert",
-need_token:"Kein Zugriffstoken. Öffnen Sie einmal die VOLLSTÄNDIGE Adresse (mit #… am Ende) aus C:\\BoneliaAI\\server-data\\panel-url.txt auf dem PC; dieses Gerät merkt sich den Schlüssel, danach genügt die kurze Adresse.",
+need_token:"Kein Zugriffstoken. Einmal die VOLLSTÄNDIGE Adresse aus C:\\BoneliaAI\\server-data\\panel-url.txt auf dem Handy öffnen; dieses Gerät merkt sich den Schlüssel.",
 level_help:"Stufe 1: gestoppten Dienst starten, DNS-Cache leeren, alte temporäre Dateien löschen geschieht automatisch. Stufe 2: zusätzlich werden wiederholt abstürzende Dienste automatisch neu gestartet (max. 2/h). Kritische Windows-Dienste werden nie angefasst.",
 closed:"Panel geschlossen.",quit_q:"Panel schließen? Zum erneuten Öffnen am PC BONELIA-Baslat starten.",
-n_settings:"Einstellungen",tg_title:"📱 Handy-Benachrichtigungen (Telegram)",
+tg_title:"📱 Handy-Benachrichtigungen (Telegram)",
 tg_help:"Nach dem Verbinden kommen Nachrichten aufs Handy: wichtige Probleme (Plattendefekt, alte Sicherung…), durchgeführte Reparaturen, Reparaturen mit Freigabebedarf und PCs ohne Signal seit 30 Minuten.",
 tg_s1:"In Telegram @BotFather öffnen, /newbot senden, einen Namen geben (muss auf 'bot' enden). Sie erhalten einen langen Schlüssel (Token) — kopieren.",
 tg_s2:"Schlüssel unten einfügen und 'Speichern' drücken.",tg_save:"Speichern",
 tg_pending:"Letzter Schritt: Ihren Bot ({bot}) in Telegram öffnen, 'Start' tippen (oder 'Hallo' schreiben). Dann unten 'Verbinden' drücken.",
 tg_connect:"Verbinden",tg_test:"Testnachricht senden",tg_off:"Benachrichtigungen aus",tg_off_q:"Telegram-Benachrichtigungen ausschalten?",
-tg_on:"Verbunden ✓",tg_off_state:"Nicht verbunden.",tg_pending_state:"Schlüssel gespeichert — letzter Schritt: verbinden.",tg_sent:"Gesendet ✓ Aufs Handy schauen.",
+tg_on:"Verbunden ✓",tg_off_state:"Nicht verbunden.",tg_pending_state:"Schlüssel gespeichert — letzter Schritt: verbinden.",tg_sent:"Gesendet ✓ Aufs Handy schauen.",tg_tile_on:"Telegram verbunden",tg_tile_off:"Telegram nicht verbunden",
 err_invalid_token:"Das sieht nicht wie ein Bot-Schlüssel aus. Den Schlüssel von @BotFather vollständig kopieren.",
 err_token_rejected:"Telegram hat den Schlüssel abgelehnt (falsch oder widerrufen).",
 err_no_message:"Der Bot hat noch keine Nachricht. In Telegram den Bot öffnen, 'Start' tippen oder schreiben, dann erneut 'Verbinden'.",
@@ -131,51 +275,114 @@ err_invalid_path:"Ungültiger Ordner. Beispiel: D:\\Kasse\\Sicherung , E:\\ oder
 backup:"Sicherung",backup_none:"kein Sicherungsordner hinterlegt",days:"Tage",
 backup_q:"Ordner, in den die Sicherungen dieses PCs geschrieben werden (mehrere mit ; trennen). Beispiel: D:\\Kasse\\Sicherung oder E:\\ — leer lassen schaltet die Ordnerprüfung aus.",
 backup_days_q:"Ab wie vielen Tagen ohne neue Sicherung soll ich warnen? (1-60)"}};
+const ICONS=["🔗","🛒","🧾","💳","📦","🏪","🍦","🍕","☕","🚚","📊","📅","👥","🖥️","🌐","⚙️","🔐","📧","📞","🗄️","📱","🏦","🧮","🛠️"];
+const SVG_OK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const SVG_WARN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 6v8M12 18v.01"/></svg>';
+const SVG_OFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9a12 12 0 0 1 16 0M7.5 12.5a7 7 0 0 1 9 0M11 16a2 2 0 0 1 2 0M3 3l18 18"/></svg>';
+const SVG_EMPTY='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+
 // Token may arrive as ?t=… (preferred: iOS "Add to Home Screen" keeps the query) or #… (older links).
 // It is kept in the URL on purpose so the home-screen shortcut captures it, and remembered per device.
 let TOKEN="";try{TOKEN=new URLSearchParams(location.search).get("t")||location.hash.slice(1)||localStorage.getItem("bt")||"";if(TOKEN)localStorage.setItem("bt",TOKEN);}catch(e){TOKEN=new URLSearchParams(location.search).get("t")||location.hash.slice(1)||""}
-let L="tr";const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+let L="tr";try{L=localStorage.getItem("bl")||"tr"}catch(e){}
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const t=k=>(T[L]||T.tr)[k]??k;
+const errT=m=>{const k="err_"+m,v=t(k);return v===k?m:v};
 async function api(p,b){const r=await fetch(p,{method:b===undefined?"GET":"POST",headers:{"x-ui-token":TOKEN,"content-type":"application/json"},body:b===undefined?undefined:JSON.stringify(b)});
  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(typeof j.detail==="string"?j.detail:(r.status===422?"invalid":String(r.status)));return j}
-function i18n(){document.documentElement.lang=L;$$("[data-i]").forEach(e=>e.textContent=t(e.dataset.i));$("#lang").value=L}
-function show(p){$$("main>section").forEach(s=>s.classList.toggle("hidden",s.id!=="p-"+p));$$("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.p===p))}
-const fmt=s=>s?String(s).replace("T"," ").slice(0,16):"–";
+// server times are UTC; show them in the phone's local time
+const toDate=s=>{if(!s)return null;let x=String(s);if(!/[zZ]$|[+-]\d\d:?\d\d$/.test(x))x+="Z";const d=new Date(x);return isNaN(d)?null:d};
+const loc=()=>L==="de"?"de-DE":"tr-TR";
+const fmt=s=>{const d=toDate(s);return d?d.toLocaleString(loc(),{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"–"};
+function i18n(){document.documentElement.lang=L;$$("[data-i]").forEach(e=>e.textContent=t(e.dataset.i));$("#lang").value=L;$("#appsEdit").textContent=t(EDIT?"done":"edit")}
+let PAGE="home",HERO_GO=null;
+function show(p){PAGE=p;$$("main>section").forEach(s=>s.classList.toggle("hidden",s.id!=="p-"+p));$$("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.p===p));
+ $("#hero").classList.toggle("compact",p!=="home");window.scrollTo(0,0);if(p==="settings")tgLoad()}
 function outcome(r){if(r.action==="tool.denied")return`<span class="bad">${t("denied")}</span> <span class="small">${esc((r.reasons||[]).join(", "))}</span>`;
  if(r.outcome==="executed_verified")return`<span class="ok">${t("verified")}</span>`;if(r.outcome==="executed_unverified")return`<span class="bad">${t("unverified")}</span>`;return`<span class="bad">${t("failed")}</span>`}
-function findCard(f){const d=f.diagnosis;return`<div class="card"><div><span class="tri ${esc(f.triage)}">${esc(f.triage==="important"?"!":"?")}</span><b>${esc(f.title)}</b></div>
- <div class="small">${esc(fmt(f.at))} · ${esc(f.customer)} · ${esc(f.device)} · ${esc(f.app)} · ×${f.occurrences}${f.repair_tool?" · 🔧 "+esc(f.repair_tool):""}</div>
+function findCard(f){const d=f.diagnosis;return`<div class="item"><div class="ih"><span class="tri ${esc(f.triage)}">${esc(f.triage==="important"?"!":"?")}</span><b>${esc(f.title)}</b></div>
+ <div class="meta">${esc(fmt(f.at))} · ${esc(f.customer)} · ${esc(f.device)} · ×${f.occurrences}${f.repair_tool?" · 🔧 "+esc(f.repair_tool):""}</div>
  ${(f.evidence||[]).map(e=>`<div class="ev">${esc(e.source)} ${esc(e.code||"")} ${esc(e.text)}</div>`).join("")}
- ${d?`<div class="small">${t("ai")}: ${esc(d.produced_by)}</div><div>${esc(d.summary)}</div>
- ${d.hypotheses.map(h=>`<div><span class="conf">${esc(h.confidence)}</span>${esc(h.cause)}</div>`).join("")}
- ${d.recommendations.map(r=>`<div class="small">→ ${esc(r)}</div>`).join("")}`:""}</div>`}
+ ${d?`<div class="meta">${t("ai")}: ${esc(d.produced_by)}</div><div style="margin-top:4px">${esc(d.summary)}</div>
+ ${d.hypotheses.map(h=>`<div style="margin-top:4px"><span class="conf">${esc(h.confidence)}</span>${esc(h.cause)}</div>`).join("")}
+ ${d.recommendations.map(r=>`<div class="meta">→ ${esc(r)}</div>`).join("")}`:""}</div>`}
+
+function renderHero(o){
+ const ag=o.devices.filter(d=>d.kind==="agent"&&d.status==="active"),on=ag.filter(d=>d.online).length,off=ag.length-on;
+ const imp=o.tenants.reduce((a,x)=>a+x.important_24h,0);
+ let cls,h,sub,core,st;
+ if(!ag.length){cls="idle";h=t("h_empty");sub=t("s_empty");core=SVG_EMPTY;st=t("st_empty")}
+ else if(off){cls="crit";h=t("h_off").replace("{n}",off);sub=t("s_off").replace("{n}",off);core=SVG_OFF;st=t("st_off").replace("{n}",off)}
+ else if(imp){cls="warn";h=imp===1?t("h_issue1"):t("h_issue").replace("{n}",imp);sub=t("s_issue").replace("{n}",imp);core=SVG_WARN;st=t("st_issue").replace("{n}",imp)}
+ else{cls="ok";h=t("h_ok");sub=t("s_ok").replace("{on}",on).replace("{all}",ag.length);core=SVG_OK;st=t("st_ok")}
+ $("#hero").classList.remove("s-ok","s-warn","s-crit","s-idle");$("#hero").classList.add("s-"+cls);
+ HERO_GO=cls==="crit"?"devices":cls==="warn"?"findings":cls==="idle"?null:null;$(".big").classList.toggle("tap",!!HERO_GO);$("#headline").innerHTML=h;$("#subline").textContent=sub;$("#core").innerHTML=core;
+ const last=ag.map(d=>toDate(d.last_seen_at)).filter(Boolean).sort((a,b)=>b-a)[0];
+ $("#updated").textContent=last?t("updated").replace("{t}",last.toLocaleString(loc(),{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})):"\u00a0";
+ $("#tStatus").textContent=st;$("#kImp").textContent=imp;
+ $("#tileStatus").className="tile wide "+(cls==="idle"?"":"s-"+cls);
+ $("#kOnline").innerHTML=`${on}<small>/ ${ag.length}</small>`;$("#tileDev").className="tile "+(ag.length&&!off?"s-ok":off?"s-crit":"");
+ $("#bellN").textContent=imp;$("#bellN").classList.toggle("hidden",!imp);
+}
+
 async function load(){
  const o=await api("/api/overview"),f=await api("/api/findings?hours="+$("#hoursF").value+"&all="+$("#allF").checked),r=await api("/api/repairs?hours=168");
- const agents=o.devices.filter(d=>d.kind==="agent"&&d.status==="active");
- $("#kCust").textContent=o.tenants.length;$("#kOnline").textContent=agents.filter(d=>d.online).length+" / "+agents.length;
- $("#kImp").textContent=o.tenants.reduce((a,x)=>a+x.important_24h,0);$("#kRep").textContent=r.repairs.filter(x=>x.action==="tool.executed").length;
- $("#homeList").innerHTML=f.findings.filter(x=>x.triage==="important").slice(0,8).map(x=>`<div>• ${esc(fmt(x.at))} — <b>${esc(x.title)}</b> (${esc(x.customer)}, ${esc(x.device)})</div>`).join("")||t("none");
- $("#devs").innerHTML=o.devices.map(d=>`<tr><td><span class="dot ${d.kind!=="agent"?"na":d.online?"on":"off"}"></span></td><td>${esc(d.label)}<div class="small">${esc(d.id)}</div>${d.kind==="agent"?`<div class="small">💾 ${d.backup?esc(d.backup.paths.join("; "))+" ("+d.backup.max_age_days+" "+t("days")+")":t("backup_none")}</div>`:""}</td>
-  <td>${esc(d.customer)}</td><td>${esc(t(d.kind))}${d.status!=="active"?` <span class="bad">(${t("revoked")})</span>`:""}</td><td>${esc(fmt(d.last_seen_at))}</td>
-  <td class="small">${d.last_status?esc((d.last_status.repairs||[]).join(", ")||("cycles "+d.last_status.cycles)):""}</td>
-  <td>${d.kind==="agent"&&d.status==="active"?`<button class="sec" data-bak="${esc(d.id)}">${t("backup")}</button> `:""}${d.status==="active"?`<button class="sec" data-rev="${esc(d.id)}">${t("revoke")}</button> `:""}<button class="sec" data-del="${esc(d.id)}">${t("delete")}</button></td></tr>`).join("");
+ renderHero(o);
+ $("#kCust").textContent=o.tenants.length;$("#kRep").textContent=r.repairs.filter(x=>x.action==="tool.executed").length;
+ const imp=f.findings.filter(x=>x.triage==="important").slice(0,8);
+ $("#homeList").innerHTML=imp.map(x=>`<div class="item"><div class="ih"><span class="tri important">!</span><b>${esc(x.title)}</b></div><div class="meta">${esc(fmt(x.at))} · ${esc(x.customer)} · ${esc(x.device)}</div></div>`).join("")||`<div class="item small">${t("none")}</div>`;
+ $("#devs").innerHTML=o.devices.map(d=>`<div class="item"><div class="ih"><span class="dot ${d.kind!=="agent"?"na":d.online?"on":"off"}"></span><b>${esc(d.label)}</b><span class="chip">${esc(t(d.kind))}</span>${d.status!=="active"?`<span class="bad">(${t("revoked")})</span>`:""}</div>
+  <div class="meta">${esc(d.customer)} · ${t("c_seen")}: ${esc(fmt(d.last_seen_at))}</div>
+  ${d.last_status?`<div class="meta">${t("c_last")}: ${esc((d.last_status.repairs||[]).join(", ")||("cycles "+d.last_status.cycles))}</div>`:""}
+  ${d.kind==="agent"?`<div class="meta">💾 ${d.backup?esc(d.backup.paths.join("; "))+" ("+d.backup.max_age_days+" "+t("days")+")":t("backup_none")}</div>`:""}
+  <div class="meta tiny">${esc(d.id)}</div>
+  <div class="acts">${d.kind==="agent"&&d.status==="active"?`<button class="sec" data-bak="${esc(d.id)}">💾 ${t("backup")}</button>`:""}${d.status==="active"?`<button class="sec" data-rev="${esc(d.id)}">${t("revoke")}</button>`:""}<button class="sec" data-del="${esc(d.id)}">${t("delete")}</button></div></div>`).join("")||`<div class="item small">${t("none")}</div>`;
  $$("[data-rev]").forEach(b=>b.onclick=async()=>{if(confirm(t("revoke_q"))){await api("/api/devices/"+encodeURIComponent(b.dataset.rev)+"/revoke",{});load()}});
  $$("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm(t("delete_q"))){await api("/api/devices/"+encodeURIComponent(b.dataset.del)+"/delete",{});load()}});
  $$("[data-bak]").forEach(b=>b.onclick=async()=>{const cur=(o.devices.find(x=>x.id===b.dataset.bak)||{}).backup||{};
   const pth=prompt(t("backup_q"),(cur.paths||[]).join("; "));if(pth===null)return;let days=cur.max_age_days||2;
   if(pth.trim()){const n=prompt(t("backup_days_q"),String(days));if(n===null)return;days=Math.max(1,Math.min(60,parseInt(n,10)||2))}
   try{await api("/api/devices/"+encodeURIComponent(b.dataset.bak)+"/backup-policy",{paths:pth.split(";").map(x=>x.trim()).filter(Boolean),max_age_days:days});load()}catch(e){alert(errT(e.message))}});
- $("#finds").innerHTML=f.findings.map(findCard).join("")||`<div class="card">${t("none")}</div>`;
- $("#reps").innerHTML=r.repairs.map(x=>`<tr><td>${esc(fmt(x.at))}</td><td>${esc(x.customer)}</td><td>${esc(x.device)}</td><td>${esc(x.tool_id)} <span class="small">${esc(Object.values(x.params||{}).join(" "))}</span></td><td>${outcome(x)}</td></tr>`).join("")||`<tr><td colspan="5">${t("none")}</td></tr>`;
- $("#custs").innerHTML=o.tenants.map(c=>`<tr><td><b>${esc(c.name)}</b><div class="small">${esc(c.id)}</div></td><td>${c.online} / ${c.agents}</td>
-  <td><select data-lvl="${esc(c.id)}">${[0,1,2].map(l=>`<option value="${l}" ${l===c.repair_level?"selected":""}>${t("l"+l)}</option>`).join("")}</select> <span class="small" id="sv-${esc(c.id)}"></span></td></tr>`).join("");
+ $("#finds").innerHTML=f.findings.map(findCard).join("")||`<div class="item small">${t("none")}</div>`;
+ $("#reps").innerHTML=r.repairs.map(x=>`<div class="item"><div class="ih"><b>${esc(x.tool_id)}</b> ${outcome(x)}</div>
+  <div class="meta">${esc(fmt(x.at))} · ${esc(x.customer)} · ${esc(x.device)}${Object.keys(x.params||{}).length?" · "+esc(Object.values(x.params).join(" ")):""}</div></div>`).join("")||`<div class="item small">${t("none")}</div>`;
+ $("#custs").innerHTML=o.tenants.map(c=>`<div class="item"><div class="ih"><b>${esc(c.name)}</b><span class="chip">${c.online} / ${c.agents} ${t("t_online")}</span></div>
+  <div class="meta tiny">${esc(c.id)}</div><label class="f" style="margin-top:10px">${t("c_level")}</label>
+  <select data-lvl="${esc(c.id)}" style="width:100%;margin-top:4px;padding:9px">${[0,1,2].map(l=>`<option value="${l}" ${l===c.repair_level?"selected":""}>${t("l"+l)}</option>`).join("")}</select> <span class="small" id="sv-${esc(c.id)}"></span></div>`).join("")||`<div class="item small">${t("none")}</div>`;
  $$("[data-lvl]").forEach(s=>s.onchange=async()=>{await api("/api/tenants/"+encodeURIComponent(s.dataset.lvl)+"/repair-level",{level:+s.value});$("#sv-"+s.dataset.lvl).textContent=t("saved")})}
-const errT=m=>{const k="err_"+m,v=t(k);return v===k?m:v};
+
+// ---------- my apps ----------
+let APPS=[],EDIT=false,EDIT_ID=null,ICON="🔗";
+const host=u=>{try{return new URL(u).host}catch(e){return u}};
+function renderApps(){
+ $("#apps").classList.toggle("editing",EDIT);
+ $("#apps").innerHTML=APPS.map(a=>`<a class="app" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer"><div class="ic">${esc(a.icon||"🔗")}</div><div class="an">${esc(a.name)}</div><div class="ah">${esc(host(a.url))}</div>
+  <div class="ed"><button data-mv="${esc(a.id)}" data-st="-1" aria-label="◀">◀</button><button data-ed="${esc(a.id)}" aria-label="✎">✎</button><button data-rm="${esc(a.id)}" aria-label="✕">✕</button><button data-mv="${esc(a.id)}" data-st="1" aria-label="▶">▶</button></div></a>`).join("")
+  +`<button class="app add" id="appAdd"><div class="ic">＋</div><div class="an">${t("add")}</div></button>`;
+ $("#appAdd").onclick=()=>openSheet(null);
+ $$("[data-ed]").forEach(b=>b.onclick=e=>{e.preventDefault();openSheet(APPS.find(a=>a.id===b.dataset.ed))});
+ $$("[data-rm]").forEach(b=>b.onclick=async e=>{e.preventDefault();if(!confirm(t("app_del_q")))return;APPS=(await api("/api/apps/"+encodeURIComponent(b.dataset.rm)+"/delete",{})).apps;renderApps()});
+ $$("[data-mv]").forEach(b=>b.onclick=async e=>{e.preventDefault();APPS=(await api("/api/apps/"+encodeURIComponent(b.dataset.mv)+"/move?step="+b.dataset.st,{})).apps;renderApps()});
+}
+async function appsLoad(){try{APPS=(await api("/api/apps")).apps;renderApps()}catch(e){}}
+function openSheet(a){EDIT_ID=a?a.id:null;ICON=a?a.icon:"🔗";$("#sheetTitle").textContent=t(a?"app_edit":"app_add");
+ $("#appName").value=a?a.name:"";$("#appUrl").value=a?a.url:"https://";$("#appMsg").textContent="";
+ $("#iconPick").innerHTML=ICONS.map(i=>`<button type="button" class="${i===ICON?"sel":""}" data-ic="${i}">${i}</button>`).join("");
+ $$("[data-ic]").forEach(b=>b.onclick=()=>{ICON=b.dataset.ic;$$("[data-ic]").forEach(x=>x.classList.toggle("sel",x===b))});
+ $("#sheet").classList.remove("hidden");setTimeout(()=>$("#appName").focus(),50)}
+$("#appCancel").onclick=()=>$("#sheet").classList.add("hidden");
+$("#sheet").onclick=e=>{if(e.target.id==="sheet")$("#sheet").classList.add("hidden")};
+$("#appSave").onclick=async()=>{const body={name:$("#appName").value.trim(),url:$("#appUrl").value.trim(),icon:ICON};if(EDIT_ID)body.id=EDIT_ID;
+ try{APPS=(await api("/api/apps",body)).apps;$("#sheet").classList.add("hidden");renderApps()}catch(e){$("#appMsg").textContent=errT(e.message)}};
+$("#appsEdit").onclick=()=>{EDIT=!EDIT;$("#appsEdit").textContent=t(EDIT?"done":"edit");renderApps()};
+
+// ---------- telegram ----------
 function tgRender(s){$("#tgOff").classList.toggle("hidden",s.state!=="off");$("#tgPending").classList.toggle("hidden",s.state!=="pending");
  $("#tgOn").classList.toggle("hidden",s.state!=="on");
  $("#tgState").innerHTML=s.state==="on"?`<span class="ok">${t("tg_on")}</span> @${esc(s.bot)}${s.chat_name?" → "+esc(s.chat_name):""}`:`<span class="small">${t(s.state==="pending"?"tg_pending_state":"tg_off_state")}</span>`;
- $("#tgPendingTxt").textContent=t("tg_pending").replace("{bot}","@"+(s.bot||""))}
+ $("#tgPendingTxt").textContent=t("tg_pending").replace("{bot}","@"+(s.bot||""));
+ $("#tTg").textContent=t(s.state==="on"?"tg_tile_on":"tg_tile_off");$("#kTg").innerHTML=s.state==="on"?`<span class="ok">✓</span>`:"–"}
 async function tgLoad(){try{tgRender(await api("/api/settings/telegram"))}catch(e){}}
 async function tgDo(path,body){$("#tgMsg").textContent="…";try{const s=await api(path,body===undefined?{}:body);
  $("#tgMsg").innerHTML=s.state?"":`<span class="ok">${t("tg_sent")}</span>`;if(s.state){tgRender(s);if(s.state==="on"&&path.endsWith("/connect"))$("#tgMsg").innerHTML=`<span class="ok">${t("tg_sent")}</span>`}}
@@ -184,13 +391,20 @@ $("#tgSave").onclick=async()=>{await tgDo("/api/settings/telegram/token",{token:
 $("#tgConnect").onclick=()=>tgDo("/api/settings/telegram/connect");
 $("#tgTest").onclick=()=>tgDo("/api/settings/telegram/test");
 $("#tgOffBtn").onclick=()=>{if(confirm(t("tg_off_q")))tgDo("/api/settings/telegram/off")};
-$$("#nav button").forEach(b=>b.onclick=()=>{show(b.dataset.p);if(b.dataset.p==="settings")tgLoad()});
-$("#lang").onchange=e=>{L=e.target.value;i18n();tgLoad();load()};$("#allF").onchange=load;$("#hoursF").onchange=load;
+
+// ---------- wiring ----------
+$$("#nav button").forEach(b=>b.onclick=()=>show(b.dataset.p));
+$$("[data-go]").forEach(b=>b.onclick=()=>show(b.dataset.go));
+$("#bell").onclick=()=>show("findings");$(".big").onclick=()=>{if(HERO_GO)show(HERO_GO)};
+$("#lang").onchange=e=>{L=e.target.value;try{localStorage.setItem("bl",L)}catch(x){}i18n();renderApps();tgLoad();load().catch(()=>{})};
+$("#allF").onchange=()=>load().catch(()=>{});$("#hoursF").onchange=()=>load().catch(()=>{});
 // "Kapat" shuts the panel down and cannot be reopened from a browser, so hide it on remote
 // (phone) access; it is only shown on the PC itself (127.0.0.1), where the panel can be restarted.
 if(!["127.0.0.1","localhost","[::1]"].includes(location.hostname)){$("#quit").style.display="none"}
-$("#quit").onclick=async()=>{if(!confirm(t("quit_q")))return;try{await api("/api/quit",{})}catch(e){}document.querySelector("main").innerHTML=`<div class="card">${t("closed")}</div>`};
-i18n();tgLoad();load().catch(e=>document.querySelector("main").insertAdjacentHTML("afterbegin",`<div class="card bad">${esc(e.message==="bad_token"?t("need_token"):e.message)}</div>`));setInterval(()=>load().catch(()=>{}),60000);
+$("#quit").onclick=async()=>{if(!confirm(t("quit_q")))return;try{await api("/api/quit",{})}catch(e){}document.querySelector("main").innerHTML=`<div class="item">${t("closed")}</div>`};
+i18n();renderApps();tgLoad();appsLoad();
+load().catch(e=>document.querySelector("main").insertAdjacentHTML("afterbegin",`<div class="item bad">${esc(e.message==="bad_token"?t("need_token"):e.message)}</div>`));
+setInterval(()=>load().catch(()=>{}),60000);
 </script>
 </body>
 </html>

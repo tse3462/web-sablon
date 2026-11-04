@@ -34,6 +34,12 @@ Agent'ın kendi kimliği vardır (USB'den bağımsız, sunucuda ayrı cihaz). An
 şifrelenir; dosya başka bir bilgisayara kopyalanırsa işe yaramaz.
 
 ## Evden takip: Kontrol Paneli
+Ana sayfa bir bakışta durumu gösterir: büyük yazıyla **HER ŞEY TAMAM** (yeşil), **N ÖNEMLİ SORUN** (sarı)
+veya **N BİLGİSAYAR SESSİZ** (kırmızı); altında Durum / Bilgisayarlar / Onarımlar / Bildirimler / Müşteriler
+kutuları ve **Uygulamalarım**: kendi programlarınızın ve admin panellerinizin adresleri, tek dokunuşla açılır
+(Düzenle → ekle / düzenle / sırala / sil). Uygulamalarım yalnızca **adres** tutar, şifre tutmaz; giriş her
+programın kendi sayfasında yapılır. Saatler telefonun yerel saatiyle gösterilir. Telefonda menü alttadır.
+
 `deployment\windows\BONELIA-Kontrol-Paneli.bat` dosyasına çift tıklayın. Tarayıcıda (yalnızca bu bilgisayarda) açılır:
 * **Genel bakış:** müşteri sayısı, çevrimiçi bilgisayarlar, son 24 saatteki önemli sorunlar, son 7 gündeki onarımlar
 * **Bilgisayarlar:** çevrimiçi (yeşil) / sinyal yok (kırmızı, 15 dakikadan uzun), son durum;

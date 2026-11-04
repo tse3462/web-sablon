@@ -240,3 +240,25 @@ def test_inactive_telegram_does_not_swallow_notifications(tmp_path):
     n = build_notifier(store, {"windows_toast": False})  # Telegram not connected, no other channel
     assert n._send("k1", timedelta(hours=1), "t", "b") is False
     assert store.notification_due("k1", timedelta(hours=1))  # still due: will be sent once a channel exists
+
+
+def test_my_apps_launcher_add_edit_move_delete(tmp_path):
+    store, c, *_ = setup(tmp_path)
+    assert c.get("/api/apps", headers=H).json() == {"apps": []}
+    a = c.post("/api/apps", json={"name": "VeedelKorb Admin", "url": "https://admin.veedelkorb.de", "icon": "🛒"}, headers=H).json()["apps"]
+    b = c.post("/api/apps", json={"name": "Kasa", "url": "http://192.168.1.20:8080/admin"}, headers=H).json()["apps"]
+    assert [x["name"] for x in b] == ["VeedelKorb Admin", "Kasa"] and b[1]["icon"] == "🔗"
+    for bad in ("javascript:alert(1)", "ftp://x.de/abc", "https://a b.de", 'https://x.de/"><script>'):
+        assert c.post("/api/apps", json={"name": "x", "url": bad}, headers=H).status_code == 422
+    first = a[0]["id"]
+    edited = c.post("/api/apps", json={"id": first, "name": "VK Admin", "url": "https://admin.veedelkorb.de/login", "icon": "🍦"}, headers=H).json()["apps"]
+    assert edited[0] == {"id": first, "name": "VK Admin", "url": "https://admin.veedelkorb.de/login", "icon": "🍦"}
+    assert c.post("/api/apps", json={"id": "nope", "name": "x", "url": "https://x.de"}, headers=H).status_code == 404
+    moved = c.post(f"/api/apps/{first}/move?step=1", json={}, headers=H).json()["apps"]
+    assert [x["name"] for x in moved] == ["Kasa", "VK Admin"]
+    left = c.post(f"/api/apps/{first}/delete", json={}, headers=H).json()["apps"]
+    assert [x["name"] for x in left] == ["Kasa"]
+    assert "password" not in str(store.get_setting("apps")).lower()  # addresses only, never credentials
+    actions = [x["action"] for x in store.audit_log()]
+    assert "settings.app_saved" in actions and "settings.app_deleted" in actions
+    assert c.get("/api/apps").status_code == 403  # token required like every other panel API

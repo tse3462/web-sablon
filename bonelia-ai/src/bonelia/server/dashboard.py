@@ -82,6 +82,18 @@ class BackupBody(BaseModel):
     max_age_days: int = Field(default=2, ge=1, le=60)
 
 
+class AppBody(BaseModel):
+    id: str | None = Field(default=None, max_length=40)
+    name: str = Field(min_length=1, max_length=40)
+    url: str = Field(min_length=8, max_length=500)
+    icon: str = Field(default="🔗", max_length=8)
+
+
+APPS_KEY = "apps"
+MAX_APPS = 40
+_URL = re.compile(r"^https?://[^\s<>\"'`]+$", re.IGNORECASE)
+
+
 class TokenBody(BaseModel):
     token: str = Field(max_length=200)  # format checked in the endpoint for a clear message
 
@@ -224,6 +236,60 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
             policy.pop("backup", None)
         store.set_device_policy(device_id, policy, actor="admin:dashboard")
         return {"ok": True, "backup": policy.get("backup")}
+
+    # ---------------------------------------------------------------- "My apps" launcher
+    # Links to the owner's own programs (admin panels, web apps). Only the address is kept --
+    # never a password: each program does its own login (the phone's password manager fills it).
+    def apps_list() -> list[dict[str, Any]]:
+        apps = store.get_setting(APPS_KEY)
+        return apps if isinstance(apps, list) else []
+
+    @app.get("/api/apps")
+    def apps_get() -> dict[str, Any]:
+        return {"apps": apps_list()}
+
+    @app.post("/api/apps")
+    def apps_save(body: AppBody) -> dict[str, Any]:
+        url, name = body.url.strip(), body.name.strip()
+        if not _URL.match(url):
+            raise HTTPException(422, "invalid_url")
+        if not name:
+            raise HTTPException(422, "invalid_name")
+        item = {"id": body.id or secrets.token_hex(6), "name": name, "url": url, "icon": (body.icon.strip() or "🔗")[:8]}
+        apps = apps_list()
+        idx = next((i for i, a in enumerate(apps) if a.get("id") == item["id"]), None)
+        if idx is None:
+            if body.id:
+                raise HTTPException(404, "unknown_app")
+            if len(apps) >= MAX_APPS:
+                raise HTTPException(409, "too_many_apps")
+            apps.append(item)
+        else:
+            apps[idx] = item
+        store.set_setting(APPS_KEY, apps)
+        store.audit("admin:dashboard", "settings.app_saved", {"name": name, "url": url})
+        return {"apps": apps}
+
+    @app.post("/api/apps/{app_id}/delete")
+    def apps_delete(app_id: str) -> dict[str, Any]:
+        apps = apps_list()
+        keep = [a for a in apps if a.get("id") != app_id]
+        if len(keep) == len(apps):
+            raise HTTPException(404, "unknown_app")
+        store.set_setting(APPS_KEY, keep)
+        store.audit("admin:dashboard", "settings.app_deleted", {"id": app_id})
+        return {"apps": keep}
+
+    @app.post("/api/apps/{app_id}/move")
+    def apps_move(app_id: str, step: int = -1) -> dict[str, Any]:
+        apps = apps_list()
+        i = next((i for i, a in enumerate(apps) if a.get("id") == app_id), None)
+        if i is None:
+            raise HTTPException(404, "unknown_app")
+        j = max(0, min(len(apps) - 1, i + (1 if step > 0 else -1)))
+        apps[i], apps[j] = apps[j], apps[i]
+        store.set_setting(APPS_KEY, apps)
+        return {"apps": apps}
 
     # ---------------------------------------------------------------- Telegram (phone notifications)
     def tg_state() -> dict[str, Any]:
