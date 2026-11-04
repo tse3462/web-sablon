@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bonelia-ai"
+version = "0.1.0"
+description = "BONELİA AI — universal AI diagnostic, monitoring & controlled repair platform"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "BONELIA GmbH" }]
+dependencies = [
+  "pydantic>=2.6",
+  "httpx>=0.27",
+  "cryptography>=42",
+  "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+server = ["fastapi>=0.110", "uvicorn>=0.29"]
+ui = ["fastapi>=0.110", "uvicorn>=0.29"]
+dev = ["pytest>=8", "fastapi>=0.110", "uvicorn>=0.29", "pyinstaller>=6.5"]
+
+[project.scripts]
+bonelia-monitor = "bonelia.monitor.cli:main"
+bonelia-server = "bonelia.server.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bonelia = ["resources/*", "monitor/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+  "windows: requires a real Windows host",
+]

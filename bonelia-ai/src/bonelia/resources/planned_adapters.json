@@ -1,0 +1,62 @@
+[
+  {
+    "adapter_id": "bonelia-finance",
+    "name": "BONELIA Finance",
+    "version": "0.0.0",
+    "status": "planned",
+    "runs_on": "server",
+    "capabilities": {"recognize": false, "version_check": false, "find_logs": false, "api_connection": false, "health_check": false, "read_only_ops": false, "safe_interventions": false, "intervention_verification": false},
+    "supported_app_versions": "to be verified (Supabase projects BONELIA-Finance / BONELIA-Finance-TEST exist; application repository not found in GitHub access)",
+    "required_permissions": ["read-only health endpoint or service-role RPC to be designed with the owner"],
+    "safe_tools": [],
+    "notes": "Financial records must never be created, changed or deleted automatically (v0.1 rule). Test project must be used first."
+  },
+  {
+    "adapter_id": "vedicore",
+    "name": "VediCore",
+    "version": "0.0.0",
+    "status": "planned",
+    "runs_on": "server",
+    "capabilities": {"recognize": false, "version_check": false, "find_logs": false, "api_connection": false, "health_check": false, "read_only_ops": false, "safe_interventions": false, "intervention_verification": false},
+    "supported_app_versions": "unknown — no repository or deployment found with current access",
+    "required_permissions": ["repository and deployment access needed for discovery"],
+    "safe_tools": [],
+    "notes": "No API, file or table names assumed."
+  },
+  {
+    "adapter_id": "kanslide",
+    "name": "KanSlide / Kanslay",
+    "version": "0.0.0",
+    "status": "planned",
+    "runs_on": "server",
+    "capabilities": {"recognize": false, "version_check": false, "find_logs": false, "api_connection": false, "health_check": false, "read_only_ops": false, "safe_interventions": false, "intervention_verification": false},
+    "supported_app_versions": "unknown — no repository or deployment found with current access",
+    "required_permissions": ["repository and deployment access needed for discovery"],
+    "safe_tools": [],
+    "notes": "No API, file or table names assumed."
+  },
+  {
+    "adapter_id": "sap-business-one",
+    "name": "SAP Business One",
+    "version": "0.0.0",
+    "status": "planned",
+    "runs_on": "client",
+    "capabilities": {"recognize": false, "version_check": false, "find_logs": false, "api_connection": false, "health_check": false, "read_only_ops": false, "safe_interventions": false, "intervention_verification": false},
+    "supported_app_versions": "to be defined with pilot customer (SAP B1 Service Layer, OData-based REST API)",
+    "required_permissions": ["dedicated read-only Service Layer user created by the customer's SAP administrator"],
+    "safe_tools": [],
+    "notes": "Only official interfaces (Service Layer, documented logs). No modification of SAP code or security boundaries."
+  },
+  {
+    "adapter_id": "sap-s4hana",
+    "name": "SAP S/4HANA",
+    "version": "0.0.0",
+    "status": "planned",
+    "runs_on": "server",
+    "capabilities": {"recognize": false, "version_check": false, "find_logs": false, "api_connection": false, "health_check": false, "read_only_ops": false, "safe_interventions": false, "intervention_verification": false},
+    "supported_app_versions": "to be defined with pilot customer (released OData APIs / SAP Cloud ALM / monitoring interfaces)",
+    "required_permissions": ["technical communication user with read-only authorisations granted by the customer"],
+    "safe_tools": [],
+    "notes": "Only official, released APIs. Without authorised access only generic diagnostics are possible."
+  }
+]

@@ -1,0 +1,63 @@
+name: BONELIA AI
+
+on:
+  push:
+    paths: ["bonelia-ai/**", ".github/workflows/bonelia-ai.yml"]
+  pull_request:
+    paths: ["bonelia-ai/**", ".github/workflows/bonelia-ai.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: bonelia-ai
+
+jobs:
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q -rs
+
+  windows:
+    # Real Windows verification: event log access, controlled error via eventcreate,
+    # frozen BoneliaAI.exe smoke test. A Linux build is never accepted as proof for Windows.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Tests (including Windows-only tests)
+        run: python -m pytest -q -rs
+      - name: Build portable package
+        run: python scripts/build_portable.py --out dist
+      - name: Smoke test BoneliaAI.exe on Windows
+        shell: pwsh
+        run: |
+          $pkg = "dist/BONELIA-AI-Portable"
+          & "$pkg/BoneliaAI.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "version failed" }
+          eventcreate /T ERROR /ID 997 /L APPLICATION /SO BoneliaAISmoke /D "BONELIA AI frozen exe smoke test error"
+          $json = & "$pkg/BoneliaAI.exe" --lang tr scan --no-unlock --mode recent --json | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "scan failed" }
+          $rep = $json | ConvertFrom-Json
+          $rep.checks_performed | Format-List
+          if (-not $rep.checks_performed.'eventlog:Application'.StartsWith("ok:")) { throw "event log not readable" }
+          if (-not $rep.checks_performed.installed_apps.StartsWith("ok:")) { throw "installed apps not readable" }
+          $hit = $rep.findings | Where-Object { $_.evidence[0].code -like "BoneliaAISmoke/997" }
+          if (-not $hit) { throw "controlled error not detected by frozen exe" }
+          Write-Host "Detected:" $hit.title
+          if (Get-ChildItem "$pkg/reports" -File) { throw "unenrolled scan must not write plaintext reports to the USB" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BONELIA-AI-Portable-windows
+          path: bonelia-ai/dist/BONELIA-AI-Portable
+          retention-days: 14

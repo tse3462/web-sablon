@@ -1,0 +1,50 @@
+# BONELİA AI — Test Planı ve Sonuçları (v0.1)
+
+Çalıştırma: `cd bonelia-ai && pip install -e ".[dev]" && python -m pytest -q -rs`
+
+## Kategoriler (Master prompt §31)
+
+| Kategori | Dosya | Kapsam |
+|---|---|---|
+| Unit | `tests/unit/test_redact_crypto.py` | PII/secret temizleme, takma ad, çitleme, injection tespiti, imza, kasa, veri anahtarı, sahte sunucu imzası |
+| Unit | `tests/unit/test_diagnostics.py` | Event Log XML ayrıştırma (gerçek RenderedXml formatı), bozuk XML, sınıflandırma, gruplama, istisna kodu, metrik olayları, sınırlı log okuma |
+| Unit | `tests/unit/test_repair_policy.py` | Seviye 0–3, parametre doğrulama, kapsam/rol, onay kuralları, hız sınırı, üretim koruması, zaman aşımı, bağımsız doğrulama |
+| Unit | `tests/unit/test_ai.py` | İstem çitleme, çıktı doğrulama, hibrit yönlendirme, önbellek, bütçe/izin, Ollama ve OpenAI protokolleri |
+| Unit | `tests/unit/test_veedelkorb_adapter.py` | `saglik` yanıt sözleşmesi, 401/erişilemez, token yalnız başlıkta, güvenli eylem yalnız TEST, doğrulama |
+| Unit | `tests/unit/test_portable.py` | USB düzeni, USB çıkarılınca kapanma |
+| Integration | `tests/integration/test_server_e2e.py` | Gerçek uvicorn sunucusu + Ollama protokolünü konuşan test modeli üzerinden USB–Server, rapor, kayıt, iptal, izolasyon, sahte sunucu, tekrar, sunucu kapanması, AI hataları, araç geçidi, sohbet |
+| Integration | `tests/integration/test_cli_e2e.py` | Gerçek `bonelia-server` ve `BoneliaAI` CLI süreçleri; Windows'ta `eventcreate` ile gerçek kontrollü hata |
+| Integration | `tests/integration/test_ui.py` | Yerel UI belirteci, Host kontrolü, CSP, kayıtsız USB'de düz metin yazılmaması |
+| Windows | `tests/windows/test_windows_real.py` | Gerçek Event Log, kontrollü olay, kurulu uygulamalar, hizmetler, Security günlüğünün reddi |
+
+### Failure tests eşlemesi
+İnternet/sunucu kesintisi → `test_server_down_then_back_queue_drains` · AI cevap vermiyor/yavaş/bozuk → `test_ai_failures_fall_back_to_rules[slow|garbage|error]` · USB çıkarılması → `test_usb_removal_triggers_shutdown` (+ derlenmiş ikili ile elle doğrulandı) · Bozuk log → `test_parser_survives_corrupt_and_truncated_xml`, `test_log_tail_is_bounded` · Doğrulama başarısızlığı → `test_gateway_reports_unverified_when_independent_check_fails` · Bozuk kuyruk → `test_offline_queue_is_bounded_and_survives_corruption`.
+
+Henüz otomatik testi olmayan: uygulama sürüm uyuşmazlığı (sürüme özgü bağdaştırıcı yok), güvenli güncelleme (özellik yok).
+
+## Gerçekleşen sonuçlar
+
+| Ortam | Sonuç | Tarih |
+|---|---|---|
+| Linux konteyner, Python 3.13 | **106 geçti, 5 atlandı** (5 = yalnız Windows) | 2026-11-04 |
+| PyInstaller ikilisi (Linux) | Derlendi; `--version`, `scan --json`, UI (`/` 200, belirteçsiz 403, belirteçli 200), USB klasörü silinince süreç kapandı | 2026-11-04 |
+| GitHub Actions `windows-latest` | Bkz. iş akışı çalıştırması (aşağıya eklenecek) | — |
+
+**Önemli:** Linux'ta başarılı derleme ve test, Windows taşınabilir sürümünün çalıştığının kanıtı değildir. Windows kanıtı yalnızca `windows` CI işi veya gerçek bir Windows test bilgisayarıdır.
+
+## v0.1 kabul senaryosu (Master prompt §35) — durum
+
+| Adım | Durum |
+|---|---|
+| 1–2 USB takılır, program elle başlatılır | Windows CI'da exe çalıştırılır; gerçek USB bellekte elle test **yapılmadı** |
+| 3 Uygulama tanıma | Kayıt defteri ile (Windows testi) |
+| 4–5 Hata kayıtları okunur, kontrollü hata tespit edilir | `eventcreate` ile Windows CI'da |
+| 6 Kişisel veri kontrolü | Otomatik testli |
+| 7–9 AI'ya bağlanılır, neden ve çözüm | Ollama **protokolü** ile test edildi; gerçek model **çalıştırılmadı** (ortamda model indirilemedi) |
+| 10 Risk/izin değerlendirmesi | Otomatik testli |
+| 11 Ticari kayıt değiştirilmez | Tüm yazma araçları kapalı; testli |
+| 12 Rapor | JSON/TXT/HTML, şifreli USB saklama |
+| 13 USB çıkarılınca sonlanma | Testli + ikili ile doğrulandı (Linux) |
+| 14 Sonraki bilgisayarda aynı paket | Aynı paketin iki kopyası iki ayrı cihaz olarak testli |
+
+Gerçek Windows bilgisayarda gerçek USB bellek ve gerçek yerel model ile uçtan uca test, v0.1'in **tamamlandı** sayılması için hâlâ gereklidir.

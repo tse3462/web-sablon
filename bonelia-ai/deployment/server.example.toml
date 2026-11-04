@@ -1,0 +1,38 @@
+# BONELİA AI Server — example configuration (copy to server.toml on the home server)
+# Secrets are NEVER written here. They come from environment variables:
+#   OPENAI_API_KEY                         (optional, cloud AI)
+#   BONELIA_VEEDELKORB_HEALTH_TOKEN        (VeedelKorb saglik HEALTH_CHECK_TOKEN, read-only)
+#   BONELIA_VEEDELKORB_TEST_SERVICE_KEY    (only for a VeedelKorb TEST project; enables the repair executor)
+
+[server]
+data_dir = "C:/BoneliaAI/server-data"
+# Loopback by default. For USB clients on other networks use Tailscale (100.x address)
+# or configure TLS below. The server refuses public binds without TLS.
+host = "127.0.0.1"
+port = 8742
+# tls_cert = "C:/BoneliaAI/tls/server.crt"
+# tls_key  = "C:/BoneliaAI/tls/server.key"
+max_concurrent_analyses = 2
+
+[ai]
+ollama_url = "http://127.0.0.1:11434"
+ollama_model = "qwen2.5:7b-instruct"       # see `bonelia-server hw-check`
+# cloud_provider = "openai"                # requires OPENAI_API_KEY + tenant consent + budget
+cloud_model = "gpt-4o-mini"
+max_ai_events_per_request = 5
+
+# Prices MUST be checked against the provider's current price list before use.
+# A model without a price entry is never used for cloud calls (budget cannot be guaranteed).
+# [ai.prices."openai:gpt-4o-mini"]
+# input_per_million = 0.0
+# output_per_million = 0.0
+# currency = "EUR"
+
+[adapters.veedelkorb]
+# tenant_id = "ten_..."                     # output of `bonelia-server tenant-add`
+# url = "https://<project-ref>.supabase.co"
+environment = "test"
+
+[repair]
+# Tools are disabled unless listed here. Level-3 tools do not exist in v0.1.
+enabled_tools = []

@@ -1,0 +1,21 @@
+{
+  "status": "degraded",
+  "checked_at": "2026-11-04T00:10:00Z",
+  "checks": [{"name": "notifications", "reason": "failed"}],
+  "context": {
+    "at": "2026-11-04T00:10:00Z",
+    "health": {"ok": false, "failing": ["notifications"], "at": "2026-11-04T00:10:00Z", "metrics": {}, "limits": {}},
+    "ai_control": {"enabled": false, "last_checked_at": null},
+    "jobs": [
+      {"job": "dispatch", "ok_age_s": 40, "errors": 0},
+      {"job": "notify", "ok_age_s": 7200, "errors": 12},
+      {"job": "backup", "ok_age_s": 50000, "errors": 0},
+      {"job": "invoice", "ok_age_s": null, "errors": 0}
+    ],
+    "cron": {"failed_1h": 2},
+    "orders": {"waiting_supplier_15m": 0, "unassigned": 0, "delivery_failed": 1, "awaiting_payment_1h": 0},
+    "notifications": {"queued_old_30m": 5, "failed_24h": 7},
+    "payments": {"attention": 0},
+    "invoices": {"pending": 0}
+  }
+}
