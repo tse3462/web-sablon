@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from bonelia.agent.agent import Agent, AgentState
 from bonelia.contracts import AppIdentity, DiagnosticEvent, Evidence, ScanResult, Severity, SystemSnapshot, Triage
@@ -334,3 +335,16 @@ def test_upgrade_keeps_already_reported_states_quiet(tmp_path, env):  # noqa: F8
                           events=[_ev("bak", "Yedek eski", Triage.important, source="backup_check")])
 
     assert Agent(s.client, AgentState(p), scan=scan, maintenance_tools=()).cycle()["new_findings"] == 0
+
+
+def test_rate_limited_cleanup_is_retried_in_an_hour_not_tomorrow(tmp_path, env):  # noqa: F811
+    s = usb(tmp_path, env, "AGENT-RL", env["a"], scopes=("diagnose", "repair:windows"))
+    env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])
+    env["store"].record_tool_run(env["a"], "windows.clean_temp")  # e.g. another agent instance just cleaned
+    pc = FakePCWithCleanup()
+    state = AgentState(tmp_path / "rl.json")
+    out = Agent(s.client, state, executors=pc.executors(), scan=pc.scan).cycle()
+    mnt = [r for r in out["repairs"] if r.get("maintenance")]
+    assert mnt[0]["outcome"] == "denied" and "rate_limited" in mnt[0]["reasons"] and "clean_temp" not in pc.calls
+    wait = state.data["last_maintenance"] + 24 * 3600 - time.time()
+    assert 3500 < wait <= 3600  # next attempt in about an hour

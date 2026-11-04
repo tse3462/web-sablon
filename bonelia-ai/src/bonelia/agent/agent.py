@@ -147,6 +147,9 @@ class Agent:
                     summary["repairs"].append(rec)
                 if ran_any:
                     self.state.data["last_maintenance"] = now
+                    if any(r.get("maintenance") and "rate_limited" in (r.get("reasons") or []) for r in summary["repairs"]):
+                        # hit the hourly safety limit (e.g. after restarts): try again in an hour, not tomorrow
+                        self.state.data["last_maintenance"] = now - self.maintenance_interval_s + 3600
         except ServerUnavailable:
             summary["offline"] = True  # no repairs without the server; findings are retried next cycle
         except ServerError as exc:
