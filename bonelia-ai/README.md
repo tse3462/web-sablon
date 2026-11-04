@@ -44,6 +44,7 @@ python scripts/build_portable.py      # dist/BONELIA-AI-Portable
 * [Test planı ve sonuçları](docs/TEST_PLAN.md)
 * [Modüler bağdaştırıcılar (eklentiler)](docs/ARCHITECTURE.md#9-modüler-uygulama-bağdaştırıcıları-eklentiler)
 * [İsteğe bağlı VeedelKorb modülü](adapters/veedelkorb/README.md)
+* [Kabul testi: gerçek USB + gerçek yapay zekâ (adım adım)](docs/KABUL_TESTI.md)
 * [Durum ve yol haritası](docs/ROADMAP.md)
 
 ## Bilinen eksikler (dürüst durum)
