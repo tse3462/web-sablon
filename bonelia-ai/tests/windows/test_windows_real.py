@@ -194,3 +194,24 @@ def test_agent_update_swap_task_replaces_the_program(tmp_path, monkeypatch):
             break
         time.sleep(0.5)
     assert subprocess.run(["schtasks", "/Query", "/TN", inst.UPDATE_TASK], capture_output=True).returncode != 0
+
+
+def test_recovery_readonly_inspections_on_real_windows():
+    from bonelia.recovery import windows_recovery as wr
+
+    rp = wr.list_restore_points()
+    assert rp.ok and isinstance(rp.data.get("restore_points"), list)
+    assert wr.disk_health().ok
+    assert wr.pending_reboot().ok
+    # chkdsk/restore dry (no confirm) must not change anything
+    assert wr.schedule_chkdsk("C:", confirm=False).data.get("needs_confirm")
+
+
+def test_recover_cli_runs_readonly(tmp_path):
+    import json
+    import os
+    import sys
+
+    p = subprocess.run([sys.executable, "-m", "bonelia", "recover", "disk-health"], capture_output=True, text=True,
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"}, timeout=120)
+    assert p.returncode == 0, p.stderr

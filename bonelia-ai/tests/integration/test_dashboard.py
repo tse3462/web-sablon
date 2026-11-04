@@ -68,3 +68,29 @@ def test_level_change_and_revoke(tmp_path):
     assert c.post(f"/api/tenants/{t}/repair-level", json={"level": 3}, headers=H).status_code == 422  # level 3 impossible
     assert c.post(f"/api/devices/{agent}/revoke", json={}, headers=H).json()["ok"]
     assert store.device(agent)["status"] == "revoked"
+
+
+def test_remote_host_allowlist_and_bind_safety(tmp_path):
+    from bonelia.server.dashboard import create_dashboard_app, is_safe_bind
+
+    # only loopback and Tailscale (100.64/10) addresses may host the panel
+    assert is_safe_bind("127.0.0.1") and is_safe_bind("100.101.102.103") and is_safe_bind("foo.ts.net")
+    assert not is_safe_bind("192.168.1.5") and not is_safe_bind("0.0.0.0") and not is_safe_bind("8.8.8.8")
+
+    store = Store(tmp_path / "db.sqlite")
+    store.create_tenant("T")
+    c = TestClient(create_dashboard_app(store, TOKEN, 8742, extra_hosts=["100.101.102.103"]),
+                   base_url="http://100.101.102.103:8742")
+    # the phone (via Tailscale) reaches it with the right Host + token
+    assert c.get("/api/overview", headers={"x-ui-token": TOKEN, "host": "100.101.102.103:8742"}).status_code == 200
+    # a wrong Host (e.g. DNS rebinding or a public name) is refused
+    assert c.get("/api/overview", headers={"x-ui-token": TOKEN, "host": "evil.example:8742"}).status_code == 403
+    # token still required
+    assert c.get("/api/overview", headers={"host": "100.101.102.103:8742"}).status_code == 403
+
+
+def test_stable_token_persists(tmp_path):
+    from bonelia.server.dashboard import _stable_token
+
+    t1 = _stable_token(tmp_path)
+    assert t1 and _stable_token(tmp_path) == t1

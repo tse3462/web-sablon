@@ -7,6 +7,7 @@ is not reachable from the network.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import secrets
@@ -27,6 +28,16 @@ from ..repair.builtin_tools import SAFE_AUTO_TOOLS
 from .store import Store
 
 ONLINE_MINUTES = 15  # agents report every 5 minutes
+_TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
+
+
+def is_safe_bind(host: str) -> bool:
+    """Loopback is always fine; a Tailscale address (100.64/10, WireGuard-encrypted) is fine for phone access."""
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip in _TAILSCALE
+    except ValueError:
+        return host in ("localhost",) or host.endswith(".ts.net")
 
 
 def _kind(scopes: list[str]) -> str:
@@ -41,9 +52,11 @@ class LevelBody(BaseModel):
     level: int = Field(ge=0, le=2)
 
 
-def create_dashboard_app(store: Store, token: str, port: int) -> FastAPI:
+def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[str] | None = None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    for h in (extra_hosts or []):
+        allowed_hosts.add(f"{h}:{port}")
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
@@ -158,14 +171,43 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def serve_dashboard(store: Store, port: int = 0, open_browser: bool = True) -> int:
+def _stable_token(data_dir) -> str:
+    """A token that survives restarts, so a phone URL stays valid. Stored 0600, server-only."""
+    from pathlib import Path
+
+    p = Path(data_dir) / "dashboard.token"
+    if p.is_file():
+        return p.read_text(encoding="utf-8").strip()
+    token = secrets.token_urlsafe(24)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(token)
+    except FileExistsError:
+        return p.read_text(encoding="utf-8").strip()
+    return token
+
+
+def serve_dashboard(store: Store, port: int = 0, open_browser: bool = True, host: str = "127.0.0.1",
+                    data_dir=None) -> int:
     import uvicorn
 
+    if host != "127.0.0.1" and not is_safe_bind(host):
+        print("Panel yalnızca 127.0.0.1 veya bir Tailscale (100.x) adresinde açılabilir (şifreli özel ağ). / "
+              "Nur auf 127.0.0.1 oder einer Tailscale-Adresse.", flush=True)
+        return 2
     port = port or _free_port()
-    token = secrets.token_urlsafe(24)
-    url = f"http://127.0.0.1:{port}/#{token}"
-    print(f"BONELİA AI Kontrol Paneli: {url}", flush=True)
-    if open_browser:
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    uvicorn.run(create_dashboard_app(store, token, port), host="127.0.0.1", port=port, log_level="warning")
+    remote = host != "127.0.0.1"
+    # A phone over Tailscale needs a token that does not change every launch.
+    token = _stable_token(data_dir) if remote and data_dir else secrets.token_urlsafe(24)
+    extra = [host] if remote else []
+    local_url = f"http://127.0.0.1:{port}/#{token}" if not remote else None
+    phone_url = f"http://{host}:{port}/#{token}" if remote else None
+    print(f"BONELİA AI Kontrol Paneli: {phone_url or local_url}", flush=True)
+    if remote:
+        print(f"Telefon/uzak erişim (Tailscale): {phone_url}", flush=True)
+    if open_browser and not remote:
+        threading.Timer(1.0, lambda: webbrowser.open(local_url)).start()
+    uvicorn.run(create_dashboard_app(store, token, port, extra_hosts=extra), host=host, port=port, log_level="warning")
     return 0

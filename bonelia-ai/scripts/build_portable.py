@@ -90,7 +90,15 @@ cd /d "%~dp0"
 pause
 """
 
-BAT_FILES = {"Bu-Bilgisayara-Kur.bat": _INSTALL_BAT, "Bu-Bilgisayardan-Kaldir.bat": _UNINSTALL_BAT}
+_RECOVER_BAT = r"""@echo off
+rem BONELIA AI: guided Windows recovery on THIS PC (open as administrator for the repair steps)
+net session >nul 2>&1 || (powershell -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath '%~f0' -Verb RunAs" & exit /b)
+cd /d "%~dp0"
+"%~dp0BoneliaAI-Konsol.exe" recovery
+"""
+
+BAT_FILES = {"Bu-Bilgisayara-Kur.bat": _INSTALL_BAT, "Bu-Bilgisayardan-Kaldir.bat": _UNINSTALL_BAT,
+             "Bu-Bilgisayari-Kurtar.bat": _RECOVER_BAT}
 
 
 def sha256(p: Path) -> str:
@@ -116,6 +124,7 @@ def main() -> int:
                "--add-data", f"{SRC / 'monitor' / 'static'}{sep}bonelia/monitor/static",
                "--add-data", f"{SRC / 'resources'}{sep}bonelia/resources",
                "--add-data", f"{SRC / 'server' / 'static'}{sep}bonelia/server/static",
+               "--add-data", f"{SRC / 'recovery' / 'static'}{sep}bonelia/recovery/static",
                "--collect-submodules", "uvicorn", "--collect-submodules", "bonelia",
                "--exclude-module", "tkinter", str(ROOT / "scripts" / "boneliaai_entry.py")]
         print(" ".join(cmd))

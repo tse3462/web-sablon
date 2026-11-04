@@ -30,7 +30,7 @@ bonelia-server = "bonelia.server.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-bonelia = ["resources/*", "monitor/static/*", "server/static/*"]
+bonelia = ["resources/*", "monitor/static/*", "server/static/*", "recovery/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

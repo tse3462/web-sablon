@@ -46,6 +46,7 @@ python scripts/build_portable.py      # dist/BONELIA-AI-Portable
 * [İsteğe bağlı VeedelKorb modülü](adapters/veedelkorb/README.md)
 * [Kabul testi: gerçek USB + gerçek yapay zekâ (adım adım)](docs/KABUL_TESTI.md)
 * [Sürekli izleme ve kendi kendine onarım (Agent)](docs/AGENT.md)
+* [Kurtarma ve telefondan erişim](docs/KURTARMA.md)
 * [Durum ve yol haritası](docs/ROADMAP.md)
 
 ## Bilinen eksikler (dürüst durum)

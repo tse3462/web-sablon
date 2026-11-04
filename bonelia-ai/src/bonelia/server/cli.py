@@ -90,9 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     pa = sub.add_parser("publish-agent", help="publish a new agent program; installed PCs update themselves")
     pa.add_argument("exe", help="path to BoneliaAI-Konsol.exe from the new USB package")
 
-    db = sub.add_parser("dashboard", help="open the local control panel (browser, this PC only)")
+    db = sub.add_parser("dashboard", help="open the control panel (this PC, or a Tailscale address for phone access)")
     db.add_argument("--port", type=int, default=0)
     db.add_argument("--no-browser", action="store_true")
+    db.add_argument("--host", default="127.0.0.1",
+                    help="bind address; a Tailscale 100.x address lets your phone open the panel over the private network")
 
     utf8_console()
     args = p.parse_args(argv)
@@ -154,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "dashboard":
         from .dashboard import serve_dashboard
 
-        return serve_dashboard(store, port=args.port, open_browser=not args.no_browser)
+        return serve_dashboard(store, port=args.port, open_browser=not args.no_browser, host=args.host, data_dir=cfg.data_dir)
     if args.cmd == "tenant-add":
         print(store.create_tenant(args.name, args.cloud_ai, args.daily_budget, args.monthly_budget, args.environment))
     elif args.cmd == "tenants":

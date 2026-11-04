@@ -85,6 +85,22 @@ def _enroll_agent_from_usb(args, label: str):
     return usb.client.enroll_agent(label, agent_url)
 
 
+def _recover_command(args) -> int:
+    from ..recovery import windows_recovery as wr
+
+    if args.op == "bootrec-guide":
+        for line in wr.BOOTREC_GUIDE.get(args.lang or "tr", wr.BOOTREC_GUIDE["en"]):
+            print(line)
+        return 0
+    name = {"restore-points": "restore_points", "disk-health": "disk_health"}.get(args.op, args.op)
+    params = {"drive": args.drive, "sequence": args.sequence, "confirm": args.yes}
+    res = wr.OPERATIONS[name]["fn"](params)
+    print(json.dumps({"ok": res.ok, "error": res.error, "data": res.data}, indent=2, ensure_ascii=False, default=str))
+    if res.output:
+        print(res.output)
+    return 0 if res.ok else 1
+
+
 def _agent_command(args) -> int:
     import socket
 
@@ -249,6 +265,15 @@ def main(argv: list[str] | None = None) -> int:
     ai_.add_argument("--no-start", action="store_true")
     sub.add_parser("agent-uninstall", help="remove the agent completely from this PC")
     sub.add_parser("agent-status")
+    rc = sub.add_parser("recovery", help="open the guided Windows recovery screen on THIS PC (works offline)")
+    rc.add_argument("--no-browser", action="store_true")
+    rc.add_argument("--port", type=int, default=0)
+    rv = sub.add_parser("recover", help="run one recovery operation from the command line (e.g. in WinRE)")
+    rv.add_argument("op", choices=["restore-points", "disk-health", "sfc", "dism", "chkdsk", "restore", "bootrec-guide"])
+    rv.add_argument("--drive", default="C:")
+    rv.add_argument("--sequence", type=int)
+    rv.add_argument("--yes", action="store_true", help="confirm a changing operation (chkdsk/restore)")
+
     ui = sub.add_parser("ui", help="open the local graphical interface")
     ui.add_argument("--no-browser", action="store_true")
     ui.add_argument("--port", type=int, default=0)
@@ -289,6 +314,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd.startswith("agent"):
         return _agent_command(args)
+
+    if args.cmd == "recovery":
+        from ..recovery.ui import serve_recovery
+
+        home = PortableHome(Path(args.home) if args.home else None).ensure()
+        return serve_recovery(lang=args.lang or home.settings().get("language", "tr"), port=args.port,
+                              open_browser=not args.no_browser)
+    if args.cmd == "recover":
+        return _recover_command(args)
 
     if args.cmd == "ui":
         from .ui import serve_ui

@@ -135,3 +135,10 @@ def test_allow_repairs_and_device_scopes_commands(tmp_path):
     out = json.loads(run([*srv, "allow-repairs", tenant, "--level", "1", "--include-devices"], env).stdout)
     assert out["devices_updated"] == [dev]
     assert set(store.device(dev)["scopes"]) == {"diagnose", "repair:windows", "install:agent"}
+
+
+def test_dashboard_refuses_unsafe_bind(tmp_path):
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    p = run(["-m", "bonelia.server.cli", "--data-dir", str(tmp_path / "d"), "dashboard", "--host", "192.168.1.10", "--no-browser"],
+            env, check=False, timeout=30)
+    assert p.returncode == 2 and ("Tailscale" in p.stdout or "Tailscale" in p.stderr)
