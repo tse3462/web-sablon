@@ -232,8 +232,10 @@ def serve_dashboard(store: Store, port: int = 0, open_browser: bool = True, host
     # A phone over Tailscale needs a token that does not change every launch.
     token = _stable_token(data_dir) if remote and data_dir else secrets.token_urlsafe(24)
     extra = [host] if remote else []
-    local_url = f"http://127.0.0.1:{port}/#{token}" if not remote else None
-    phone_url = f"http://{host}:{port}/#{token}" if remote else None
+    # The token is passed as a query parameter (not a #fragment): iOS "Add to Home Screen"
+    # preserves the query in the saved shortcut, so the home-screen icon keeps working.
+    local_url = f"http://127.0.0.1:{port}/?t={token}" if not remote else None
+    phone_url = f"http://{host}:{port}/?t={token}" if remote else None
     print(f"BONELİA AI Kontrol Paneli: {phone_url or local_url}", flush=True)
     if remote:
         print(f"Telefon/uzak erişim (Tailscale): {phone_url}", flush=True)
@@ -241,7 +243,9 @@ def serve_dashboard(store: Store, port: int = 0, open_browser: bool = True, host
             try:
                 (Path(data_dir) / "panel-url.txt").write_text(
                     "BONELİA AI Kontrol Paneli — telefon/uzak erişim adresi\n"
-                    "(Tailscale bağlıyken telefon tarayıcısına girin; bir kez kaydedin):\n\n"
+                    "Tailscale bağlıyken telefon tarayıcısına bu TAM adresi girin.\n"
+                    "Safari'de açıldıktan sonra Paylaş > 'Ana Ekrana Ekle' yapabilirsiniz;\n"
+                    "kısayol anahtarı da hatırlar, bir daha adres girmenize gerek kalmaz.\n\n"
                     + phone_url + "\n", encoding="utf-8")
             except OSError:
                 pass

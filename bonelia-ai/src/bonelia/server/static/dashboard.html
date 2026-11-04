@@ -2,7 +2,12 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BONELİA AI">
+<meta name="theme-color" content="#0e141b">
 <title>BONELİA AI Kontrol Paneli</title>
 <style>
 :root{--bg:#f4f6f9;--panel:#fff;--ink:#132030;--muted:#5a6b7d;--line:#dde3ea;--brand:#0b5cad;--crit:#b00020;--warn:#b98900;--ok:#1b7f3a;--chip:#eef2f6}
@@ -79,8 +84,9 @@ l0:"0 – Nur lesen",l1:"1 – Sichere Reparaturen automatisch",l2:"2 – + abge
 need_token:"Kein Zugriffstoken. Öffnen Sie einmal die VOLLSTÄNDIGE Adresse (mit #… am Ende) aus C:\\BoneliaAI\\server-data\\panel-url.txt auf dem PC; dieses Gerät merkt sich den Schlüssel, danach genügt die kurze Adresse.",
 level_help:"Stufe 1: gestoppten Dienst starten, DNS-Cache leeren, alte temporäre Dateien löschen geschieht automatisch. Stufe 2: zusätzlich werden wiederholt abstürzende Dienste automatisch neu gestartet (max. 2/h). Kritische Windows-Dienste werden nie angefasst.",
 closed:"Panel geschlossen."}};
-let TOKEN=location.hash.slice(1);try{if(TOKEN)localStorage.setItem("bt",TOKEN);else TOKEN=localStorage.getItem("bt")||""}catch(e){}
-history.replaceState(null,"",location.pathname);
+// Token may arrive as ?t=… (preferred: iOS "Add to Home Screen" keeps the query) or #… (older links).
+// It is kept in the URL on purpose so the home-screen shortcut captures it, and remembered per device.
+let TOKEN="";try{TOKEN=new URLSearchParams(location.search).get("t")||location.hash.slice(1)||localStorage.getItem("bt")||"";if(TOKEN)localStorage.setItem("bt",TOKEN);}catch(e){TOKEN=new URLSearchParams(location.search).get("t")||location.hash.slice(1)||""}
 let L="tr";const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const t=k=>(T[L]||T.tr)[k]??k;
