@@ -93,7 +93,7 @@ bonelia-server --config C:\BoneliaAI\server.toml enroll-code ten_BURAYA --scopes
 2. Klasörün adres çubuğuna `cmd` yazıp Enter'a basın (o klasörde Komut İstemi açılır).
 3. Yazın (sunucu adresi: aynı bilgisayarsa `http://127.0.0.1:8742`, Tailscale ile `http://100.x.y.z:8742`):
    ```bat
-   BoneliaAI.exe enroll --server http://127.0.0.1:8742 --code ABCD-EFGH-... --label "USB 01"
+   BoneliaAI-Konsol.exe enroll --server http://127.0.0.1:8742 --code ABCD-EFGH-... --label "USB 01"
    ```
 4. En az 10 karakterlik bir **USB parolası** belirleyin ve unutmayın. Parola olmadan USB'deki veriler açılamaz.
 

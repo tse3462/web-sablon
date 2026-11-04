@@ -4,7 +4,8 @@
 
 Produces:
   dist/BONELIA-AI-Portable/
-    BoneliaAI.exe            (BoneliaAI on non-Windows build hosts)
+    BoneliaAI.exe            double-click: opens the UI, no console window
+    BoneliaAI-Konsol.exe     command line (enroll, scan --json, ...)
     config/  adapters/  resources/  reports/  manifests/  queue/
     manifests/build-manifest.json   SHA-256 of every shipped file
     LIESMICH-BENIOKU.txt
@@ -36,16 +37,16 @@ README = """BONELİA AI Portable Monitor {version}
 
 TR — Kullanım
   1. USB belleği takın. Program otomatik başlamaz.
-  2. BoneliaAI.exe dosyasını işletmenin izniyle çift tıklayarak açın.
+  2. BoneliaAI.exe dosyasını işletmenin izniyle çift tıklayarak açın (siyah pencere açılmaz; "Kapat" ile kapanır).
   3. Tarayıcıda yerel BONELİA AI ekranı açılır (yalnızca bu bilgisayar, 127.0.0.1).
-  4. İlk kullanımda cihaz kaydı: BoneliaAI.exe enroll --server <adres> --code <kod> --label "USB 01"
+  4. İlk kullanımda cihaz kaydı: BoneliaAI-Konsol.exe enroll --server <adres> --code <kod> --label "USB 01"
   Bu sürüm salt okunurdur; hiçbir ticari kayıt değiştirilmez.
 
 DE — Verwendung
   1. USB-Stick einstecken. Das Programm startet nicht automatisch.
-  2. BoneliaAI.exe mit Erlaubnis des Betriebs per Doppelklick öffnen.
+  2. BoneliaAI.exe mit Erlaubnis des Betriebs per Doppelklick öffnen (kein schwarzes Fenster; "Schließen" beendet).
   3. Im Browser öffnet sich die lokale BONELİA-AI-Oberfläche (nur dieser Rechner, 127.0.0.1).
-  4. Erstregistrierung: BoneliaAI.exe enroll --server <Adresse> --code <Code> --label "USB 01"
+  4. Erstregistrierung: BoneliaAI-Konsol.exe enroll --server <Adresse> --code <Code> --label "USB 01"
   Diese Version arbeitet nur lesend; es werden keine Geschäftsdaten verändert.
 """
 
@@ -64,23 +65,25 @@ def main() -> int:
     args = ap.parse_args()
     work = args.out / "_build"
     sep = ";" if sys.platform == "win32" else ":"
-    cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--name", "BoneliaAI",
-           "--distpath", str(work / "bin"), "--workpath", str(work / "tmp"), "--specpath", str(work),
-           "--paths", str(ROOT / "src"),
-           "--add-data", f"{SRC / 'monitor' / 'static'}{sep}bonelia/monitor/static",
-           "--add-data", f"{SRC / 'resources'}{sep}bonelia/resources",
-           "--collect-submodules", "uvicorn", "--collect-submodules", "bonelia",
-           "--exclude-module", "tkinter", str(ROOT / "scripts" / "boneliaai_entry.py")]
-    print(" ".join(cmd))
-    subprocess.run(cmd, check=True)
-
-    exe_name = "BoneliaAI.exe" if sys.platform == "win32" else "BoneliaAI"
+    suffix = ".exe" if sys.platform == "win32" else ""
+    # Two builds of the same code: windowed for double-click, console for commands.
+    for name, extra in (("BoneliaAI", ["--windowed"]), ("BoneliaAI-Konsol", [])):
+        cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--name", name, *extra,
+               "--distpath", str(work / "bin"), "--workpath", str(work / "tmp" / name), "--specpath", str(work),
+               "--paths", str(ROOT / "src"),
+               "--add-data", f"{SRC / 'monitor' / 'static'}{sep}bonelia/monitor/static",
+               "--add-data", f"{SRC / 'resources'}{sep}bonelia/resources",
+               "--collect-submodules", "uvicorn", "--collect-submodules", "bonelia",
+               "--exclude-module", "tkinter", str(ROOT / "scripts" / "boneliaai_entry.py")]
+        print(" ".join(cmd))
+        subprocess.run(cmd, check=True)
     pkg = args.out / "BONELIA-AI-Portable"
     if pkg.exists():
         shutil.rmtree(pkg)
     for d in ("config", "adapters", "resources", "reports", "manifests", "queue"):
         (pkg / d).mkdir(parents=True)
-    shutil.copy2(work / "bin" / exe_name, pkg / exe_name)
+    for name in ("BoneliaAI", "BoneliaAI-Konsol"):
+        shutil.copy2(work / "bin" / f"{name}{suffix}", pkg / f"{name}{suffix}")
     for m in core_manifests():  # only core + planned manifests ship on the USB
         (pkg / "adapters" / f"{m.adapter_id}.json").write_text(json.dumps(m.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     (pkg / "config" / "settings.json").write_text(json.dumps({"language": "tr", "allow_cloud_default": False, "log_paths": []}, indent=2),

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ class Session:
     last_report: dict[str, Any] | None = None
     interventions: list[dict[str, Any]] = field(default_factory=list)
     ca_file: str | None = None
+    _drain_thread: threading.Thread | None = field(default=None, repr=False)
 
     @property
     def enrolled(self) -> bool:
@@ -113,13 +115,22 @@ class Session:
         return self.last_report
 
     def _drain_queue(self, max_entries: int) -> None:
+        """Send earlier offline events in a background thread so the user never waits for them."""
         if self.client is None or self.data_key is None:
             return
-        try:
-            OfflineQueue(self.home.path("queue"), self.data_key).drain(
-                lambda evs: self.client.analyze(evs, None, False, self.lang), max_entries=max_entries)  # type: ignore[union-attr]
-        except Exception:
-            pass  # the queue is best effort; the current result is already available
+        if self._drain_thread is not None and self._drain_thread.is_alive():
+            return
+        client, key, lang = self.client, self.data_key, self.lang
+
+        def work() -> None:
+            try:
+                OfflineQueue(self.home.path("queue"), key).drain(
+                    lambda evs: client.analyze(evs, None, False, lang), max_entries=max_entries)
+            except Exception:
+                pass  # best effort; the entry stays queued for the next attempt
+
+        self._drain_thread = threading.Thread(target=work, name="bonelia-queue-drain", daemon=True)
+        self._drain_thread.start()
 
     def _persist(self) -> None:
         """Reports on the USB are stored encrypted only. Without a vault nothing is written."""

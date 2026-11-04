@@ -173,6 +173,12 @@ def create_ui_app(session: Session, token: str, port: int, transport=None) -> Fa
             raise HTTPException(404, "no_report")
         return render_html(session.last_report)
 
+    @app.post("/api/quit")
+    def quit_app() -> dict[str, Any]:
+        """The double-click build has no console window; this is how the user closes it."""
+        threading.Timer(0.5, lambda: os._exit(0)).start()
+        return {"ok": True}
+
     @app.post("/api/export")
     def export(body: ExportBody) -> dict[str, Any]:
         dest = Path(body.dest).expanduser().resolve()

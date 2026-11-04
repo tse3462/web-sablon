@@ -23,10 +23,10 @@ bonelia-server --config server.toml serve
 ### USB (Windows)
 GitHub Actions `windows` işinin `BONELIA-AI-Portable-windows` artefaktını USB'ye kopyalayın.
 ```bat
-BoneliaAI.exe enroll --server http://100.x.y.z:8742 --code <kod> --label "USB 01"
+BoneliaAI-Konsol.exe enroll --server http://100.x.y.z:8742 --code <kod> --label "USB 01"
 BoneliaAI.exe                     :: yerel arayüzü açar
-BoneliaAI.exe scan --mode quick   :: çevrimdışı yerel teşhis
-BoneliaAI.exe analyze --app "PosKasse"
+BoneliaAI-Konsol.exe scan --mode quick   :: çevrimdışı yerel teşhis
+BoneliaAI-Konsol.exe analyze --app "PosKasse"
 ```
 Kayıp USB: `bonelia-server revoke <device_id>`.
 

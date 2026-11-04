@@ -90,10 +90,10 @@ jobs:
         shell: pwsh
         run: |
           $pkg = "dist/BONELIA-AI-Portable"
-          & "$pkg/BoneliaAI.exe" --version
+          & "$pkg/BoneliaAI-Konsol.exe" --version
           if ($LASTEXITCODE -ne 0) { throw "version failed" }
           eventcreate /T ERROR /ID 997 /L APPLICATION /SO BoneliaAISmoke /D "BONELIA AI frozen exe smoke test error"
-          $json = & "$pkg/BoneliaAI.exe" --lang tr scan --no-unlock --mode recent --json | Out-String
+          $json = & "$pkg/BoneliaAI-Konsol.exe" --lang tr scan --no-unlock --mode recent --json | Out-String
           if ($LASTEXITCODE -ne 0) { throw "scan failed" }
           $rep = $json | ConvertFrom-Json
           $rep.checks_performed | Format-List
@@ -103,6 +103,16 @@ jobs:
           if (-not $hit) { throw "controlled error not detected by frozen exe" }
           Write-Host "Detected:" $hit.title
           if (Get-ChildItem "$pkg/reports" -File) { throw "unenrolled scan must not write plaintext reports to the USB" }
+          # Double-click build: no console window, must still serve the UI
+          $p = Start-Process -FilePath "$pkg/BoneliaAI.exe" -ArgumentList "ui","--no-browser","--port","18800" -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 40 -and -not $ok; $i++) {
+            Start-Sleep -Milliseconds 500
+            try { $ok = (Invoke-WebRequest http://127.0.0.1:18800/ -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch {}
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "windowed BoneliaAI.exe did not serve the UI" }
+          Write-Host "Windowed BoneliaAI.exe served the UI"
       - uses: actions/upload-artifact@v4
         with:
           name: BONELIA-AI-Portable-windows

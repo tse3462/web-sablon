@@ -251,7 +251,8 @@ def test_server_down_then_back_queue_drains(tmp_path, env):
         s.client.run_tool("windows.restart_service", {"service_name": "Spooler"}, dry_run=True)  # no remote action offline
     env["srv"] = ServerThread(create_app(env["cfg"], store=env["store"], router=env["router"], registry=env["registry"],
                                          adapters=env["adapters"], server_key=env["key"]), env["port"]).__enter__()
-    s.analyze()
+    s.analyze()  # returns immediately; the old queue entry is sent in the background
+    s._drain_thread.join(30)
     assert OfflineQueue(s.home.path("queue"), s.data_key).size() == 0
 
 

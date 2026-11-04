@@ -48,6 +48,7 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 8px;
     <button data-p="fix" data-i="nav_fix"></button>
     <button data-p="report" data-i="nav_report"></button>
   </nav>
+  <button class="sec" id="btnQuit" data-i="quit" style="padding:6px 10px"></button>
   <select id="lang"><option value="tr">TR</option><option value="de">DE</option><option value="en">EN</option></select>
 </header>
 <main>
@@ -132,7 +133,7 @@ tool:"Araç",risk:"Risk seviyesi",state:"Durum",report_title:"Teknik servis rapo
 dest_ph:"Hedef klasör (USB dışında), örn. C:\\Users\\Public\\Desktop",report_note:"USB üzerindeki raporlar yalnızca şifreli saklanır.",
 unlock_title:"USB kilidini aç",unlock:"Kilidi aç",unlock_hint:"Kayıt sırasında belirlenen USB parolası.",connected:"Bağlı",offline:"Bağlantı yok",
 not_enrolled:"Kayıtsız USB (yalnız yerel)",locked:"Kilitli",cause:"Muhtemel neden",rec:"Öneri",missing:"Eksik bilgi",dry:"Dene (dry-run)",enabled:"Etkin",disabled:"Kapalı",
-nofind:"İncelenen kaynaklarda hata bulunmadı.",working:"Çalışıyor…",rules:"Kural motoru",lvl:["0 Okuma","1 Güvenli otomatik","2 Yönetici onaylı","3 Kritik (engelli)"]},
+nofind:"İncelenen kaynaklarda hata bulunmadı.",quit:"Kapat",quit_q:"BONELİA AI kapatılsın mı?",closed:"BONELİA AI kapatıldı. Bu sekmeyi kapatabilirsiniz.",working:"Çalışıyor…",rules:"Kural motoru",lvl:["0 Okuma","1 Güvenli otomatik","2 Yönetici onaylı","3 Kritik (engelli)"]},
 de:{nav_home:"Übersicht",nav_scan:"Scan",nav_chat:"KI-Chat",nav_fix:"Eingriff",nav_report:"Bericht",server:"Serververbindung",ai_model:"KI-Modell",
 customer:"Kunde",computer:"Computer",apps:"Erkannte Anwendungen",active_errors:"Aktive Fehler",monitoring:"Überwachung",mon_session:"Während der Sitzung",
 last_analyses:"Letzte Analysen",none_yet:"Noch kein Scan durchgeführt.",scan_title:"Diagnoseart wählen",m_quick:"Schnelldiagnose",m_full:"Volldiagnose (7 Tage)",
@@ -144,7 +145,7 @@ tool:"Werkzeug",risk:"Risikostufe",state:"Status",report_title:"Technischer Serv
 dest_ph:"Zielordner (außerhalb des USB-Sticks)",report_note:"Berichte auf dem USB-Stick werden nur verschlüsselt gespeichert.",
 unlock_title:"USB entsperren",unlock:"Entsperren",unlock_hint:"Das bei der Registrierung festgelegte USB-Passwort.",connected:"Verbunden",offline:"Keine Verbindung",
 not_enrolled:"Nicht registriert (nur lokal)",locked:"Gesperrt",cause:"Wahrscheinliche Ursache",rec:"Empfehlung",missing:"Fehlende Angaben",dry:"Probelauf",enabled:"Aktiv",disabled:"Aus",
-nofind:"Keine Fehler in den geprüften Quellen.",working:"Läuft…",rules:"Regel-Engine",lvl:["0 Lesen","1 Sicher automatisch","2 Admin-Freigabe","3 Kritisch (gesperrt)"]},
+nofind:"Keine Fehler in den geprüften Quellen.",quit:"Schließen",quit_q:"BONELİA AI beenden?",closed:"BONELİA AI wurde beendet. Sie können diesen Tab schließen.",working:"Läuft…",rules:"Regel-Engine",lvl:["0 Lesen","1 Sicher automatisch","2 Admin-Freigabe","3 Kritisch (gesperrt)"]},
 en:{nav_home:"Home",nav_scan:"Scan",nav_chat:"AI Chat",nav_fix:"Intervention",nav_report:"Report",server:"Server connection",ai_model:"AI model",
 customer:"Customer",computer:"Computer",apps:"Detected applications",active_errors:"Active errors",monitoring:"Monitoring",mon_session:"During session",
 last_analyses:"Latest analyses",none_yet:"No scan yet.",scan_title:"Choose diagnosis type",m_quick:"Quick diagnosis",m_full:"Full diagnosis (7 days)",
@@ -156,7 +157,7 @@ tool:"Tool",risk:"Risk level",state:"State",report_title:"Technical service repo
 dest_ph:"Destination folder (outside the USB)",report_note:"Reports on the USB are stored encrypted only.",
 unlock_title:"Unlock USB",unlock:"Unlock",unlock_hint:"The USB passphrase chosen during enrollment.",connected:"Connected",offline:"Not connected",
 not_enrolled:"Not enrolled (local only)",locked:"Locked",cause:"Likely cause",rec:"Recommendation",missing:"Missing information",dry:"Dry-run",enabled:"Enabled",disabled:"Off",
-nofind:"No errors found in the inspected sources.",working:"Working…",rules:"Rule engine",lvl:["0 Read","1 Safe auto","2 Admin approved","3 Critical (blocked)"]}};
+nofind:"No errors found in the inspected sources.",quit:"Close",quit_q:"Close BONELİA AI?",closed:"BONELİA AI has been closed. You can close this tab.",working:"Working…",rules:"Rule engine",lvl:["0 Read","1 Safe auto","2 Admin approved","3 Critical (blocked)"]}};
 let TOKEN=location.hash.slice(1);try{if(TOKEN)sessionStorage.setItem("bt",TOKEN);else TOKEN=sessionStorage.getItem("bt")||""}catch(e){}
 let L="tr";let lastReport=null;
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -206,6 +207,8 @@ async function loadTools(){const r=await api("/api/tools");$("#tools").innerHTML
 $("#btnOpenRep").onclick=async()=>{const r=await fetch("/api/report.html",{headers:{"x-ui-token":TOKEN}});if(!r.ok)return;const w=window.open("","_blank");w.document.write(await r.text());w.document.close()};
 $("#btnExport").onclick=async()=>{try{const r=await api("/api/export",{dest:$("#dest").value});$("#expres").textContent=r.files.join(", ")}catch(e){$("#expres").textContent=e.message}};
 $("#btnUnlock").onclick=async()=>{try{await api("/api/unlock",{passphrase:$("#pass").value});$("#pass").value="";refresh()}catch(e){alert(e.message)}};
+$("#btnQuit").onclick=async()=>{if(!confirm(t("quit_q")))return;try{await api("/api/quit",{})}catch(e){}
+ document.querySelector("main").innerHTML=`<div class="card">${esc(t("closed"))}</div>`};
 $("#lang").onchange=async e=>{L=e.target.value;await api("/api/language",{language:L});i18n()};
 $$("#nav button").forEach(b=>b.onclick=()=>{show(b.dataset.p);if(b.dataset.p==="scan")loadAdapters()});
 history.replaceState(null,"",location.pathname);i18n();refresh();setInterval(refresh,30000);

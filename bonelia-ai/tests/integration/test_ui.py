@@ -45,3 +45,17 @@ def test_language_switch_persists(tmp_path):
     c, s = client(tmp_path)
     assert c.post("/api/language", json={"language": "de"}, headers={"x-ui-token": TOKEN}).status_code == 200
     assert s.home.settings()["language"] == "de" and s.lang == "de"
+
+
+def test_quit_button_ends_the_program(tmp_path, monkeypatch):
+    """The double-click build has no console window, so the UI must be able to close the program."""
+    import bonelia.monitor.ui as ui_mod
+
+    exited = []
+    monkeypatch.setattr(ui_mod.os, "_exit", lambda code: exited.append(code))
+    c, _ = client(tmp_path)
+    assert c.post("/api/quit", headers={"x-ui-token": "wrong"}).status_code == 403  # other pages cannot close it
+    assert c.post("/api/quit", headers={"x-ui-token": TOKEN}).json() == {"ok": True}
+    import time
+    time.sleep(0.8)
+    assert exited == [0]
