@@ -20,7 +20,7 @@ from bonelia.monitor.reports import load_encrypted
 from bonelia.monitor.session import Session
 from bonelia.repair.builtin_tools import default_registry
 from bonelia.security import crypto
-from bonelia.server.app import create_app
+from bonelia.server.app import ai_proposable_tools, create_app
 from bonelia.server.config import ServerConfig
 from bonelia.server.store import Store
 from tests.conftest import ServerThread, free_port
@@ -46,7 +46,7 @@ def env(tmp_path):
     registry = default_registry()
     register_adapter_tools(adapters, registry, set())
     # max_ai_events=25: host metric events (e.g. a full disk on a CI runner) must not crowd out the controlled test error
-    rt = HybridRouter(OllamaProvider(ollama.url, timeout_s=2), None, PriceTable(), store, lambda: registry.ids(), max_ai_events=25)
+    rt = HybridRouter(OllamaProvider(ollama.url, timeout_s=2), None, PriceTable(), store, lambda: ai_proposable_tools(registry), max_ai_events=25)
     key = crypto.generate_keypair()
     port = free_port()
     srv = ServerThread(create_app(cfg, store=store, router=rt, registry=registry, adapters=adapters, server_key=key), port).__enter__()
@@ -296,9 +296,8 @@ def test_tool_gateway_over_api(tmp_path, env):
     s = usb(tmp_path, env, "USB-01", env["a"], scopes=("diagnose", "repair:windows", "repair:demo"))
     tools = {t["tool_id"]: t for t in s.client.tools()}
     assert tools["windows.restart_service"]["risk_level"] == int(RiskLevel.ADMIN_APPROVED)
-    dry = s.client.run_tool("windows.restart_service", {"service_name": "PosKasseSync"}, dry_run=True)
-    assert dry["outcome"] == "dry_run_only"
-    with pytest.raises(ServerError) as e:
+    assert tools["windows.restart_service"]["runs_on"] == "client"
+    with pytest.raises(ServerError) as e:  # client-side tools are never executed by the server
         s.client.run_tool("windows.restart_service", {"service_name": "PosKasseSync"}, dry_run=False)
     assert e.value.status == 409
     res = s.client.run_tool("demo-erp.retry_exports", {}, dry_run=False)
@@ -330,3 +329,72 @@ def test_slow_ai_is_reported_as_timeout_not_offline(tmp_path, env, monkeypatch):
     assert any("KI-Analyse" in n for n in rep["notices"]) and not any("Offline" in n for n in rep["notices"])
     assert OfflineQueue(s.home.path("queue"), s.data_key).size() == 0  # server already has the events
     assert rep["findings"]  # local diagnosis still shown
+
+
+def _scan_with_stopped_service(s):
+    """Inject a deterministic 'stopped service' finding into the last scan (no real Windows needed)."""
+    from bonelia.contracts import AppIdentity, DiagnosticEvent, Evidence
+
+    s.scan(include_eventlog=False)
+    e = DiagnosticEvent(app=AppIdentity(app_id="svc:poskassesync", name="PosKasse Sync"), title="Hizmet durmuş: PosKasse Sync",
+                        fingerprint="svcstop", rule_id="win.service_stopped", repair_tool="windows.start_service",
+                        repair_params={"service_name": "PosKasseSync"},
+                        evidence=[Evidence(source="windows_services", kind="service_state", code="BONELIA:services/0")])
+    s.last_scan.events.append(e)
+    return e
+
+
+def test_one_click_repair_requires_one_time_customer_consent_and_is_verified_and_audited(tmp_path, env):
+    from bonelia.repair.tools import ExecResult
+
+    calls = []
+    state = {"running": False}
+
+    def start(params, dry_run):
+        calls.append(params["service_name"])
+        state["running"] = True
+        return ExecResult(True, {"before": {"status": "stopped"}})
+
+    fake = {"windows.start_service": (start, lambda p, r: state["running"])}
+    s = usb(tmp_path, env, "USB-01", env["a"], scopes=("diagnose", "repair:windows"))
+    e = _scan_with_stopped_service(s)
+    # 1) customer has not allowed repairs yet (default read-only) -> nothing runs
+    r = s.repair(e.event_id, executors=fake)
+    assert r["outcome"] == "denied" and "tenant_level_exceeded" in r["reasons"] and calls == []
+    # 2) owner allows safe repairs ONCE for this customer -> one click works, verified, audited
+    env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])
+    r = s.repair(e.event_id, executors=fake)
+    assert r["outcome"] == "executed_verified" and calls == ["PosKasseSync"]
+    assert s.last_report["interventions"][-1]["outcome"] == "executed_verified"
+    actions = [a["action"] for a in env["store"].audit_log(env["a"])]
+    assert "tool.authorized" in actions and "tool.executed" in actions
+    # 3) a device without the repair scope cannot repair even if the customer allowed it
+    s2 = usb(tmp_path, env, "USB-02", env["a"], scopes=("diagnose",))
+    e2 = _scan_with_stopped_service(s2)
+    assert s2.repair(e2.event_id, executors=fake)["reasons"] == ["missing_scope"]
+
+
+def test_level2_restart_needs_customer_level2_and_technician_click(tmp_path, env):
+    from bonelia.repair.tools import ExecResult
+
+    fake = {"windows.restart_service": (lambda p, d: ExecResult(True, {}), lambda p, r: True)}
+    s = usb(tmp_path, env, "USB-01", env["a"], scopes=("diagnose", "repair:windows"))
+    e = _scan_with_stopped_service(s)
+    e.repair_tool = "windows.restart_service"
+    env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])
+    assert s.repair(e.event_id, technician_confirmed=True, executors=fake)["reasons"] == ["tenant_level_exceeded"]
+    env["store"].update_tenant(env["a"], max_auto_level=2)
+    assert s.repair(e.event_id, technician_confirmed=False, executors=fake)["outcome"] == "denied"
+    assert s.repair(e.event_id, technician_confirmed=True, executors=fake)["outcome"] == "executed_verified"
+
+
+def test_tool_report_must_match_the_grant(tmp_path, env):
+    s = usb(tmp_path, env, "USB-01", env["a"], scopes=("diagnose", "repair:windows"))
+    env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])
+    g = s.client.authorize_tool("windows.start_service", {"service_name": "PosKasseSync"})
+    assert g["allowed"] and g["grant_id"]
+    with pytest.raises(ServerError) as e:  # report for different parameters is rejected
+        s.client.report_tool(g["grant_id"], "windows.start_service", {"service_name": "Other"}, "executed_verified", True, {})
+    assert e.value.status == 409
+    with pytest.raises(ServerError):  # a grant cannot be reused
+        s.client.report_tool(g["grant_id"], "windows.start_service", {"service_name": "PosKasseSync"}, "executed_verified", True, {})

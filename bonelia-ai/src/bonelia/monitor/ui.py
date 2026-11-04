@@ -173,6 +173,27 @@ def create_ui_app(session: Session, token: str, port: int, transport=None) -> Fa
             raise HTTPException(404, "no_report")
         return render_html(session.last_report)
 
+    @app.post("/api/repair/{event_id}")
+    def repair(event_id: str, confirmed: bool = False) -> dict[str, Any]:
+        if not session.client:
+            raise HTTPException(409, "not_unlocked")
+        try:
+            with lock:
+                return session.repair(event_id, technician_confirmed=confirmed)
+        except LookupError as exc:
+            raise HTTPException(404, "no_repair_for_event") from exc
+        except ServerUnavailable as exc:
+            raise HTTPException(503, "server_unavailable") from exc  # no repair without the server (audit + policy)
+        except ServerError as exc:
+            raise HTTPException(exc.status, exc.detail) from exc
+
+    @app.get("/api/tool-info")
+    def tool_info() -> dict[str, Any]:
+        from ..repair.builtin_tools import default_registry
+
+        return {"tools": {t.tool_id: {"risk_level": int(t.risk_level), "risk_text": t.risk_text.get(session.lang, "")}
+                          for t in default_registry().all() if t.runs_on == "client"}}
+
     @app.post("/api/quit")
     def quit_app() -> dict[str, Any]:
         """The double-click build has no console window; this is how the user closes it."""

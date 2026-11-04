@@ -9,6 +9,8 @@ from ..collectors import log_files, system, windows_events
 from ..contracts import AppIdentity, DiagnosticEvent, ErrorCategory, Evidence, ScanResult, Severity, utcnow
 from ..diagnostics.engine import diagnose_with_rules, event_from_raw, group_events, metric_events
 from ..diagnostics.recognize import correlate
+from ..diagnostics.triage import apply_triage
+from ..repair.windows_tools import CRITICAL_SERVICES, NORMALLY_STOPPED
 from ..security.redact import redact_text
 
 MODES = {"quick": 24, "full": 24 * 7, "recent": 1, "app": 24 * 7}
@@ -37,6 +39,44 @@ def _log_file_events(paths: list[str], lang: str) -> tuple[list[DiagnosticEvent]
     return events, status
 
 
+_STOPPED_TITLE = {"tr": "Hizmet durmuş: {n}", "de": "Dienst gestoppt: {n}", "en": "Service stopped: {n}"}
+
+
+def _service_events(svcs: list[dict], events: list[DiagnosticEvent], lang: str) -> list[DiagnosticEvent]:
+    """Stopped automatic services + repair suggestions (start / restart) for service problems."""
+    import hashlib
+
+    by_display = {str(s.get("display_name") or "").lower(): s for s in svcs}
+    out: list[DiagnosticEvent] = []
+    for s in svcs:
+        name, status, start = str(s.get("name") or ""), s.get("status"), s.get("start_type")
+        if start != "automatic" or status != "stopped" or not name:
+            continue
+        if name.lower() in NORMALLY_STOPPED or name.lower() in CRITICAL_SERVICES or "_" in name and name.split("_")[-1].isalnum() and len(name.split("_")[-1]) >= 5:
+            continue  # per-user service instances (Name_1a2b3c) and Windows' own trigger-start services
+        display = str(s.get("display_name") or name)[:150]
+        out.append(DiagnosticEvent(
+            app=AppIdentity(app_id=f"svc:{name.lower()}", name=display, adapter_id="generic-windows"),
+            category=ErrorCategory.service_failure, severity=Severity.error, title=_STOPPED_TITLE[lang].format(n=display),
+            fingerprint=hashlib.sha256(f"svc-stopped|{name.lower()}".encode()).hexdigest()[:32], rule_id="win.service_stopped",
+            evidence=[Evidence(source="windows_services", kind="service_state", code="BONELIA:services/0",
+                               data={"service_name": name, "status": status, "start_type": start})],
+            repair_tool="windows.start_service", repair_params={"service_name": name}))
+    # Repair suggestions for Service Control Manager crash events
+    for ev in events:
+        if ev.rule_id not in ("win.service_crash", "win.service_start_failed"):
+            continue
+        disp = next((e.data.get("service_display_name") for e in ev.evidence if e.data.get("service_display_name")), None)
+        s = by_display.get(str(disp or "").lower())
+        if not s or str(s.get("name", "")).lower() in CRITICAL_SERVICES:
+            continue
+        if s.get("status") == "stopped" and s.get("start_type") != "disabled":
+            ev.repair_tool, ev.repair_params = "windows.start_service", {"service_name": s["name"]}
+        elif s.get("status") == "running" and ev.occurrences >= 2:
+            ev.repair_tool, ev.repair_params = "windows.restart_service", {"service_name": s["name"]}
+    return out
+
+
 def run_scan(mode: str = "quick", salt: str = "", lang: str = "tr", app_query: str | None = None,
              log_paths: list[str] | None = None, hours: int | None = None, include_eventlog: bool = True) -> ScanResult:
     if mode not in MODES:
@@ -61,11 +101,15 @@ def run_scan(mode: str = "quick", salt: str = "", lang: str = "tr", app_query: s
         q = app_query.lower()
         events = [e for e in events if q in e.app.name.lower() or any(q in ev.text.lower() for ev in e.evidence)]
     events.extend(metric_events(res.system, lang))
+    if include_eventlog:
+        svcs, st_svc = system.services()
+        res.collector_status["services"] = st_svc
+        events.extend(_service_events(svcs, events, lang))
     lf_events, lf_status = _log_file_events(log_paths or [], lang)
     events.extend(lf_events)
     res.collector_status.update(lf_status)
 
-    res.events = group_events(events)
+    res.events = apply_triage(group_events(events), lang)
     res.diagnoses = [diagnose_with_rules(e, lang) for e in res.events]
     res.finished_at = utcnow()
     return res

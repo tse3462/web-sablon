@@ -186,6 +186,16 @@ class Store:
     def touch_device(self, device_id: str) -> None:
         self._x("update devices set last_seen_at=? where id=?", (_iso(utcnow()), device_id))
 
+    def update_device_scopes(self, device_id: str, add: list[str] = (), remove: list[str] = ()) -> list[str] | None:
+        dev = self.device(device_id)
+        if dev is None:
+            return None
+        scopes = sorted((set(dev["scopes"]) | set(add)) - set(remove))
+        self._x("update devices set scopes=? where id=?", (json.dumps(scopes), device_id))
+        self.audit("admin", "device.scopes_changed", {"add": list(add), "remove": list(remove)}, tenant_id=dev["tenant_id"],
+                   device_id=device_id)
+        return scopes
+
     def revoke_device(self, device_id: str, actor: str = "admin") -> bool:
         dev = self.device(device_id)
         if dev is None:

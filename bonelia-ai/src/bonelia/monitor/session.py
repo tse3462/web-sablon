@@ -114,6 +114,25 @@ class Session:
         self._persist()
         return self.last_report
 
+    def repair(self, event_id: str, technician_confirmed: bool = False, executors=None) -> dict[str, Any]:
+        """Run the repair suggested for one event of the last scan (see repair_local)."""
+        from .repair_local import repair as run_repair
+
+        if self.client is None or self.last_scan is None:
+            raise RuntimeError("not_unlocked_or_no_scan")
+        ev = next((e for e in self.last_scan.events if e.event_id == event_id), None)
+        if ev is None or not ev.repair_tool:
+            raise LookupError("no_repair_for_event")
+        res = run_repair(self.client, ev.repair_tool, dict(ev.repair_params), technician_confirmed, executors)
+        res["event_id"] = event_id
+        if res["outcome"] != "denied":
+            self.interventions.append({"tool_id": res["tool_id"], "params": res.get("params"), "outcome": res["outcome"],
+                                       "verified": res.get("verified", False), "event_id": event_id})
+            if self.last_report is not None:
+                self.last_report["interventions"] = list(self.interventions)
+                self._persist()
+        return res
+
     def _drain_queue(self, max_entries: int) -> None:
         """Send earlier offline events in a background thread so the user never waits for them."""
         if self.client is None or self.data_key is None:

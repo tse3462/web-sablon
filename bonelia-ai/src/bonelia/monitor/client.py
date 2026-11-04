@@ -122,6 +122,15 @@ class ServerClient:
         return self._request("POST", "/v1/tools/run", {"tool_id": tool_id, "parameters": params, "dry_run": dry_run,
                                                        "approval_id": approval_id})
 
+    def authorize_tool(self, tool_id: str, params: dict[str, Any], technician_confirmed: bool = False) -> dict[str, Any]:
+        return self._request("POST", "/v1/tools/authorize", {"tool_id": tool_id, "parameters": params, "dry_run": False,
+                                                             "technician_confirmed": technician_confirmed})
+
+    def report_tool(self, grant_id: str, tool_id: str, params: dict[str, Any], outcome: str, verified: bool,
+                    detail: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/v1/tools/report", {"grant_id": grant_id, "tool_id": tool_id, "parameters": params,
+                                                          "outcome": outcome, "verified": verified, "detail": detail})
+
     def adapters(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/adapters").get("adapters", [])
 

@@ -152,10 +152,41 @@ def test_approval_consumed_before_execution():
 
 def test_builtin_registry_defaults_are_safe():
     reg = default_registry()
-    assert reg.ids() == {"generic.collect_snapshot"}  # everything that can change state is off
-    assert {t.tool_id for t in reg.all()} == {"generic.collect_snapshot", "windows.restart_service"}  # no app-specific tools
-    restart = reg.get("windows.restart_service")
-    assert restart.risk_level == RiskLevel.ADMIN_APPROVED and restart.verifier is None
+    assert {t.tool_id for t in reg.all()} == {"generic.collect_snapshot", "windows.start_service", "windows.restart_service"}
+    # Service tools run on the client and are inert until the customer allows repairs (tenant level 0 by default)
+    for tid, level in (("windows.start_service", RiskLevel.SAFE_AUTO), ("windows.restart_service", RiskLevel.ADMIN_APPROVED)):
+        t = reg.get(tid)
+        assert t.runs_on == "client" and t.risk_level == level and t.executor is None
+        assert evaluate(t, {"service_name": "Spooler"}, False, ctx(device_scopes={"repair:windows"},
+                                                                    tenant_max_level=RiskLevel.READ_ONLY)).reasons == ["tenant_level_exceeded"]
     assert all(t.risk_level < RiskLevel.CRITICAL for t in reg.all())
     with pytest.raises(ValueError):
         reg.register(tool(tool_id="BAD ID"))
+
+
+def test_client_side_tools_one_click_and_technician_confirmation():
+    reg = default_registry()
+    start, restart = reg.get("windows.start_service"), reg.get("windows.restart_service")
+    p = {"service_name": "Spooler"}
+    base = dict(device_scopes={"repair:windows"}, auto_tools={"windows.start_service"})
+    # level 1: one click once the customer allowed level 1 (no executor needed on the server)
+    assert evaluate(start, p, False, ctx(tenant_max_level=RiskLevel.SAFE_AUTO, **base)).reasons == ["auto_allowed"]
+    # level 2: needs customer level 2 AND the technician's confirmation; no remote admin approval
+    assert evaluate(restart, p, False, ctx(tenant_max_level=RiskLevel.SAFE_AUTO, technician_confirmed=True, **base)).reasons == ["tenant_level_exceeded"]
+    assert evaluate(restart, p, False, ctx(tenant_max_level=RiskLevel.ADMIN_APPROVED, **base)).requires_approval
+    assert evaluate(restart, p, False, ctx(tenant_max_level=RiskLevel.ADMIN_APPROVED, technician_confirmed=True, **base)).allowed
+    # injection-shaped names never pass
+    assert not evaluate(start, {"service_name": "x; shutdown /s"}, False, ctx(tenant_max_level=RiskLevel.SAFE_AUTO, **base)).allowed
+    # level 3 stays blocked even with confirmation
+    crit = tool(level=RiskLevel.CRITICAL, runs_on="client")
+    assert evaluate(crit, P, False, ctx(tenant_max_level=RiskLevel.ADMIN_APPROVED, technician_confirmed=True)).reasons == ["critical_blocked_v0_1"]
+
+
+def test_windows_executors_refuse_critical_and_invalid_services():
+    from bonelia.repair import windows_tools as wt
+
+    for name in ("RpcSs", "lsass", "WinDefend", "EventLog"):
+        assert wt.start_service({"service_name": name}, False).detail["error"] == "critical_service_refused"
+        assert wt.restart_service({"service_name": name}, False).detail["error"] == "critical_service_refused"
+    assert wt.start_service({"service_name": "a b; del"}, False).detail["error"] == "invalid_service_name"
+    assert wt.start_service({"service_name": 5}, False).detail["error"] == "invalid_service_name"

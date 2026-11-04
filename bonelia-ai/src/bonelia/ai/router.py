@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
-from ..contracts import Confidence, Diagnosis, DiagnosticEvent, Severity
+from ..contracts import Confidence, Diagnosis, DiagnosticEvent, Severity, Triage
 from ..diagnostics.engine import diagnose_with_rules
 from .costs import PriceTable
 from .prompting import build_prompt, parse_diagnosis
@@ -104,6 +104,8 @@ class HybridRouter:
 
     @staticmethod
     def _needs_ai(event: DiagnosticEvent, rules: Diagnosis) -> bool:
+        if event.triage == Triage.harmless:
+            return False  # routine noise: never spend AI time on it
         if event.severity in (Severity.critical, Severity.error):
             return True
         return all(h.confidence == Confidence.low for h in rules.hypotheses)

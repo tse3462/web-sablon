@@ -28,7 +28,8 @@ from ..ai.costs import PriceTable
 from ..ai.providers import OllamaProvider, OpenAICompatibleProvider
 from ..ai.router import HybridRouter, TenantAIPolicy
 from ..contracts import (
-    AnalyzeRequest, AnalyzeResponse, DiagnosticEvent, EnrollRequest, EnrollResponse, RiskLevel, ToolRequest,
+    AnalyzeRequest, AnalyzeResponse, DiagnosticEvent, EnrollRequest, EnrollResponse, RiskLevel, ToolReport, ToolRequest,
+    new_id,
 )
 from ..diagnostics.engine import group_events
 from ..repair.builtin_tools import default_registry
@@ -39,7 +40,7 @@ from ..security.crypto import (
     H_DEVICE, H_NONCE, H_SERVER_SIG, H_SIG, H_TS, generate_keypair, load_private_key, load_public_key, public_key_b64,
     sign_response, verify_request,
 )
-from ..security.redact import redact_text
+from ..security.redact import redact_text, redact_value
 from ..security.untrusted import fence, make_boundary
 from .config import ServerConfig
 from .store import Store
@@ -61,6 +62,11 @@ def load_or_create_server_key(cfg: ServerConfig) -> Ed25519PrivateKey:
     return key
 
 
+def ai_proposable_tools(registry: ToolRegistry) -> set[str]:
+    """The AI may only mention read-only tools. Repairs are suggested by deterministic rules, never by the model."""
+    return {t.tool_id for t in registry.all() if t.enabled and t.risk_level == RiskLevel.READ_ONLY}
+
+
 def build_router(cfg: ServerConfig, store: Store, registry: ToolRegistry) -> HybridRouter:
     local = OllamaProvider(cfg.ollama_url, cfg.ollama_model) if cfg.ollama_url else None
     cloud = None
@@ -73,7 +79,7 @@ def build_router(cfg: ServerConfig, store: Store, registry: ToolRegistry) -> Hyb
         codes = [e.code for e in ev.evidence if e.code]
         return store.knowledge_for(ev.app.name, codes)
 
-    return HybridRouter(local, cloud, PriceTable.from_config(cfg.prices), store, lambda: registry.ids(enabled_only=True),
+    return HybridRouter(local, cloud, PriceTable.from_config(cfg.prices), store, lambda: ai_proposable_tools(registry),
                         max_ai_events=cfg.max_ai_events_per_request, history=history)
 
 
@@ -320,6 +326,63 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         tid = auth["tenant"]["id"]
         return {"tools": [t.public_manifest() for t in registry.all() if tenant_may_use_tool(t.tool_id, tid)]}
 
+    def policy_ctx(req: ToolRequest, tenant: dict[str, Any], dev: dict[str, Any]) -> PolicyContext:
+        approval = store.approval(req.approval_id, tenant["id"]) if req.approval_id else None
+        return PolicyContext(
+            tenant_id=tenant["id"], device_scopes=set(dev["scopes"]), actor_role="operator",
+            tenant_max_level=RiskLevel(min(int(tenant["max_auto_level"]), int(RiskLevel.ADMIN_APPROVED))),
+            auto_tools=set(tenant["auto_tools"]), runs_last_hour=store.tool_runs_last_hour(tenant["id"], req.tool_id),
+            approval=approval, environment=tenant["environment"],
+            production_writes_allowed=bool(tenant["production_writes_allowed"]),
+            technician_confirmed=req.technician_confirmed)
+
+    grants: dict[str, dict[str, Any]] = {}  # grant_id -> what was authorized (short-lived, single use)
+
+    @app.post("/v1/tools/authorize")
+    async def authorize_tool(auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        """Policy decision for a CLIENT-side tool. The USB executes it only with this signed grant."""
+        req = parse(ToolRequest, auth["body"])
+        tenant, dev = auth["tenant"], auth["device"]
+        tool = registry.get(req.tool_id)
+        if tool is None or tool.runs_on != "client":
+            raise HTTPException(404, "unknown_client_tool")
+        if not tenant_may_use_tool(req.tool_id, tenant["id"]):
+            raise HTTPException(403, "adapter_not_assigned_to_tenant")
+        from ..repair.policy import evaluate
+
+        decision = evaluate(tool, req.parameters, req.dry_run, policy_ctx(req, tenant, dev))
+        detail = {"tool_id": req.tool_id, "dry_run": req.dry_run, "reasons": decision.reasons, "params": req.parameters,
+                  "technician_confirmed": req.technician_confirmed, "risk_level": int(tool.risk_level)}
+        if not decision.allowed:
+            store.audit("device", "tool.denied", detail, tenant_id=tenant["id"], device_id=dev["id"])
+            return {"allowed": False, "requires_approval": decision.requires_approval, "reasons": decision.reasons}
+        if decision.dry_run_only:
+            return {"allowed": True, "dry_run_only": True, "reasons": decision.reasons}
+        if "approved" in decision.reasons and req.approval_id:
+            store.consume_approval(req.approval_id)
+        for gid in [k for k, v in grants.items() if time.monotonic() - v["at"] > 900]:
+            grants.pop(gid, None)  # unused grants expire after 15 minutes
+        grant_id = new_id("grant")
+        grants[grant_id] = {"tenant_id": tenant["id"], "device_id": dev["id"], "tool_id": req.tool_id,
+                            "params": req.parameters, "at": time.monotonic()}
+        store.record_tool_run(tenant["id"], req.tool_id)  # counts towards the hourly limit before it runs
+        store.audit("device", "tool.authorized", {**detail, "grant_id": grant_id}, tenant_id=tenant["id"], device_id=dev["id"])
+        return {"allowed": True, "dry_run_only": False, "grant_id": grant_id, "reasons": decision.reasons,
+                "risk_level": int(tool.risk_level), "timeout_s": tool.timeout_s}
+
+    @app.post("/v1/tools/report")
+    async def report_tool(auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        rep = parse(ToolReport, auth["body"])
+        g = grants.pop(rep.grant_id, None)
+        if g is None or g["device_id"] != auth["device"]["id"] or g["tool_id"] != rep.tool_id or g["params"] != rep.parameters:
+            store.audit("device", "tool.report_mismatch", {"grant_id": rep.grant_id, "tool_id": rep.tool_id},
+                        tenant_id=auth["tenant"]["id"], device_id=auth["device"]["id"])
+            raise HTTPException(409, "unknown_or_mismatched_grant")
+        store.audit("device", "tool.executed", {"tool_id": rep.tool_id, "params": rep.parameters, "outcome": rep.outcome,
+                                                "verified": rep.verified, "detail": redact_value(rep.detail), "grant_id": rep.grant_id},
+                    tenant_id=auth["tenant"]["id"], device_id=auth["device"]["id"])
+        return {"recorded": True}
+
     @app.post("/v1/tools/run")
     async def run_tool(auth: dict = Depends(device_auth)) -> dict[str, Any]:
         req = parse(ToolRequest, auth["body"])
@@ -328,14 +391,9 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             raise HTTPException(403, "adapter_not_assigned_to_tenant")
         tool = registry.get(req.tool_id)
         approval = store.approval(req.approval_id, tenant["id"]) if req.approval_id else None
-        ctx = PolicyContext(
-            tenant_id=tenant["id"], device_scopes=set(dev["scopes"]), actor_role="operator",
-            tenant_max_level=RiskLevel(min(int(tenant["max_auto_level"]), int(RiskLevel.ADMIN_APPROVED))),
-            auto_tools=set(tenant["auto_tools"]), runs_last_hour=store.tool_runs_last_hour(tenant["id"], req.tool_id),
-            approval=approval, environment=tenant["environment"],
-            production_writes_allowed=bool(tenant["production_writes_allowed"]))
-        if tool is not None and "server" not in tool.platforms and not req.dry_run:
-            raise HTTPException(409, "client_side_tool_dry_run_only_v0_1")
+        ctx = policy_ctx(req, tenant, dev)
+        if tool is not None and tool.runs_on == "client" and not req.dry_run:
+            raise HTTPException(409, "client_side_tool_use_authorize")
         consume = (lambda: store.consume_approval(approval.approval_id)) if approval else None
         res = await run_in_threadpool(gateway.run, req.tool_id, req.parameters, req.dry_run, ctx, consume)
         if res.outcome.value in ("executed_verified", "executed_unverified", "failed") and not req.dry_run:

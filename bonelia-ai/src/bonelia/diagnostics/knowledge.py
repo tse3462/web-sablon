@@ -83,6 +83,17 @@ SIGNATURES: tuple[KnownSignature, ...] = (
         ),
     ),
     KnownSignature(
+        "win.service_stopped", ("BONELIA:services",), (0,), ErrorCategory.service_failure, Severity.error,
+        _l("Otomatik başlaması gereken hizmet durmuş", "Automatisch startender Dienst ist gestoppt",
+           "A service set to start automatically is stopped"),
+        (
+            (_l("Hizmet çöktü veya bağımlı olduğu bir hizmet başlamadı", "Dienst abgestürzt oder abhängiger Dienst nicht gestartet",
+                "The service crashed or a service it depends on did not start"), Confidence.medium),
+        ),
+        (_l("Hizmeti başlatın ve tekrar durup durmadığını izleyin", "Dienst starten und beobachten, ob er erneut stoppt",
+            "Start the service and watch whether it stops again"),),
+    ),
+    KnownSignature(
         "win.service_start_failed", ("Service Control Manager",), (7000, 7009, 7011), ErrorCategory.service_failure, Severity.error,
         _l("Hizmet başlatılamadı veya zaman aşımına uğradı", "Dienst konnte nicht gestartet werden / Zeitüberschreitung",
            "Service failed to start or timed out"),

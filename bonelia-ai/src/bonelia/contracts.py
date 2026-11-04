@@ -31,6 +31,14 @@ class _Model(BaseModel):
 # --------------------------------------------------------------------------- enums
 
 
+class Triage(str, Enum):
+    """What the technician should do with an event (deterministic, rule-based)."""
+
+    important = "important"  # act on it
+    check = "check"  # worth a look
+    harmless = "harmless"  # routine Windows noise
+
+
 class Severity(str, Enum):
     info = "info"
     warning = "warning"
@@ -129,6 +137,11 @@ class DiagnosticEvent(_Model):
     occurrences: int = 1
     evidence: list[Evidence] = Field(default_factory=list, max_length=50)
     rule_id: str | None = None
+    triage: Triage = Triage.check
+    triage_reason: str = Field(default="", max_length=300)
+    # A concrete, allow-listed repair the technician can trigger for this event (or None).
+    repair_tool: str | None = Field(default=None, max_length=120)
+    repair_params: dict[str, Any] = Field(default_factory=dict)
 
 
 class Hypothesis(_Model):
@@ -220,3 +233,16 @@ class ToolRequest(_Model):
     dry_run: bool = True
     event_id: str | None = None
     approval_id: str | None = None
+    # The on-site technician pressed "Repair" after seeing the risk text (level-2 tools).
+    technician_confirmed: bool = False
+
+
+class ToolReport(_Model):
+    """Outcome of a tool executed on the client after server authorization."""
+
+    grant_id: str = Field(max_length=80)
+    tool_id: str = Field(max_length=120)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    outcome: str = Field(max_length=40)
+    verified: bool = False
+    detail: dict[str, Any] = Field(default_factory=dict)

@@ -46,6 +46,8 @@ def _crash_details(raw: RawEvent) -> dict[str, str]:
                "exception_code": d[6].lower() if d[6] else ""}
     elif raw.event_id == 1002 and len(d) >= 2:
         out = {"faulting_app": d[0], "app_version": d[1]}
+    elif raw.provider == "Service Control Manager" and raw.event_id in (7000, 7009, 7011, 7023, 7024, 7031, 7034) and d:
+        out = {"service_display_name": d[0]}
     else:
         m = _EXC_RE.search(raw.message or "")
         if m:
@@ -59,7 +61,7 @@ def _crash_details(raw: RawEvent) -> dict[str, str]:
 
 
 def _app_for(raw: RawEvent, details: dict[str, str]) -> AppIdentity:
-    name = details.get("faulting_app") or raw.provider or "unknown"
+    name = details.get("faulting_app") or details.get("service_display_name") or raw.provider or "unknown"
     return AppIdentity(app_id=f"win:{name.lower()[:100]}", name=name[:200], version=details.get("app_version"),
                        adapter_id="generic-windows", recognized=False)
 

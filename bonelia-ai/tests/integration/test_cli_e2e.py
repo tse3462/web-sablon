@@ -116,3 +116,18 @@ def test_enroll_with_placeholder_code_gives_friendly_message(tmp_path):
     p = run(["-m", "bonelia", "--home", str(tmp_path / "usb"), "enroll", "--server", "http://127.0.0.1:9",
              "--code", "AAAA-BBBB-CCCC-DDDD-EEEE", "--label", "USB 01"], {**os.environ, "PYTHONIOENCODING": "utf-8"}, check=False)
     assert p.returncode == 3 and "Traceback" not in p.stderr
+
+
+def test_allow_repairs_and_device_scopes_commands(tmp_path):
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    srv = ["-m", "bonelia.server.cli", "--data-dir", str(tmp_path / "d")]
+    tenant = run([*srv, "tenant-add", "Kunde"], env).stdout.strip()
+    out = json.loads(run([*srv, "allow-repairs", tenant, "--level", "1"], env).stdout)
+    assert out["repair_level"] == 1 and out["one_click_tools"] == ["windows.start_service"]
+    assert json.loads(run([*srv, "tenants"], env).stdout)[0]["max_auto_level"] == 1
+    from bonelia.server.store import Store
+
+    store = Store(tmp_path / "d" / "bonelia.db")
+    dev = store.redeem_enrollment(store.create_enrollment_code(tenant, ["diagnose"]), "USB", "pk")["device_id"]
+    out = json.loads(run([*srv, "device-scopes", dev, "--add", "repair:windows"], env).stdout)
+    assert out["scopes"] == ["diagnose", "repair:windows"]

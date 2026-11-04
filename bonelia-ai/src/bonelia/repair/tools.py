@@ -64,6 +64,10 @@ class ToolSpec:
     executor: Executor | None = None
     verifier: Verifier | None = None
     enabled: bool = False  # tools are OFF unless explicitly enabled by configuration
+    # "server": executed by the server gateway. "client": authorized by the server, executed and
+    # independently verified on the customer machine by the USB monitor / agent.
+    runs_on: str = "server"
+    risk_text: dict[str, str] = field(default_factory=dict)  # shown to the technician before a level-2 run
 
     def validate_params(self, params: dict[str, Any]) -> None:
         unknown = set(params) - set(self.params)
@@ -85,7 +89,8 @@ class ToolSpec:
             "supports_dry_run": self.supports_dry_run, "idempotent": self.idempotent, "rollback": self.rollback,
             "timeout_s": self.timeout_s, "max_runs_per_hour": self.max_runs_per_hour, "verification": self.verification,
             "side_effects": self.side_effects, "enabled": self.enabled,
-            "executable": self.executor is not None and self.verifier is not None,
+            "executable": self.runs_on == "client" or (self.executor is not None and self.verifier is not None),
+            "runs_on": self.runs_on, "risk_text": self.risk_text,
         }
 
 

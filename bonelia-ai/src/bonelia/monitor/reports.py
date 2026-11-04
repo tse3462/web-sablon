@@ -56,6 +56,8 @@ def build_report(scan: ScanResult, tenant_ref: str | None, lang: str = "tr", dia
             "missing_information": d.missing_information if d else [],
             "recommendations": [r.description for r in (d.recommendations if d else [])],
             "analysis_source": d.produced_by if d else "none", "warnings": d.warnings if d else [],
+            "triage": ev.triage.value, "triage_reason": ev.triage_reason,
+            "repair_tool": ev.repair_tool, "repair_params": ev.repair_params,
             "definitive": False,
         })
     return {
@@ -82,7 +84,8 @@ def render_text(rep: dict[str, Any]) -> str:
     if not rep["findings"]:
         out.append(f"  {t['no_findings']}")
     for i, f in enumerate(rep["findings"], 1):
-        out += [f"", f"[{i}] ({f['severity'].upper()}) {f['title']}", f"    {t['program']}: {f['program']} {f['program_version'] or ''}  "
+        tri = {"important": "!!", "check": "?", "harmless": "-"}.get(f.get("triage", "check"), "?")
+        out += [f"", f"[{i}] {tri} ({f['severity'].upper()}) {f['title']}  — {f.get('triage_reason', '')}", f"    {t['program']}: {f['program']} {f['program_version'] or ''}  "
                 f"{t['count']}: {f['occurrences']}"]
         for e in f["evidence"][:1]:
             out.append(f"    {t['evidence']}: {e['source']} {e['code'] or ''} — {e['text'][:200]}")
@@ -110,7 +113,8 @@ def render_html(rep: dict[str, Any]) -> str:
         recs = "".join(f"<li>{e(r)}</li>" for r in f["recommendations"][:4])
         ev = "".join(f"<div class=ev><code>{e(x['source'])} {e(x['code'] or '')}</code> {e(x['text'][:300])}</div>" for x in f["evidence"][:2])
         warn = "".join(f"<div class=warn>⚠ {e(w)}</div>" for w in f["warnings"])
-        rows.append(f"<section class='f {e(f['severity'])}'><h3>{e(f['title'])}</h3><p>{e(t['program'])}: {e(f['program'])} "
+        tri = {"important": "!!", "check": "?", "harmless": "–"}.get(f.get("triage", "check"), "?")
+        rows.append(f"<section class='f {e(f['severity'])}'><h3>{e(tri)} {e(f['title'])}</h3><p><i>{e(f.get('triage_reason', ''))}</i></p><p>{e(t['program'])}: {e(f['program'])} "
                     f"{e(f['program_version'] or '')} · {e(t['count'])}: {f['occurrences']} · {e(f['analysis_source'])}</p>{ev}"
                     f"<h4>{e(t['cause'])}</h4><ul>{causes}</ul><h4>{e(t['rec'])}</h4><ul>{recs}</ul>{warn}</section>")
     checks = "".join(f"<li><code>{e(k)}</code>: {e(str(v))}</li>" for k, v in rep["checks_performed"].items())

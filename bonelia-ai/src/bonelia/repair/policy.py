@@ -46,6 +46,7 @@ class PolicyContext:
     approval: Approval | None = None
     environment: str = "test"  # "test" | "production"
     production_writes_allowed: bool = False
+    technician_confirmed: bool = False  # on-site technician confirmed after seeing the risk text
 
 
 @dataclass
@@ -82,7 +83,7 @@ def evaluate(tool: ToolSpec | None, params: dict[str, Any], dry_run: bool, ctx: 
     # ----- real execution from here on
     if not tool.enabled:
         return deny("tool_disabled")
-    if tool.executor is None or tool.verifier is None:
+    if tool.runs_on != "client" and (tool.executor is None or tool.verifier is None):
         return deny("no_verified_executor")
     if tool.risk_level > ctx.tenant_max_level:
         return deny("tenant_level_exceeded")
@@ -99,6 +100,10 @@ def evaluate(tool: ToolSpec | None, params: dict[str, Any], dry_run: bool, ctx: 
         if tool.tool_id in ctx.auto_tools:
             return Decision(True, False, False, ["auto_allowed"])
         # level-1 tool not on the tenant's auto list: needs an explicit approval like level 2
+    # Level 2: allowed when the customer allowed level 2 once (tenant setting) AND the on-site
+    # technician confirmed this run after seeing what it does. No per-run remote admin approval.
+    if tool.risk_level == RiskLevel.ADMIN_APPROVED and ctx.technician_confirmed and not needs_admin:
+        return Decision(True, False, False, ["technician_confirmed"])
     ap = ctx.approval
     if ap is None:
         return Decision(False, False, True, ["approval_required"])

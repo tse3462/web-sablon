@@ -28,7 +28,11 @@ button:disabled{opacity:.5;cursor:wait}
 input[type=text],input[type=password],textarea,select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit}
 textarea{width:100%;min-height:70px}
 .f{border-left:5px solid var(--muted);margin:10px 0}.f.critical{border-left-color:var(--crit)}.f.error{border-left-color:var(--err)}.f.warning{border-left-color:var(--warn)}
-.f h4{margin:0 0 4px}.meta{color:var(--muted);font-size:12px}
+.f h4{margin:0 0 4px}.tri{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;margin-right:6px;color:#fff}
+.tri.important{background:var(--crit)}.tri.check{background:var(--warn)}.tri.harmless{background:var(--ok)}
+.grp{margin:18px 0 6px;font-size:13px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted)}
+details.harmless>summary{cursor:pointer;margin:18px 0 6px;font-size:13px;font-weight:700;text-transform:uppercase;color:var(--muted)}
+.fix{margin-top:8px}.fixres{margin-top:6px;font-size:13px}.fixres.ok{color:var(--ok)}.fixres.bad{color:var(--crit)}.meta{color:var(--muted);font-size:12px}
 .ev{font-size:12px;background:var(--chip);border-radius:6px;padding:6px 8px;margin:6px 0;word-break:break-word}
 .conf{font-size:11px;padding:1px 6px;border-radius:10px;background:var(--chip);margin-right:6px}
 .warn{color:var(--warn)}.notice{background:var(--chip);border-radius:8px;padding:10px 12px;margin:8px 0}
@@ -133,7 +137,9 @@ tool:"Araç",risk:"Risk seviyesi",state:"Durum",report_title:"Teknik servis rapo
 dest_ph:"Hedef klasör (USB dışında), örn. C:\\Users\\Public\\Desktop",report_note:"USB üzerindeki raporlar yalnızca şifreli saklanır.",
 unlock_title:"USB kilidini aç",unlock:"Kilidi aç",unlock_hint:"Kayıt sırasında belirlenen USB parolası.",connected:"Bağlı",offline:"Bağlantı yok",
 not_enrolled:"Kayıtsız USB (yalnız yerel)",locked:"Kilitli",cause:"Muhtemel neden",rec:"Öneri",missing:"Eksik bilgi",dry:"Dene (dry-run)",enabled:"Etkin",disabled:"Kapalı",
-nofind:"İncelenen kaynaklarda hata bulunmadı.",quit:"Kapat",quit_q:"BONELİA AI kapatılsın mı?",closed:"BONELİA AI kapatıldı. Bu sekmeyi kapatabilirsiniz.",working:"Çalışıyor…",rules:"Kural motoru",lvl:["0 Okuma","1 Güvenli otomatik","2 Yönetici onaylı","3 Kritik (engelli)"]},
+nofind:"İncelenen kaynaklarda hata bulunmadı.",t_important:"Önemli",t_check:"Kontrol edin",t_harmless:"Zararsız",g_harmless:"Zararsız kayıtlar",
+repair:"Onar",repairing:"Onarılıyor… (Windows izin isteyebilir)",rep_ok:"Onarıldı ve doğrulandı ✓",rep_unv:"İşlem yapıldı ama sonuç doğrulanamadı",
+rep_fail:"Onarım başarısız",rep_denied:"İzin yok",rep_need:"Bu müşteri için onarım izni verilmemiş (sunucuda: allow-repairs)",quit:"Kapat",quit_q:"BONELİA AI kapatılsın mı?",closed:"BONELİA AI kapatıldı. Bu sekmeyi kapatabilirsiniz.",working:"Çalışıyor…",rules:"Kural motoru",lvl:["0 Okuma","1 Güvenli otomatik","2 Yönetici onaylı","3 Kritik (engelli)"]},
 de:{nav_home:"Übersicht",nav_scan:"Scan",nav_chat:"KI-Chat",nav_fix:"Eingriff",nav_report:"Bericht",server:"Serververbindung",ai_model:"KI-Modell",
 customer:"Kunde",computer:"Computer",apps:"Erkannte Anwendungen",active_errors:"Aktive Fehler",monitoring:"Überwachung",mon_session:"Während der Sitzung",
 last_analyses:"Letzte Analysen",none_yet:"Noch kein Scan durchgeführt.",scan_title:"Diagnoseart wählen",m_quick:"Schnelldiagnose",m_full:"Volldiagnose (7 Tage)",
@@ -145,7 +151,9 @@ tool:"Werkzeug",risk:"Risikostufe",state:"Status",report_title:"Technischer Serv
 dest_ph:"Zielordner (außerhalb des USB-Sticks)",report_note:"Berichte auf dem USB-Stick werden nur verschlüsselt gespeichert.",
 unlock_title:"USB entsperren",unlock:"Entsperren",unlock_hint:"Das bei der Registrierung festgelegte USB-Passwort.",connected:"Verbunden",offline:"Keine Verbindung",
 not_enrolled:"Nicht registriert (nur lokal)",locked:"Gesperrt",cause:"Wahrscheinliche Ursache",rec:"Empfehlung",missing:"Fehlende Angaben",dry:"Probelauf",enabled:"Aktiv",disabled:"Aus",
-nofind:"Keine Fehler in den geprüften Quellen.",quit:"Schließen",quit_q:"BONELİA AI beenden?",closed:"BONELİA AI wurde beendet. Sie können diesen Tab schließen.",working:"Läuft…",rules:"Regel-Engine",lvl:["0 Lesen","1 Sicher automatisch","2 Admin-Freigabe","3 Kritisch (gesperrt)"]},
+nofind:"Keine Fehler in den geprüften Quellen.",t_important:"Wichtig",t_check:"Prüfen",t_harmless:"Harmlos",g_harmless:"Harmlose Einträge",
+repair:"Reparieren",repairing:"Wird repariert… (Windows fragt evtl. nach Rechten)",rep_ok:"Repariert und überprüft ✓",rep_unv:"Ausgeführt, Ergebnis nicht bestätigt",
+rep_fail:"Reparatur fehlgeschlagen",rep_denied:"Nicht erlaubt",rep_need:"Für diesen Kunden sind Reparaturen nicht freigegeben (Server: allow-repairs)",quit:"Schließen",quit_q:"BONELİA AI beenden?",closed:"BONELİA AI wurde beendet. Sie können diesen Tab schließen.",working:"Läuft…",rules:"Regel-Engine",lvl:["0 Lesen","1 Sicher automatisch","2 Admin-Freigabe","3 Kritisch (gesperrt)"]},
 en:{nav_home:"Home",nav_scan:"Scan",nav_chat:"AI Chat",nav_fix:"Intervention",nav_report:"Report",server:"Server connection",ai_model:"AI model",
 customer:"Customer",computer:"Computer",apps:"Detected applications",active_errors:"Active errors",monitoring:"Monitoring",mon_session:"During session",
 last_analyses:"Latest analyses",none_yet:"No scan yet.",scan_title:"Choose diagnosis type",m_quick:"Quick diagnosis",m_full:"Full diagnosis (7 days)",
@@ -157,7 +165,9 @@ tool:"Tool",risk:"Risk level",state:"State",report_title:"Technical service repo
 dest_ph:"Destination folder (outside the USB)",report_note:"Reports on the USB are stored encrypted only.",
 unlock_title:"Unlock USB",unlock:"Unlock",unlock_hint:"The USB passphrase chosen during enrollment.",connected:"Connected",offline:"Not connected",
 not_enrolled:"Not enrolled (local only)",locked:"Locked",cause:"Likely cause",rec:"Recommendation",missing:"Missing information",dry:"Dry-run",enabled:"Enabled",disabled:"Off",
-nofind:"No errors found in the inspected sources.",quit:"Close",quit_q:"Close BONELİA AI?",closed:"BONELİA AI has been closed. You can close this tab.",working:"Working…",rules:"Rule engine",lvl:["0 Read","1 Safe auto","2 Admin approved","3 Critical (blocked)"]}};
+nofind:"No errors found in the inspected sources.",t_important:"Important",t_check:"Check",t_harmless:"Harmless",g_harmless:"Harmless entries",
+repair:"Repair",repairing:"Repairing… (Windows may ask for permission)",rep_ok:"Repaired and verified ✓",rep_unv:"Done, but the result could not be verified",
+rep_fail:"Repair failed",rep_denied:"Not allowed",rep_need:"Repairs are not allowed for this customer (server: allow-repairs)",quit:"Close",quit_q:"Close BONELİA AI?",closed:"BONELİA AI has been closed. You can close this tab.",working:"Working…",rules:"Rule engine",lvl:["0 Read","1 Safe auto","2 Admin approved","3 Critical (blocked)"]}};
 let TOKEN=location.hash.slice(1);try{if(TOKEN)sessionStorage.setItem("bt",TOKEN);else TOKEN=sessionStorage.getItem("bt")||""}catch(e){}
 let L="tr";let lastReport=null;
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -176,15 +186,37 @@ async function refresh(){const s=await api("/api/status");L=s.language||L;i18n()
  $("#kTenant").textContent=s.tenant_id?s.tenant_id.slice(0,14)+"…":"–";$("#kDevice").textContent=s.device_id||"";
  $("#kHost").textContent=s.system?s.system.hostname_ref:"–";$("#kOS").textContent=s.system?(s.system.os+" "+s.system.os_version):"";
  $("#kApps").textContent=s.apps_detected;$("#kErr").textContent=s.active_errors}
-function renderReport(rep){lastReport=rep;$("#notices").innerHTML=(rep.notices||[]).map(n=>`<div class="notice">${esc(n)}</div>`).join("");
- const fs=rep.findings||[];const html=fs.length?fs.map(f=>`<div class="card f ${esc(f.severity)}"><h4>${esc(f.title)}</h4>
+let TOOLINFO={};
+function card(f){return `<div class="card f ${esc(f.severity)}" id="f-${esc(f.event_id)}"><h4><span class="tri ${esc(f.triage||"check")}">${esc(t("t_"+(f.triage||"check")))}</span>${esc(f.title)}</h4>
+ <div class="meta">${esc(f.triage_reason||"")}</div>
  <div class="meta">${esc(f.program)} ${esc(f.program_version||"")} · ×${f.occurrences} · ${esc(f.analysis_source)} · ${esc(f.occurred_at)}</div>
  ${(f.evidence||[]).slice(0,1).map(e=>`<div class="ev"><b>${esc(e.source)} ${esc(e.code||"")}</b> ${esc((e.text||"").slice(0,300))}</div>`).join("")}
  ${(f.likely_causes||[]).map(c=>`<div><span class="conf">${esc(c.confidence)}</span>${esc(c.cause)}</div>`).join("")}
  ${(f.recommendations||[]).map(r=>`<div class="small">→ ${esc(r)}</div>`).join("")}
  ${(f.missing_information||[]).length?`<div class="small">${t("missing")}: ${esc(f.missing_information.join("; "))}</div>`:""}
- ${(f.warnings||[]).map(w=>`<div class="warn small">⚠ ${esc(w)}</div>`).join("")}</div>`).join(""):`<div class="card">${t("nofind")}</div>`;
- $("#findings").innerHTML=html;$("#homeFindings").innerHTML=fs.slice(0,5).map(f=>`<div>• [${esc(f.severity)}] ${esc(f.title)} (${esc(f.program)})</div>`).join("")||t("nofind")}
+ ${(f.warnings||[]).map(w=>`<div class="warn small">⚠ ${esc(w)}</div>`).join("")}
+ ${f.repair_tool?`<div class="fix"><button class="primary" data-fix="${esc(f.event_id)}" data-tool="${esc(f.repair_tool)}">${esc(t("repair"))}</button>
+ <span class="small">${esc(f.repair_tool)} ${esc(Object.values(f.repair_params||{}).join(" "))}</span><div class="fixres" id="fr-${esc(f.event_id)}"></div></div>`:""}</div>`}
+function renderReport(rep){lastReport=rep;$("#notices").innerHTML=(rep.notices||[]).map(n=>`<div class="notice">${esc(n)}</div>`).join("");
+ const fs=rep.findings||[];const by=k=>fs.filter(f=>(f.triage||"check")===k);
+ const imp=by("important"),chk=by("check"),harm=by("harmless");
+ let html=fs.length?"":`<div class="card">${t("nofind")}</div>`;
+ if(imp.length)html+=`<div class="grp">${esc(t("t_important"))} (${imp.length})</div>`+imp.map(card).join("");
+ if(chk.length)html+=`<div class="grp">${esc(t("t_check"))} (${chk.length})</div>`+chk.map(card).join("");
+ if(harm.length)html+=`<details class="harmless"><summary>${esc(t("g_harmless"))} (${harm.length})</summary>${harm.map(card).join("")}</details>`;
+ $("#findings").innerHTML=html;
+ $("#homeFindings").innerHTML=[...imp,...chk].slice(0,5).map(f=>`<div>• [${esc(t("t_"+f.triage))}] ${esc(f.title)} (${esc(f.program)})</div>`).join("")||t("nofind");
+ $$("[data-fix]").forEach(b=>b.onclick=()=>doRepair(b))}
+async function doRepair(b){const id=b.dataset.fix,info=TOOLINFO[b.dataset.tool]||{};const box=$("#fr-"+id);
+ if((info.risk_level||0)>=2&&!confirm(info.risk_text||b.dataset.tool))return;
+ b.disabled=true;box.className="fixres";box.textContent=t("repairing");
+ try{const r=await api("/api/repair/"+encodeURIComponent(id)+"?confirmed=true",{});
+  if(r.outcome==="executed_verified"){box.className="fixres ok";box.textContent=t("rep_ok")}
+  else if(r.outcome==="executed_unverified"){box.className="fixres bad";box.textContent=t("rep_unv")}
+  else if(r.outcome==="denied"){box.className="fixres bad";box.textContent=(r.reasons||[]).some(x=>x.includes("tenant_level")||x.includes("missing_scope")||x.includes("approval"))?t("rep_need"):t("rep_denied")+": "+(r.reasons||[]).join(", ");b.disabled=false}
+  else{box.className="fixres bad";box.textContent=t("rep_fail")+" "+((r.detail||{}).error||"");b.disabled=false}}
+ catch(e){box.className="fixres bad";box.textContent=e.message;b.disabled=false}}
+api("/api/tool-info").then(r=>{TOOLINFO=r.tools||{}}).catch(()=>{});
 function busy(on){$$("button").forEach(b=>b.disabled=on)}
 $$("[data-mode]").forEach(b=>b.onclick=async()=>{busy(true);$("#findings").innerHTML=`<div class="card">${t("working")}</div>`;
  try{const r=await api("/api/scan",{mode:b.dataset.mode,app:$("#appq").value||null,analyze:$("#useAI").checked,allow_cloud:$("#cloud").checked});renderReport(r.report)}

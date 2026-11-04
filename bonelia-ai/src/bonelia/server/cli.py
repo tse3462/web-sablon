@@ -49,6 +49,16 @@ def main(argv: list[str] | None = None) -> int:
     d = sub.add_parser("devices")
     d.add_argument("--tenant")
 
+    ar = sub.add_parser("allow-repairs", help="one-time customer consent for on-site repairs (level 1, or 2 incl. restarts)")
+    ar.add_argument("tenant_id")
+    ar.add_argument("--level", type=int, choices=[0, 1, 2], default=1,
+                    help="0 = read-only, 1 = safe repairs (start a stopped service), 2 = also restart services")
+
+    ds = sub.add_parser("device-scopes", help="add/remove permissions of an enrolled USB device")
+    ds.add_argument("device_id")
+    ds.add_argument("--add", default="")
+    ds.add_argument("--remove", default="")
+
     r = sub.add_parser("revoke", help="revoke a device immediately (lost USB)")
     r.add_argument("device_id")
 
@@ -104,6 +114,22 @@ def main(argv: list[str] | None = None) -> int:
         print(code)
     elif args.cmd == "devices":
         print(json.dumps(store.devices(args.tenant), indent=2, ensure_ascii=False))
+    elif args.cmd == "allow-repairs":
+        if store.tenant(args.tenant_id) is None:
+            print("unknown tenant", file=sys.stderr)
+            return 1
+        safe_tools = ["windows.start_service"] if args.level >= 1 else []
+        store.update_tenant(args.tenant_id, max_auto_level=args.level, auto_tools=safe_tools,
+                            production_writes_allowed=1 if args.level >= 1 else 0)
+        print(json.dumps({"tenant_id": args.tenant_id, "repair_level": args.level, "one_click_tools": safe_tools,
+                          "note": "devices also need the repair:windows scope (see device-scopes)"}, indent=2))
+    elif args.cmd == "device-scopes":
+        scopes = store.update_device_scopes(args.device_id, [s for s in args.add.split(",") if s.strip()],
+                                            [s for s in args.remove.split(",") if s.strip()])
+        if scopes is None:
+            print("not found", file=sys.stderr)
+            return 1
+        print(json.dumps({"device_id": args.device_id, "scopes": scopes}, indent=2))
     elif args.cmd == "revoke":
         ok = store.revoke_device(args.device_id)
         print("revoked" if ok else "not found")

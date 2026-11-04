@@ -63,3 +63,38 @@ def test_german_umlauts_survive_event_log_reading():
     assert status["eventlog:Application"].startswith("ok:"), status
     hit = [e for e in events if e.provider == "BoneliaAIUmlaut"]
     assert hit and "Gerätezuordnung" in hit[0].message and "�" not in hit[0].message, hit[0].message if hit else events[:3]
+
+
+def test_start_and_restart_a_real_windows_service():
+    """Real repair on real Windows: stop the print spooler, start it with the tool, verify independently."""
+    import time
+
+    import psutil
+
+    from bonelia.repair import windows_tools as wt
+
+    name = "Spooler"
+    try:
+        psutil.win_service_get(name)
+    except Exception:
+        pytest.skip("print spooler not present on this host")
+    subprocess.run(["sc", "stop", name], capture_output=True)
+    for _ in range(30):
+        if psutil.win_service_get(name).status() == "stopped":
+            break
+        time.sleep(0.5)
+    assert psutil.win_service_get(name).status() == "stopped"
+    res = wt.start_service({"service_name": name}, False)
+    assert res.ok, res.detail
+    assert wt.verify_running({"service_name": name}, res), res.detail
+    res = wt.restart_service({"service_name": name}, False)
+    assert res.ok, res.detail
+    assert wt.verify_running({"service_name": name}, res), res.detail
+
+
+def test_real_scan_has_triage_and_service_state():
+    from bonelia.monitor.scan import run_scan
+
+    res = run_scan(mode="quick", salt="s", lang="tr")
+    assert res.collector_status["services"].startswith("ok:")
+    assert all(e.triage_reason for e in res.events)
