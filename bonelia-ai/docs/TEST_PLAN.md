@@ -33,7 +33,16 @@ Henüz otomatik testi olmayan: uygulama sürüm uyuşmazlığı (sürüme özgü
 | Linux, çekirdek + VeedelKorb eklentisi | **125 geçti, 5 atlandı** | 2026-11-04 |
 | Linux, eklenti kaldırıldıktan sonra (modülerlik + CLI e2e) | **14 geçti** | 2026-11-04 |
 | PyInstaller ikilisi (Linux) | Derlendi; `--version`, `scan --json`, UI (`/` 200, belirteçsiz 403, belirteçli 200), USB klasörü silinince süreç kapandı | 2026-11-04 |
-| GitHub Actions `windows-latest` | Bkz. iş akışı çalıştırması (aşağıya eklenecek) | — |
+| GitHub Actions `windows-latest` (gerçek Windows Server, run #4) | **Tüm testler geçti** (yalnız-Windows testleri dahil); `BoneliaAI.exe` derlendi; exe gerçek Application/System günlüklerini okudu (`ok:15`, `ok:8`), 59 kurulu programı tanıdı, `eventcreate` ile yazılan kontrollü hatayı (`BoneliaAISmoke/997`) tespit etti; kayıtsız taramada USB'ye düz metin rapor yazmadı | 2026-11-04 |
+| GitHub Actions `ubuntu-latest` (run #4) | Eklentisiz çekirdek ✓, çekirdek + VeedelKorb ✓, eklenti kaldırıldıktan sonra ✓ | 2026-11-04 |
+
+### Gerçek Windows'un bulduğu hatalar (Linux'ta görünmeyen)
+| Hata | Düzeltme | Regresyon testi |
+|---|---|---|
+| Çevrimdışı kuyruk: Windows'un kaba saat çözünürlüğünde aynı dosya adı → kayıtlar sessizce üzerine yazıldı (veri kaybı) | Rastgele son ek | `test_offline_queue_never_overwrites_entries_in_the_same_clock_tick` |
+| CLI, cp1252 konsolda Türkçe/sembol karakterlerde çöktü | stdout/stderr UTF-8 | `test_cli_survives_windows_legacy_console_encoding` |
+| psutil Windows hizmet API farkı → hizmet listesi okunamadı | Alan seçimi `as_dict()` sonrası | `test_installed_apps_and_services` (Windows) |
+| Kayıt kodu `-` ile başlayabiliyordu → `--code` bağımsız değişkeni bozuldu | base32, gruplu, büyük/küçük harf ve tire duyarsız kodlar | `test_enrollment_codes_are_cli_safe_and_typo_tolerant` |
 
 **Önemli:** Linux'ta başarılı derleme ve test, Windows taşınabilir sürümünün çalıştığının kanıtı değildir. Windows kanıtı yalnızca `windows` CI işi veya gerçek bir Windows test bilgisayarıdır.
 
@@ -41,7 +50,7 @@ Henüz otomatik testi olmayan: uygulama sürüm uyuşmazlığı (sürüme özgü
 
 | Adım | Durum |
 |---|---|
-| 1–2 USB takılır, program elle başlatılır | Windows CI'da exe çalıştırılır; gerçek USB bellekte elle test **yapılmadı** |
+| 1–2 USB takılır, program elle başlatılır | Windows CI'da exe çalıştırıldı ✓; gerçek USB bellekte elle test **yapılmadı** |
 | 3 Uygulama tanıma | Kayıt defteri ile (Windows testi) |
 | 4–5 Hata kayıtları okunur, kontrollü hata tespit edilir | `eventcreate` ile Windows CI'da |
 | 6 Kişisel veri kontrolü | Otomatik testli |

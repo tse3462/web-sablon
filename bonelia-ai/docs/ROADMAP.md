@@ -3,7 +3,7 @@
 | Faz | Durum (2026-11-04) |
 |---|---|
 | 0 Keşif ve tasarım | ✅ `PHASE0_DISCOVERY.md`, `ARCHITECTURE.md`, `THREAT_MODEL.md`, `TEST_PLAN.md` |
-| 1 Portable Monitor MVP | 🟡 Kod + testler hazır; Windows CI doğrulaması bekleniyor; gerçek USB ile elle test yapılmadı |
+| 1 Portable Monitor MVP | 🟡 Gerçek Windows'ta (CI) doğrulandı: exe, olay günlüğü, kontrollü hata tespiti. Gerçek USB bellekle elle test bekleniyor |
 | 2 AI Server | 🟡 API, cihaz kimliği, olay yönetimi, analiz, sağlık; gerçek Ollama modeliyle test yapılmadı |
 | 3 AI Diagnostic Engine | 🟡 Kural motoru + bilgi tabanı tablosu + AI yönlendirme; onaylı bilgi tabanı girişi için henüz CLI komutu yok (yalnızca `Store.add_knowledge`) |
 | 4 İlk örnek modül (VeedelKorb) | 🟡 Ayrı, isteğe bağlı, salt okunur eklenti paketi (`adapters/veedelkorb`); canlı/test ortamında çalıştırılmadı (token yok). Çekirdek ondan bağımsız (testli) |
@@ -22,7 +22,6 @@
 6. **Bulut AI**: OpenAI hesabı/bütçesi ve müşteri onay metni.
 
 ## Sonraki teknik görevler (öncelik sırasıyla)
-1. Windows CI sonucunu doğrula; hataları düzelt.
 2. Ev sunucusunda gerçek Ollama modeliyle `analyze` uçtan uca testi; sonuçları `TEST_PLAN.md`'ye ekle.
 3. Gerçek USB bellek + gerçek Windows bilgisayarda kabul senaryosu (§35).
 4. `bonelia-server knowledge-add` (onaylı bilgi tabanı girişi) ve bilgi tabanı arama ekranı.
