@@ -279,3 +279,15 @@ def test_token_is_found_in_whatever_the_phone_pastes():
     assert extract_token("7234567890") is None  # only the number in front is not a token
     assert extract_token("AAHkx9Q2mPz7Lw3R5tYbV8nC1dE4fG6hJk0") is None
     assert extract_token("") is None
+
+
+def test_home_has_the_live_center_built_from_real_data(tmp_path):
+    """Dark animated live center on the home page (user request 06.11.2026): PCs as a network around the AI,
+    repairs by kind and result, telemetry and agent skills -- all from /api/overview, findings and repairs."""
+    _, c, *_ = setup(tmp_path)
+    html = c.get("/").text
+    assert '<section class="live" id="live"' in html and "function renderLive(" in html
+    assert "renderLive(o,f,r)" in html  # filled from the same data as the rest of the home page
+    assert "prefers-reduced-motion" in html  # motion stops for people who turned it off
+    for key in ("lv_title", "lv_repairs_kind", "lv_skills", "lv_activity"):
+        assert html.count(key + ":") == 2  # Turkish and German text
