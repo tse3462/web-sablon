@@ -47,6 +47,7 @@ from ..security.untrusted import fence, make_boundary
 from .config import ServerConfig
 from .notify import Notifier, build_notifier
 from .uptime import UptimeMonitor
+from .vault_store import VaultStore
 from .store import Store
 
 log = logging.getLogger("bonelia.server")
@@ -334,6 +335,8 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         store.audit("device", "agent.update_download", {}, tenant_id=auth["tenant"]["id"], device_id=auth["device"]["id"])
         return Response(content=f.read_bytes(), media_type="application/octet-stream")
 
+    vaults = VaultStore(store)
+
     class Heartbeat(BaseModel):
         status: dict[str, Any] = Field(default_factory=dict)
 
@@ -352,7 +355,14 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
                                 "rustdesk_id": rid if re.fullmatch(r"\d{8,12}", rid) else None,
                                 "service": remote.get("service") if remote.get("service") in ("running", "stopped", "missing") else "unknown"}
         store.set_device_status(auth["device"]["id"], status)
-        return {"ok": True, "policy": store.device_policy(auth["device"]["id"])}
+        reply: dict[str, Any] = {"ok": True, "policy": store.device_policy(auth["device"]["id"])}
+        # Password vault: the agent seals the RustDesk password it just set; only the owner's phone can open it.
+        if isinstance(remote, dict) and "vault" in remote:
+            reply["vault_saved"] = vaults.accept_from_agent(auth["device"]["id"], status["remote"]["rustdesk_id"], remote["vault"])
+        vault_info = vaults.for_agent(auth["device"]["id"])
+        if vault_info:
+            reply["vault"] = vault_info
+        return reply
 
     @app.post("/v1/analyze")
     async def analyze(auth: dict = Depends(device_auth)) -> dict[str, Any]:

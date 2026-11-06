@@ -1,8 +1,8 @@
 """RustDesk remote access (user request 06.11.2026): the agent reports this PC's RustDesk ID so the
 control panel can open a remote session with one tap.
 
-Only the ID and whether RustDesk is installed and running are read. The RustDesk password is never
-read or sent: RustDesk asks for it when the session opens.
+Only the ID and whether RustDesk is installed and running are read. The agent may SET a new random
+password (password vault, 06.11.2026); it then sends it only sealed to the owner's vault, never readable.
 """
 
 from __future__ import annotations
@@ -73,3 +73,15 @@ def rustdesk_info(exe_paths: list[Path] | None = None, config_paths: list[Path] 
     _, sc = run(["sc", "query", "RustDesk"])
     service = "running" if "RUNNING" in sc else "stopped" if "STOPPED" in sc else "missing"
     return {"installed": True, "rustdesk_id": rid, "service": service}
+
+
+def set_rustdesk_password(password: str, exe_paths: list[Path] | None = None,
+                          run: Callable[[list[str]], tuple[int, str]] = _run, windows: bool | None = None) -> bool:
+    """Give RustDesk a new permanent password (the agent runs as SYSTEM, as RustDesk requires for this)."""
+    if not (sys.platform == "win32" if windows is None else windows) or not password.isalnum():
+        return False
+    exe = next((p for p in (exe_paths if exe_paths is not None else _default_exe_paths()) if p.is_file()), None)
+    if exe is None:
+        return False
+    code, _ = run([str(exe), "--password", password])
+    return code == 0

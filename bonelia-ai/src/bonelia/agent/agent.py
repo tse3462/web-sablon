@@ -29,7 +29,8 @@ from ..contracts import Triage
 from ..monitor.client import ServerClient, ServerError, ServerUnavailable
 from ..monitor.repair_local import repair as run_repair
 from ..monitor.scan import run_scan
-from ..collectors.remote import rustdesk_info
+from ..collectors.remote import rustdesk_info, set_rustdesk_password
+from ..security.vault import fingerprint, random_password, seal
 
 log = logging.getLogger("bonelia.agent")
 DENIED_RETRY_S = 6 * 3600
@@ -70,12 +71,14 @@ class Agent:
     def __init__(self, client: ServerClient, state: AgentState, lang: str = "tr", executors=None,
                  scan: Callable[..., Any] = run_scan, own_exe: Path | None = None, self_update: bool = False,
                  maintenance_interval_s: int = MAINTENANCE_INTERVAL_S, maintenance_tools: tuple[str, ...] = MAINTENANCE_TOOLS,
-                 remote: Callable[[], dict | None] | None = None):
+                 remote: Callable[[], dict | None] | None = None,
+                 set_remote_password: Callable[[str], bool] | None = None):
         self.client, self.state, self.lang, self.executors, self.scan = client, state, lang, executors, scan
         self.own_exe, self.self_update = own_exe, self_update
         self.maintenance_interval_s, self.maintenance_tools = maintenance_interval_s, maintenance_tools
         self.remote = remote if remote is not None else rustdesk_info  # RustDesk ID for "connect" in the panel
         self._remote_cache: tuple[float, dict | None] | None = None
+        self.set_remote_password = set_remote_password if set_remote_password is not None else set_rustdesk_password
 
     def remote_info(self) -> dict | None:
         """RustDesk state, read at most every 15 minutes (it starts a program)."""
@@ -86,6 +89,33 @@ class Agent:
             except Exception:  # remote access is a convenience; it must never stop monitoring
                 self._remote_cache = (now, None)
         return self._remote_cache[1]
+
+    def vault_password(self, remote: dict | None) -> tuple[dict | None, str | None]:
+        """Password vault: once per vault (and per "new password" request) set a random RustDesk password
+        and seal it to the owner's vault. Returns (sealed, marker); the marker is kept only after the
+        server confirms it stored the box, otherwise the next cycle simply sets a fresh one."""
+        v = self.state.data.get("vault") or {}
+        pub = v.get("pub")
+        if not pub or not remote or not remote.get("installed") or not remote.get("rustdesk_id"):
+            return None, None
+        marker = f"{fingerprint(pub)}|{v.get('rotate') or ''}"
+        if self.state.data.get("rd_vaulted") == marker:
+            return None, None
+        failed = self.state.data.get("rd_vault_failed_at", 0)
+        if failed and time.time() - failed < 3600:  # RustDesk refused: try again in an hour, not every cycle
+            return None, None
+        password = random_password()
+        try:
+            ok = self.set_remote_password(password)
+        except Exception:
+            ok = False
+        if not ok:
+            self.state.data["rd_vault_failed_at"] = time.time()
+            return None, None
+        self.state.data.pop("rd_vault_failed_at", None)
+        sealed = {"box": seal(pub, {"password": password, "rustdesk_id": remote["rustdesk_id"]}),
+                  "for": fingerprint(pub), "rotate": v.get("rotate")}
+        return sealed, marker
 
     def cycle(self) -> dict[str, Any]:
         summary: dict[str, Any] = {"new_findings": 0, "sent": False, "repairs": [], "offline": False}
@@ -184,9 +214,17 @@ class Agent:
                           "repairs": [f"{r.get('tool_id')}:{r.get('outcome')}" for r in summary["repairs"]],
                           "important_open": sum(1 for e in res.events if e.triage == Triage.important)}
                 remote = self.remote_info()
+                sealed, marker = self.vault_password(remote)
                 if remote:
-                    status["remote"] = remote
+                    status["remote"] = {**remote, "vault": sealed} if sealed else remote
                 resp = self.client.heartbeat(status)
+                if isinstance(resp, dict):
+                    if marker and resp.get("vault_saved") is True:
+                        self.state.data["rd_vaulted"] = marker
+                    vault_info = resp.get("vault") if isinstance(resp.get("vault"), dict) else None
+                    if vault_info != self.state.data.get("vault"):
+                        self.state.data["vault"] = vault_info
+                    self.state.save()
                 if isinstance(resp, dict) and isinstance(resp.get("policy"), dict) and resp["policy"] != self.state.data.get("policy"):
                     self.state.data["policy"] = resp["policy"]  # used from the next cycle on
                     self.state.save()

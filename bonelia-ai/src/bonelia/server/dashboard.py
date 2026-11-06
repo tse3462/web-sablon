@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from .. import __version__
@@ -31,6 +31,8 @@ from ..repair.builtin_tools import SAFE_AUTO_TOOLS
 from .notify import TELEGRAM_KEY, TelegramAPI, build_notifier, extract_token
 from .repair import TOKEN_KEY as REPAIR_TOKEN_KEY, TOKEN_RE, valid_repo
 from .uptime import UptimeMonitor, check_settings, normalize_keyword
+from .vault_store import VaultStore
+from ..security.vault import valid_box
 from .store import Store
 
 ONLINE_MINUTES = 15  # agents report every 5 minutes
@@ -123,6 +125,21 @@ def parse_links(raw: str | list[dict[str, str]] | None) -> list[dict[str, str]]:
     return out[:6]
 
 
+class VaultSetup(BaseModel):
+    meta: dict[str, Any]
+
+
+class VaultEntry(BaseModel):
+    id: str | None = Field(default=None, max_length=40)
+    title: str = Field(min_length=1, max_length=60)
+    customer: str = Field(default="", max_length=60)
+    box: dict[str, Any]
+
+
+class VaultReset(BaseModel):
+    confirm: str = Field(max_length=10)
+
+
 class TokenBody(BaseModel):
     token: str = Field(max_length=4000)  # may be the whole @BotFather message; the token is extracted
 
@@ -158,6 +175,57 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return resources.files("bonelia").joinpath("server/static/dashboard.html").read_text(encoding="utf-8")
+
+    @app.get("/vault.js")
+    def vault_js() -> Response:
+        # The vault's cryptography (bundled @noble libraries, see web/vault/entry.js): runs only on the phone.
+        return Response(resources.files("bonelia").joinpath("server/static/vault.js").read_text(encoding="utf-8"),
+                        media_type="application/javascript; charset=utf-8")
+
+    # ---------------------------------------------------------------- password vault
+    vaults = VaultStore(store)
+
+    @app.get("/api/vault")
+    def vault_get() -> dict[str, Any]:
+        meta = vaults.meta()
+        return {"meta": meta, "entries": vaults.entries() if meta else []}
+
+    @app.post("/api/vault/setup")
+    def vault_setup(body: VaultSetup) -> dict[str, Any]:
+        outcome = vaults.setup(body.meta)
+        if outcome != "ok":
+            raise HTTPException(409 if outcome == "exists" else 422, "vault_" + outcome)
+        return {"meta": vaults.meta(), "entries": []}
+
+    @app.post("/api/vault/entries")
+    def vault_save(body: VaultEntry) -> dict[str, Any]:
+        if vaults.meta() is None:
+            raise HTTPException(409, "vault_missing")
+        if not valid_box(body.box) or not body.title.strip():
+            raise HTTPException(422, "invalid_entry")
+        if vaults.save_manual(body.id, body.title.strip(), body.customer.strip(), body.box) is None:
+            raise HTTPException(404, "unknown_entry")
+        return {"meta": vaults.meta(), "entries": vaults.entries()}
+
+    @app.post("/api/vault/entries/{entry_id}/delete")
+    def vault_delete(entry_id: str) -> dict[str, Any]:
+        if not vaults.delete(entry_id):
+            raise HTTPException(404, "unknown_entry")
+        return {"meta": vaults.meta(), "entries": vaults.entries()}
+
+    @app.post("/api/vault/rotate/{device_id}")
+    def vault_rotate(device_id: str) -> dict[str, Any]:
+        """"New password": the PC's agent sets a fresh RustDesk password within a few minutes."""
+        if not vaults.request_rotation(device_id):
+            raise HTTPException(404, "unknown_device")
+        return {"meta": vaults.meta(), "entries": vaults.entries()}
+
+    @app.post("/api/vault/reset")
+    def vault_reset(body: VaultReset) -> dict[str, Any]:
+        if body.confirm != "SIL":
+            raise HTTPException(422, "confirm_needed")
+        vaults.reset()
+        return {"meta": None, "entries": []}
 
     @app.get("/api/overview")
     def overview() -> dict[str, Any]:

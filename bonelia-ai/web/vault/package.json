@@ -1,0 +1,14 @@
+{
+  "name": "bonelia-vault-js",
+  "private": true,
+  "description": "Build of server/static/vault.js (see entry.js)",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --minify --format=iife --legal-comments=inline --target=es2020 --banner:js=\"/*! BONELIA AI vault \u2014 bundles @noble/curves, @noble/hashes, @noble/ciphers 2.4.0 (MIT, (c) Paul Miller). Source: web/vault/entry.js */\" --outfile=../../src/bonelia/server/static/vault.js"
+  },
+  "dependencies": {
+    "@noble/ciphers": "2.4.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "esbuild": "0.28.2"
+  }
+}
