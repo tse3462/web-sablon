@@ -28,8 +28,8 @@ button{font:inherit;color:inherit;cursor:pointer}
   radial-gradient(90% 60% at 50% 100%,color-mix(in srgb,var(--accent) 26%,transparent) 0%,transparent 70%),
   linear-gradient(180deg,#0b1a33 0%,#0a1322 52%,var(--bg) 100%)}
 .hero.s-ok{--accent:var(--ok)}.hero.s-warn{--accent:var(--warn)}.hero.s-crit{--accent:var(--crit)}
-.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;position:relative;z-index:2}
-.topbar .title{font-weight:700;font-size:17px;letter-spacing:.2px;white-space:nowrap}
+.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;position:relative;z-index:2}.topbar>.iconbtn{justify-self:start}
+.topbar .title{font-weight:800;font-size:clamp(22px,6.4vw,28px);letter-spacing:.3px;white-space:nowrap;text-align:center}.topbar .title [data-i=platform]{display:block;font-size:12px;font-weight:600!important;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)!important;margin-top:1px}
 .topbar .title span{color:var(--brand)}
 .iconbtn{position:relative;background:none;border:0;padding:6px;color:var(--ink);width:40px}
 .iconbtn svg{width:26px;height:26px}
@@ -50,8 +50,8 @@ select option{background:var(--panel);color:var(--ink)}
  box-shadow:0 0 40px color-mix(in srgb,var(--accent) 60%,transparent),0 0 90px color-mix(in srgb,var(--accent) 30%,transparent)}
 .core svg{width:34px;height:34px}
 .subline{color:#c8d3e3;font-size:14px;max-width:520px;margin:6px auto 0}
-.hero.compact .big{display:none}.big.tap{cursor:pointer}
-.hero.compact{padding-bottom:14px}
+.hero .big{display:none}/* status now heads the live panel (user request 06.11.2026) */.big.tap{cursor:pointer}
+.hero{padding-bottom:14px}
 
 /* ---------- navigation ---------- */
 nav{display:flex;justify-content:center;gap:4px;padding:8px 12px;position:sticky;top:0;z-index:20;background:#07090dee;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
@@ -170,6 +170,7 @@ ol{padding-left:20px}
 .lv-sw.lv-on .lv-st{background:var(--lb)}.lv-sw.lv-on .lv-st::after{background:var(--lb);box-shadow:0 0 8px var(--lb);animation:lvnode 2.4s ease-in-out infinite}.lv-sw.lv-on b{color:#7be0a8}
 .lv-sw.lv-off .lv-st::after{left:0;right:auto}.lv-sw.lv-off b{color:#ff8a7a}.lv-sw b{text-align:right;font-size:11px}
 .lv-quiet .lv-fill,.lv-quiet .lv-dbar,.lv-quiet .lv-cell,.lv-quiet .lv-dp{animation:none}.lv-quiet .lv-cell.lv-on{animation:lvcell 2s ease-in-out infinite}
+.lv-status{display:flex;align-items:center;gap:12px;margin-top:6px;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit}.lv-status.tap{cursor:pointer}.lv-orb{position:relative;width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;color:#fff;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--sc) 80%,#fff),var(--sc));box-shadow:0 0 18px color-mix(in srgb,var(--sc) 70%,transparent)}.lv-orb::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--sc) 60%,transparent);animation:pulse 3.2s ease-out infinite}.lv-orb svg{width:18px;height:18px}.lv-st-text{font-size:clamp(24px,7vw,34px);font-weight:900;line-height:1.05;letter-spacing:-.5px;color:#fff;text-shadow:0 0 22px color-mix(in srgb,var(--sc) 55%,transparent)}.lv-sub{margin-top:6px;color:#c8d3e3;font-size:13px}.s-ok{--sc:var(--ok)}.s-warn{--sc:var(--warn)}.s-crit{--sc:var(--crit)}.s-idle{--sc:var(--brand)}
 @media (prefers-reduced-motion:reduce){.live *,.live *::before,.live *::after{animation:none!important}.lv-scan{display:none}}
 </style>
 </head>
@@ -256,7 +257,7 @@ ol{padding-left:20px}
 </div>
 
 <script>
-const T={tr:{lv_title:"Yapay zekâ destek ajanı · 7/24",lv_kick:"BONELİA AI · CANLI MERKEZ",lv_pcs:"BİLGİSAYAR",lv_customers:"MÜŞTERİ",lv_net:"AĞ | BİLGİSAYARLAR",lv_last:"SON İŞLEM",lv_none_yet:"Henüz işlem yok",lv_repairs_kind:"ONARIM TÜRLERİ | 7 GÜN",lv_tele:"ANLIK DURUM",lv_online:"Çevrimiçi",lv_imp:"Önemli sorun 24 sa",lv_rep7:"Onarım 7 gün",lv_tg:"Telegram",lv_grid:"BİLGİSAYARLAR",lv_activity:"ONARIM AKIŞI | 7 GÜN",lv_result:"SONUÇ",lv_skills:"AJAN YETENEKLERİ | DURUM",lv_s_watch:"7/24 izleme",lv_s_repair:"Otomatik onarım",lv_s_ai:"Yapay zekâ analizi",lv_s_backup:"Yedek kontrolü",lv_s_tg:"Telefon bildirimi",lv_level:"seviye",lv_ready:"HAZIR",lv_repairs_lbl:"ONARIM",lv_ok:"Onarıldı",lv_unv:"Doğrulanamadı",lv_fail:"Başarısız",lv_deny:"İzin yok",lv_empty_kind:"Son 7 günde onarım yok",panel:"Kontrol Paneli",platform:"Platformu",n_home:"Ana sayfa",n_devices:"Bilgisayarlar",n_findings:"Sorunlar",n_repairs:"Onarımlar",n_customers:"Müşteriler",n_settings:"Ayarlar",quit:"Kapat",
+const T={tr:{lv_title:"Yapay zekâ destek ajanı · 7/24",lv_kick:"CANLI MERKEZ · YAPAY ZEKÂ DESTEK AJANI 7/24",lv_pcs:"BİLGİSAYAR",lv_customers:"MÜŞTERİ",lv_net:"AĞ | BİLGİSAYARLAR",lv_last:"SON İŞLEM",lv_none_yet:"Henüz işlem yok",lv_repairs_kind:"ONARIM TÜRLERİ | 7 GÜN",lv_tele:"ANLIK DURUM",lv_online:"Çevrimiçi",lv_imp:"Önemli sorun 24 sa",lv_rep7:"Onarım 7 gün",lv_tg:"Telegram",lv_grid:"BİLGİSAYARLAR",lv_activity:"ONARIM AKIŞI | 7 GÜN",lv_result:"SONUÇ",lv_skills:"AJAN YETENEKLERİ | DURUM",lv_s_watch:"7/24 izleme",lv_s_repair:"Otomatik onarım",lv_s_ai:"Yapay zekâ analizi",lv_s_backup:"Yedek kontrolü",lv_s_tg:"Telefon bildirimi",lv_level:"seviye",lv_ready:"HAZIR",lv_repairs_lbl:"ONARIM",lv_ok:"Onarıldı",lv_unv:"Doğrulanamadı",lv_fail:"Başarısız",lv_deny:"İzin yok",lv_empty_kind:"Son 7 günde onarım yok",panel:"Kontrol Paneli",platform:"Platformu",n_home:"Ana sayfa",n_devices:"Bilgisayarlar",n_findings:"Sorunlar",n_repairs:"Onarımlar",n_customers:"Müşteriler",n_settings:"Ayarlar",quit:"Kapat",
 h_ok:"HER ŞEY<br>TAMAM",h_issue1:"1 ÖNEMLİ<br>SORUN",h_issue:"{n} ÖNEMLİ<br>SORUN",h_off:"{n} BİLGİSAYAR<br>SESSİZ",h_empty:"HENÜZ<br>BİLGİSAYAR YOK",
 s_ok:"{on} / {all} bilgisayar çevrimiçi · son 24 saatte önemli sorun yok",s_issue:"Son 24 saatte {n} önemli sorun — görmek için dokun",
 s_off:"{n} bilgisayar 15 dakikadır sinyal vermiyor",s_empty:"İlk bilgisayarı USB ile kur",updated:"Bilgisayarlardan güncellendi {t}",
@@ -289,7 +290,7 @@ err_invalid_path:"Geçersiz klasör. Örnek: D:\\Kasa\\Yedek , E:\\ veya \\\\NAS
 backup:"Yedek",backup_none:"yedek klasörü tanımlı değil",days:"gün",
 backup_q:"Bu bilgisayarın yedeklerinin yazıldığı klasör (birden fazlaysa ; ile ayır). Örnek: D:\\Kasa\\Yedek veya E:\\ — boş bırakırsan klasör kontrolü kapanır.",
 backup_days_q:"Son yedek kaç günden eski olursa uyarayım? (1-60)"},
-de:{lv_title:"KI-Support-Agent · 24/7",lv_kick:"BONELİA AI · LIVE-ZENTRALE",lv_pcs:"PCS",lv_customers:"KUNDEN",lv_net:"NETZ | COMPUTER",lv_last:"LETZTE AKTION",lv_none_yet:"Noch keine Aktion",lv_repairs_kind:"REPARATUREN NACH ART | 7 TAGE",lv_tele:"TELEMETRIE",lv_online:"Online",lv_imp:"Wichtige Probleme 24 h",lv_rep7:"Reparaturen 7 Tage",lv_tg:"Telegram",lv_grid:"COMPUTER",lv_activity:"REPARATUR-STROM | 7 TAGE",lv_result:"ERGEBNIS",lv_skills:"AGENT-FÄHIGKEITEN | STATUS",lv_s_watch:"Überwachung 24/7",lv_s_repair:"Automatische Reparatur",lv_s_ai:"KI-Analyse",lv_s_backup:"Sicherungsprüfung",lv_s_tg:"Handy-Benachrichtigung",lv_level:"Stufe",lv_ready:"BEREIT",lv_repairs_lbl:"REPARATUREN",lv_ok:"Repariert",lv_unv:"Nicht bestätigt",lv_fail:"Fehlgeschlagen",lv_deny:"Nicht erlaubt",lv_empty_kind:"Keine Reparatur in 7 Tagen",panel:"Kontrollzentrum",platform:"Plattform",n_home:"Start",n_devices:"Computer",n_findings:"Probleme",n_repairs:"Reparaturen",n_customers:"Kunden",n_settings:"Einstellungen",quit:"Schließen",
+de:{lv_title:"KI-Support-Agent · 24/7",lv_kick:"LIVE-ZENTRALE · KI-SUPPORT-AGENT 24/7",lv_pcs:"PCS",lv_customers:"KUNDEN",lv_net:"NETZ | COMPUTER",lv_last:"LETZTE AKTION",lv_none_yet:"Noch keine Aktion",lv_repairs_kind:"REPARATUREN NACH ART | 7 TAGE",lv_tele:"TELEMETRIE",lv_online:"Online",lv_imp:"Wichtige Probleme 24 h",lv_rep7:"Reparaturen 7 Tage",lv_tg:"Telegram",lv_grid:"COMPUTER",lv_activity:"REPARATUR-STROM | 7 TAGE",lv_result:"ERGEBNIS",lv_skills:"AGENT-FÄHIGKEITEN | STATUS",lv_s_watch:"Überwachung 24/7",lv_s_repair:"Automatische Reparatur",lv_s_ai:"KI-Analyse",lv_s_backup:"Sicherungsprüfung",lv_s_tg:"Handy-Benachrichtigung",lv_level:"Stufe",lv_ready:"BEREIT",lv_repairs_lbl:"REPARATUREN",lv_ok:"Repariert",lv_unv:"Nicht bestätigt",lv_fail:"Fehlgeschlagen",lv_deny:"Nicht erlaubt",lv_empty_kind:"Keine Reparatur in 7 Tagen",panel:"Kontrollzentrum",platform:"Plattform",n_home:"Start",n_devices:"Computer",n_findings:"Probleme",n_repairs:"Reparaturen",n_customers:"Kunden",n_settings:"Einstellungen",quit:"Schließen",
 h_ok:"ALLES IN<br>ORDNUNG",h_issue1:"1 WICHTIGES<br>PROBLEM",h_issue:"{n} WICHTIGE<br>PROBLEME",h_off:"{n} PC OHNE<br>SIGNAL",h_empty:"NOCH<br>KEIN PC",
 s_ok:"{on} / {all} PCs online · keine wichtigen Probleme in 24 h",s_issue:"{n} wichtige Probleme in 24 h — antippen zum Ansehen",
 s_off:"{n} PC(s) seit 15 Minuten ohne Signal",s_empty:"Ersten PC per USB einrichten",updated:"Von den PCs aktualisiert {t}",
@@ -355,6 +356,7 @@ function findCard(f){const d=f.diagnosis;return`<div class="item"><div class="ih
  ${d.hypotheses.map(h=>`<div style="margin-top:4px"><span class="conf">${esc(h.confidence)}</span>${esc(h.cause)}</div>`).join("")}
  ${d.recommendations.map(r=>`<div class="meta">→ ${esc(r)}</div>`).join("")}`:""}</div>`}
 
+let HERO={cls:"idle",h:"",sub:"",updated:"",core:""};
 function renderHero(o){
  const ag=o.devices.filter(d=>d.kind==="agent"&&d.status==="active"),on=ag.filter(d=>d.online).length,off=ag.length-on;
  const imp=o.tenants.reduce((a,x)=>a+x.important_24h,0);
@@ -371,6 +373,7 @@ function renderHero(o){
  $("#tileStatus").className="tile wide "+(cls==="idle"?"":"s-"+cls);
  $("#kOnline").innerHTML=`${on}<small>/ ${ag.length}</small>`;$("#tileDev").className="tile "+(ag.length&&!off?"s-ok":off?"s-crit":"");
  $("#bellN").textContent=imp;$("#bellN").classList.toggle("hidden",!imp);
+ HERO={cls,h:h.replace(/<br>/g," "),sub,core,updated:$("#updated").textContent.trim()};
 }
 
 // ---------- live center (home): only real data from overview, findings and repairs ----------
@@ -410,7 +413,7 @@ function renderLive(o,f,r){
  const host=$("#live"),ag=o.devices.filter(d=>d.kind==="agent"&&d.status==="active"),on=ag.filter(d=>d.online).length;
  const imp=o.tenants.reduce((a,x)=>a+x.important_24h,0),ex=r.repairs.filter(x=>x.action==="tool.executed"),den=r.repairs.filter(x=>x.action==="tool.denied");
  const status=!ag.length?"–":on<ag.length?"OFFLINE":"ONLINE";host.replaceChildren();host.classList.toggle("lv-quiet",LV_SHOWN);
- const head=el("div","lv-head"),ti=el("div","");ti.append(el("div","lv-kick",t("lv_kick")),el("div","lv-title",t("lv_title")));
+ const head=el("div","lv-head"),ti=el("div","");const stb=el("button","lv-status s-"+HERO.cls+(HERO_GO?" tap":""));stb.type="button";const orb=el("span","lv-orb");orb.innerHTML=HERO.core;stb.append(orb,el("span","lv-st-text",HERO.h));stb.onclick=()=>{if(HERO_GO)show(HERO_GO)};ti.append(el("div","lv-kick",t("lv_kick")),stb,el("div","lv-sub",[HERO.sub,HERO.updated].filter(x=>x&&x!=="\u00a0").join(" · ")));
  const meta=el("div","lv-meta");meta.append(el("span","lv-badge","LIVE"),document.createTextNode([t("lv_pcs")+" "+ag.length,t("lv_customers")+" "+o.tenants.length,"STATUS "+status].join(" | ")));head.append(ti,meta);
  const grid=el("div","lv-grid"),net=lvBlock(t("lv_net"),on+" / "+ag.length);net.classList.add("lv-net-b");net.append(el("span","lv-scan"),lvNet(ag));
  const last=[...r.repairs].sort((a,b)=>(toDate(b.at)||0)-(toDate(a.at)||0))[0],term=el("div","lv-term");

@@ -289,5 +289,7 @@ def test_home_has_the_live_center_built_from_real_data(tmp_path):
     assert '<section class="live" id="live"' in html and "function renderLive(" in html
     assert "renderLive(o,f,r)" in html  # filled from the same data as the rest of the home page
     assert "prefers-reduced-motion" in html  # motion stops for people who turned it off
+    # The big status block gave way to the live panel (06.11.2026); the status heads the panel instead.
+    assert ".hero .big{display:none}" in html and 'el("span","lv-st-text",HERO.h)' in html
     for key in ("lv_title", "lv_repairs_kind", "lv_skills", "lv_activity"):
         assert html.count(key + ":") == 2  # Turkish and German text
