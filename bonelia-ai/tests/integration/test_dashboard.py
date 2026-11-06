@@ -312,9 +312,18 @@ def test_check_now_button_shows_it_is_working_and_when_it_finished(tmp_path):
     check (or an error), kept across the redraw of the live center."""
     _, c, *_ = setup(tmp_path)
     html = c.get("/").text
-    assert "REPAIR_READY=false,NOW_ST={};" in html and ".lv-now.busy" in html and ".lv-now.done" in html
+    assert "NOW_ST={apps:{},pcs:{}};" in html and ".lv-now.busy" in html and ".lv-now.done" in html
     for key in ("up_checking", "up_checked", "up_check_fail"):
         assert html.count(key + ":") == 2
+
+
+def test_computers_block_has_its_own_check_button_and_shows_when_each_pc_reported(tmp_path):
+    """User request 06.11.2026: the computers picture gets the same button; it reloads what the PCs reported
+    (they report on their own every 5 minutes) and each PC shows how long ago it last reported."""
+    _, c, *_ = setup(tmp_path)
+    html = c.get("/").text
+    assert 'lvNowBtn("pcs"' in html and 'lvNowBtn("apps"' in html
+    assert "function agoText(" in html and html.count("ago_min:") == 2 and html.count("ago_now:") == 2
 
 
 def test_devices_offer_rustdesk_connect_without_any_password(tmp_path):
