@@ -10,7 +10,7 @@ from pathlib import Path
 from bonelia.collectors import disk
 
 MB = 1024  # small scale for the test; the real thresholds are passed in the same unit
-LIMITS = {"old_min": 100 * MB, "dup_min": 50 * MB}
+LIMITS = {"old_min": 100 * MB, "dup_min": 50 * MB, "min_item": 1 * MB}
 DAY = 86400
 
 
@@ -131,3 +131,23 @@ def test_scan_reports_its_progress_step_by_step(tmp_path):
     seen = []
     disk.scan(pc(tmp_path), budget_s=30, progress=seen.append, **LIMITS)
     assert seen == sorted(seen) and seen[0] < 50 <= seen[-2] and seen[-1] == 100
+
+
+def test_project_files_and_tiny_files_are_never_offered(tmp_path):
+    """Seen 06.11.2026: two identical Supabase migration .sql files of a project in Downloads were offered
+    as copies. Code and project folders are not the owner's backups; tiny files free nothing."""
+    layout = pc(tmp_path)
+    dl = tmp_path / "Users" / "anna" / "Downloads"
+    mig = b"create table vault_snapshots(id int);" * 10
+    for proj in ("shop-main", "shop-main (1)"):
+        make(dl / proj / "supabase" / "migrations" / "20261018160000_create_vault_snapshots.sql", 0, age_days=20, content=mig)
+    big = os.urandom(512) + b"y" * (80 * MB)
+    make(dl / "repo" / ".git" / "objects" / "pack.bin", 0, age_days=5, content=big)
+    make(dl / "repo-copy" / "pack.bin", 0, age_days=4, content=big)  # same content, but one side is inside a repo
+    make(dl / "a" / "notiz.txt", 0, age_days=3, content=b"x" * 100)
+    make(dl / "b" / "notiz.txt", 0, age_days=2, content=b"x" * 100)
+    rep = disk.scan(layout, budget_s=30, **LIMITS)
+    names = {Path(s["path"]).name for s in rep["suggestions"]}
+    assert "20261018160000_create_vault_snapshots.sql" not in names and "notiz.txt" not in names
+    assert "pack.bin" not in names
+    assert "veedelkorb-backup-2026-10-01.zip" in names  # real backups are still offered

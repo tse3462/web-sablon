@@ -31,6 +31,11 @@ OLD_DAYS = 90
 OLD_MIN = 100 * 1024 * 1024
 DUP_MIN = 50 * 1024 * 1024
 MAX_SUGGESTIONS = 300
+MIN_ITEM = 1024 * 1024  # smaller files free nothing worth a decision
+# Folders of code projects and tools: their files are not the owner's backups or copies (seen 06.11.2026:
+# two identical Supabase migrations of a project in Downloads were offered as copies).
+PROJECT_DIRS = {".git", ".svn", ".hg", "node_modules", "migrations", "supabase", ".venv", "venv", "site-packages",
+                "__pycache__", "vendor", "dist", "build", ".next", ".idea", ".vscode", "target", "packages"}
 USER_FOLDERS = ("Downloads", "Desktop", "Documents", "Videos", "Pictures", "Music")
 SKIP_PROFILES = {"default", "default user", "public", "all users", "defaultapppool"}
 BACKUP_WORDS = ("backup", "yedek", "sicherung", "dump", "export", "bak")
@@ -190,7 +195,7 @@ def _item(path: str, st: os.stat_result, reason: str, group: str) -> dict[str, A
 
 # ---------------------------------------------------------------------------------------- scan
 def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_min: int = DUP_MIN,
-         now: float | None = None, progress: Callable[[int], Any] | None = None) -> dict[str, Any]:
+         now: float | None = None, progress: Callable[[int], Any] | None = None, min_item: int = MIN_ITEM) -> dict[str, Any]:
     # Each part gets its own share of the time, the users' own files first: measuring big folders such as
     # Docker or AppData must never use up the time before backups and copies are found (seen 06.11.2026).
     now = time.time() if now is None else now
@@ -220,8 +225,13 @@ def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_mi
             root = prof / folder
             for e in _files(root, budget):
                 try:
-                    files.append((e.path, e.stat(follow_symlinks=False), folder == "Downloads"))
-                except OSError:
+                    rel = Path(e.path).relative_to(root).parts[:-1]
+                    if any(part.lower() in PROJECT_DIRS for part in rel):
+                        continue
+                    st = e.stat(follow_symlinks=False)
+                    if st.st_size >= min_item:
+                        files.append((e.path, st, folder == "Downloads"))
+                except (OSError, ValueError):
                     continue
     taken: set[str] = set()
     suggestions: list[dict[str, Any]] = []
