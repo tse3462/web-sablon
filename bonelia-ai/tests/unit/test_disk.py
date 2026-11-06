@@ -107,3 +107,17 @@ def test_scan_respects_its_time_budget(tmp_path):
     layout = pc(tmp_path)
     rep = disk.scan(layout, budget_s=0, **LIMITS)
     assert rep["partial"] is True and "drives" in rep
+
+
+def test_backups_are_found_even_when_measuring_big_folders_runs_out_of_time(tmp_path, monkeypatch):
+    """Seen 06.11.2026 on the owner's laptop: the scan spent its time on Docker/AppData and never reached
+    the backups in Downloads. Suggestions now have their own share of the time and run first."""
+    layout = pc(tmp_path)
+
+    def exhausted(root, budget, memo=None):
+        budget.hit = True  # as if the folder sizes took all their time
+        return 0
+    monkeypatch.setattr(disk, "dir_size", exhausted)
+    rep = disk.scan(layout, budget_s=30, **LIMITS)
+    assert rep["partial"] is True
+    assert {s["reason"] for s in rep["suggestions"]} == {"old_backup", "duplicate", "old_download"}

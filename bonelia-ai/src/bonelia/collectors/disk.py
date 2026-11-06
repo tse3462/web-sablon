@@ -124,13 +124,18 @@ def _files(root: Path, budget: Budget) -> Iterator[os.DirEntry]:
             continue
 
 
-def dir_size(root: Path, budget: Budget) -> int:
+def dir_size(root: Path, budget: Budget, memo: dict[str, int] | None = None) -> int:
+    key = str(root)
+    if memo is not None and key in memo:
+        return memo[key]
     total = 0
     for e in _files(root, budget):
         try:
             total += e.stat(follow_symlinks=False).st_size
         except OSError:
             pass
+    if memo is not None and not budget.hit:
+        memo[key] = total
     return total
 
 
@@ -184,9 +189,10 @@ def _item(path: str, st: os.stat_result, reason: str, group: str) -> dict[str, A
 
 
 # ---------------------------------------------------------------------------------------- scan
-def scan(layout: Layout, budget_s: float = 90.0, old_min: int = OLD_MIN, dup_min: int = DUP_MIN,
+def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_min: int = DUP_MIN,
          now: float | None = None) -> dict[str, Any]:
-    budget = Budget(budget_s)
+    # Each part gets its own share of the time, the users' own files first: measuring big folders such as
+    # Docker or AppData must never use up the time before backups and copies are found (seen 06.11.2026).
     now = time.time() if now is None else now
     report: dict[str, Any] = {"at": int(now), "drives": [], "categories": [], "largest": [], "suggestions": [], "partial": False}
     try:
@@ -194,32 +200,12 @@ def scan(layout: Layout, budget_s: float = 90.0, old_min: int = OLD_MIN, dup_min
         report["drives"].append({"name": str(layout.drive), "total": u.total, "free": u.free})
     except OSError:
         pass
-
-    # Known space hogs
-    cats: dict[str, dict[str, Any]] = {}
-    for key, kind, rels in PROFILE_PLACES:
-        cats[key] = {"key": key, "kind": kind, "bytes": sum(dir_size(p.joinpath(*rel), budget) for p in layout.profiles() for rel in rels)}
-    cats["temp"]["bytes"] += dir_size(layout.system_root / "Temp", budget)
-    cats["recycle"] = {"key": "recycle", "kind": "safe", "bytes": dir_size(layout.recycle_root, budget)}
-    cats["update_cache"] = {"key": "update_cache", "kind": "info",
-                            "bytes": dir_size(layout.system_root / "SoftwareDistribution" / "Download", budget)}
-    report["categories"] = [c for c in cats.values() if c["bytes"] > 0]
-
-    # Largest folders: each profile's top level, and AppData\Local's children
-    sizes = []
-    for prof in layout.profiles():
-        for parent in (prof, prof / "AppData" / "Local"):
-            try:
-                children = [c for c in parent.iterdir() if c.is_dir() and not _is_link(c)]
-            except OSError:
-                continue
-            for c in children:
-                if c.name == "AppData" and parent == prof:
-                    continue
-                sizes.append({"path": str(c), "bytes": dir_size(c, budget)})
-    report["largest"] = sorted((s for s in sizes if s["bytes"] > 0), key=lambda s: -s["bytes"])[:15]
+    memo: dict[str, int] = {}
+    budgets = []
 
     # Suggestions from the users' own folders
+    budget = Budget(budget_s * 0.5)
+    budgets.append(budget)
     files: list[tuple[str, os.stat_result, bool]] = []  # path, stat, in Downloads
     for prof in layout.profiles():
         for folder in USER_FOLDERS:
@@ -273,8 +259,36 @@ def scan(layout: Layout, budget_s: float = 90.0, old_min: int = OLD_MIN, dup_min
             suggestions.append(_item(f[0], f[1], "old_download", ""))
             taken.add(f[0])
 
+    # Known space hogs
+    budget = Budget(budget_s * 0.2)
+    budgets.append(budget)
+    cats: dict[str, dict[str, Any]] = {}
+    for key, kind, rels in PROFILE_PLACES:
+        cats[key] = {"key": key, "kind": kind, "bytes": sum(dir_size(p.joinpath(*rel), budget, memo) for p in layout.profiles() for rel in rels)}
+    cats["temp"]["bytes"] += dir_size(layout.system_root / "Temp", budget, memo)
+    cats["recycle"] = {"key": "recycle", "kind": "safe", "bytes": dir_size(layout.recycle_root, budget, memo)}
+    cats["update_cache"] = {"key": "update_cache", "kind": "info",
+                            "bytes": dir_size(layout.system_root / "SoftwareDistribution" / "Download", budget, memo)}
+    report["categories"] = [c for c in cats.values() if c["bytes"] > 0]
+
+    # Largest folders: each profile's top level, and AppData\Local's children
+    budget = Budget(budget_s * 0.3)
+    budgets.append(budget)
+    sizes = []
+    for prof in layout.profiles():
+        for parent in (prof, prof / "AppData" / "Local"):
+            try:
+                children = [c for c in parent.iterdir() if c.is_dir() and not _is_link(c)]
+            except OSError:
+                continue
+            for c in children:
+                if c.name == "AppData" and parent == prof:
+                    continue
+                sizes.append({"path": str(c), "bytes": dir_size(c, budget, memo)})
+    report["largest"] = sorted((s for s in sizes if s["bytes"] > 0), key=lambda s: -s["bytes"])[:15]
+
     report["suggestions"] = sorted(suggestions, key=lambda s: -s["bytes"])[:MAX_SUGGESTIONS]
-    report["partial"] = budget.hit
+    report["partial"] = any(b.hit for b in budgets)
     return report
 
 
