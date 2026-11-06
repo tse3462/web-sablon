@@ -41,7 +41,9 @@ def clean_report(raw: Any) -> dict[str, Any]:
             out["drives"].append({"name": d["name"][:40], "total": d["total"], "free": d["free"]})
     for c in (raw.get("categories") or [])[:20]:
         if isinstance(c, dict) and _str(c.get("key"), 40) and c.get("kind") in ("safe", "info") and _int(c.get("bytes")) is not None:
-            out["categories"].append({"key": c["key"][:40], "kind": c["kind"], "bytes": c["bytes"]})
+            parts = [{"path": x["path"][:500], "bytes": x["bytes"]} for x in (c.get("parts") or [])[:8]
+                     if isinstance(x, dict) and _str(x.get("path"), 500) and _int(x.get("bytes")) is not None]
+            out["categories"].append({"key": c["key"][:40], "kind": c["kind"], "bytes": c["bytes"], "parts": parts})
     for f in (raw.get("largest") or [])[:20]:
         if isinstance(f, dict) and _str(f.get("path"), 500) and _int(f.get("bytes")) is not None:
             out["largest"].append({"path": f["path"][:500], "bytes": f["bytes"]})

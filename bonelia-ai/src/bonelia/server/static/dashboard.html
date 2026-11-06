@@ -710,7 +710,7 @@ function renderDisk(){const v=DISK,r=v.report,c=$("#diskCard");
  if(!v.consent)h+=`<div class="v-warn">${t("dk_noconsent")}</div>`;
  const safe=(r.categories||[]).filter(x=>x.kind==="safe"),info=(r.categories||[]).filter(x=>x.kind==="info");
  if(safe.length)h+=`<h4>${t("dk_safe")}</h4>`+safe.map(x=>`<label class="dk-row"><input type="checkbox" data-dks="${esc(x.key)}" checked><span class="n"><b>${esc(t("dk_c_"+x.key))}</b></span><span class="s">${gb(x.bytes)}</span></label>`).join("");
- if(info.length)h+=`<h4>${t("dk_info")}</h4>`+info.map(x=>`<div class="dk-row"><span class="n"><b>${esc(t("dk_c_"+x.key))}</b><small>${esc(t("dk_i_"+x.key))}</small></span><span class="s">${gb(x.bytes)}</span></div>`).join("");
+ if(info.length)h+=`<h4>${t("dk_info")}</h4>`+info.map(x=>`<div class="dk-row"><span class="n"><b>${esc(t("dk_c_"+x.key))}</b><small>${esc(t("dk_i_"+x.key))}</small>${(x.parts||[]).map(pt=>`<small style="display:block">📁 ${esc(pt.path)} · ${gb(pt.bytes)}</small>`).join("")}</span><span class="s">${gb(x.bytes)}</span></div>`).join("");
  for(const reason of ["old_backup","duplicate","old_download"]){const items=(r.suggestions||[]).filter(x=>x.reason===reason);if(!items.length)continue;
   h+=`<h4>${t("dk_r_"+reason)} · ${gb(items.reduce((a,x)=>a+x.bytes,0))}</h4><p class="small" style="margin:0 0 4px">${t("dk_rh_"+reason)}</p>`
    +items.map(x=>{const f=dkName(x.path),dt=new Date(x.mtime*1000).toLocaleDateString(loc());return`<label class="dk-row"><input type="checkbox" data-dki="${esc(x.id)}" data-b="${x.bytes}"><span class="n"><b>${esc(f.n)}</b><small>${esc(f.dir)} · ${esc(dt)}</small></span><span class="s">${gb(x.bytes)}</span></label>`}).join("")}

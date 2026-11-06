@@ -54,6 +54,9 @@ def test_report_names_the_space_hogs_and_safe_suggestions(tmp_path):
     assert cats["recycle"]["kind"] == "safe" and cats["recycle"]["bytes"] >= 12 * MB
     assert cats["pip_cache"]["bytes"] >= 8 * MB
     assert cats["ai_models"]["kind"] == "info" and cats["ai_models"]["bytes"] >= 40 * MB
+    # Which folder the size comes from (seen 06.11.2026: "AI models 18 GB" with one 2 GB Ollama model).
+    parts = {Path(x["path"]).name: x["bytes"] for x in cats["ai_models"]["parts"]}
+    assert parts == {"models": cats["ai_models"]["bytes"]} and cats["ai_models"]["parts"][0]["path"].endswith(".ollama" + os.sep + "models")
     assert any(f["path"].endswith("Downloads") for f in rep["largest"])
 
     by_reason: dict[str, list[str]] = {}

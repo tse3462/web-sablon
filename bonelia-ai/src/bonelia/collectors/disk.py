@@ -264,7 +264,10 @@ def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_mi
     budgets.append(budget)
     cats: dict[str, dict[str, Any]] = {}
     for key, kind, rels in PROFILE_PLACES:
-        cats[key] = {"key": key, "kind": kind, "bytes": sum(dir_size(p.joinpath(*rel), budget, memo) for p in layout.profiles() for rel in rels)}
+        parts = [{"path": str(p.joinpath(*rel)), "bytes": dir_size(p.joinpath(*rel), budget, memo)}
+                 for p in layout.profiles() for rel in rels]
+        parts = sorted((x for x in parts if x["bytes"] > 0), key=lambda x: -x["bytes"])
+        cats[key] = {"key": key, "kind": kind, "bytes": sum(x["bytes"] for x in parts), "parts": parts[:8]}
     cats["temp"]["bytes"] += dir_size(layout.system_root / "Temp", budget, memo)
     cats["recycle"] = {"key": "recycle", "kind": "safe", "bytes": dir_size(layout.recycle_root, budget, memo)}
     cats["update_cache"] = {"key": "update_cache", "kind": "info",
