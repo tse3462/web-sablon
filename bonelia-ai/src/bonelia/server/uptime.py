@@ -87,6 +87,21 @@ def check_target(url: str, keyword: str | None, transport: httpx.BaseTransport |
         return CheckResult(False, None, int((time.monotonic() - start) * 1000), "connection")
 
 
+_SMART = str.maketrans({"“": '"', "”": '"', "„": '"', "‟": '"', "″": '"', "«": '"', "»": '"',
+                        "‘": "'", "’": "'", "‚": "'", "‛": "'", "′": "'"})
+
+
+def normalize_keyword(keyword: str | None) -> str | None:
+    """Phones turn typed quotes into curly ones; the program answers with straight ones."""
+    k = (keyword or "").translate(_SMART).strip()
+    return k or None
+
+
+def check_settings(a: dict[str, Any]) -> tuple[str | None, str | None]:
+    """What is actually measured for a program: the address and the expected text."""
+    return (a.get("check_url") or a.get("url") or None, normalize_keyword(a.get("keyword")))
+
+
 def certificate_days_left(host: str, port: int = 443, timeout: float = TIMEOUT_S) -> int | None:
     """Days until the HTTPS certificate of `host` expires; None when it cannot be read."""
     try:
@@ -156,7 +171,7 @@ class UptimeMonitor:
                     continue
                 url = a.get("check_url") or a.get("url")
                 if url:
-                    results.append((a, url, check_target(url, a.get("keyword") or None, transport=self.transport)))
+                    results.append((a, url, check_target(url, normalize_keyword(a.get("keyword")), transport=self.transport)))
             net = state.setdefault("_net", {})
             if results and not any(r.ok for _, _, r in results) and not self._internet_ok():
                 # The home internet is out: record "could not check", count nothing against the programs.
@@ -191,6 +206,14 @@ class UptimeMonitor:
                         st["alerted"] = True
                 self._check_certificate(a, url, st, now)
             self._save(state, apps, now)
+
+    def reset(self, app_id: str) -> None:
+        """Forget a program's history, e.g. after its check address was corrected (old results measured something else)."""
+        with self._lock:
+            self.store._x("delete from uptime_checks where app_id=?", (app_id,))
+            state = self._state()
+            if state.pop(app_id, None) is not None:
+                self.store.set_setting(STATE_KEY, state)
 
     def _save(self, state: dict[str, Any], apps: list[dict[str, Any]], now: datetime) -> None:
         known = {a["id"] for a in apps}

@@ -156,3 +156,33 @@ def test_intervention_links_reach_the_panel_and_the_alarm(tmp_path):
     mon.run_once(); mon.run_once()
     assert sent.messages == [("down", "Reservierung: http_503")] and sent.links == saved["links"]
     assert c.get("/api/uptime", headers=H).json()["apps"][0]["links"] == saved["links"]
+
+
+def test_iphone_smart_quotes_and_changed_settings_start_a_fresh_history(tmp_path):
+    """Seen 06.11.2026: 12 red minutes right after adding the reservation app, then green."""
+    store = Store(tmp_path / "db.sqlite")
+    c = TestClient(create_dashboard_app(store, TOKEN, 9999), base_url="http://127.0.0.1:9999")
+    # The iPhone keyboard turns "database":"ok" into “database”:“ok”.
+    saved = c.post("/api/apps", headers=H, json={"name": "Reservierung", "url": "https://res.test/",
+                                                 "check_url": "https://res.test/health", "keyword": "“database”:“ok”"}).json()["apps"][0]
+    assert saved["keyword"] == '"database":"ok"'
+    answers = {"https://res.test/health": (200, '{"status":"ok","database":"ok"}'), "https://probe.test/": (204, ""),
+               "https://res.test/wrong": (404, "")}
+    mon = UptimeMonitor(store, Sent(), transport=transport(answers), ssl_days=lambda h: 90, probes=("https://probe.test/",))
+    mon.run_once()
+    assert mon.summary()[0]["status"] == "up"
+
+    # A wrong check address measured for a while, then corrected: the wrong minutes are not kept.
+    c.post("/api/apps", headers=H, json={"id": saved["id"], "name": "Reservierung", "url": "https://res.test/",
+                                         "check_url": "https://res.test/wrong"})
+    for _ in range(3):
+        mon.run_once()
+    assert mon.summary()[0]["checks_24h"] == 3 and mon.summary()[0]["uptime_24h"] == 0.0
+    c.post("/api/apps", headers=H, json={"id": saved["id"], "name": "Reservierung", "url": "https://res.test/",
+                                         "check_url": "https://res.test/health", "keyword": '"database":"ok"'})
+    assert mon.summary()[0]["checks_24h"] == 0 and mon.summary()[0]["status"] == "unknown"
+    # Renaming or adding links keeps the history.
+    mon.run_once()
+    c.post("/api/apps", headers=H, json={"id": saved["id"], "name": "BNL Reservierung", "url": "https://res.test/",
+                                         "check_url": "https://res.test/health", "keyword": '"database":"ok"', "links": "GitHub https://github.com/x"})
+    assert mon.summary()[0]["checks_24h"] == 1

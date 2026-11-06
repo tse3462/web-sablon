@@ -29,7 +29,7 @@ from .. import __version__
 from ..contracts import Diagnosis, DiagnosticEvent, RiskLevel, utcnow
 from ..repair.builtin_tools import SAFE_AUTO_TOOLS
 from .notify import TELEGRAM_KEY, TelegramAPI, build_notifier, extract_token
-from .uptime import UptimeMonitor
+from .uptime import UptimeMonitor, check_settings, normalize_keyword
 from .store import Store
 
 ONLINE_MINUTES = 15  # agents report every 5 minutes
@@ -284,7 +284,7 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         if check_url and not _URL.match(check_url):
             raise HTTPException(422, "invalid_url")
         item = {"id": body.id or secrets.token_hex(6), "name": name, "url": url, "icon": (body.icon.strip() or "🔗")[:8],
-                "check_url": check_url, "keyword": (body.keyword or "").strip() or None, "monitor": body.monitor,
+                "check_url": check_url, "keyword": normalize_keyword(body.keyword), "monitor": body.monitor,
                 "links": parse_links(body.links)}
         apps = apps_list()
         idx = next((i for i, a in enumerate(apps) if a.get("id") == item["id"]), None)
@@ -295,7 +295,10 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
                 raise HTTPException(409, "too_many_apps")
             apps.append(item)
         else:
+            changed = check_settings(apps[idx]) != check_settings(item)
             apps[idx] = item
+            if changed:  # the old minutes measured another address or text: start fresh
+                uptime.reset(item["id"])
         store.set_setting(APPS_KEY, apps)
         store.audit("admin:dashboard", "settings.app_saved", {"name": name, "url": url})
         return {"apps": apps}
