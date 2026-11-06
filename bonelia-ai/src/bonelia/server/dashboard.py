@@ -145,6 +145,8 @@ class DiskCleanBody(BaseModel):
     safe: list[str] = Field(default_factory=list, max_length=10)
     items: list[str] = Field(default_factory=list, max_length=400)
     folders: list[str] = Field(default_factory=list, max_length=20)
+    moves: list[str] = Field(default_factory=list, max_length=20)
+    drive: str | None = Field(default=None, max_length=40)
 
 
 class TokenBody(BaseModel):
@@ -255,7 +257,8 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         return {"device": {"id": device_id, "label": dev["label"], "customer": tenant.get("name", "")},
                 "report": rep, "history": disks.history(device_id),
                 "pending": {"safe": pending.get("safe", []), "files": len(pending.get("files", [])), "folders": len(pending.get("folders", [])),
-                            "bytes": pending.get("bytes", 0)} if pending else None,
+                            "moves": len(pending.get("moves", [])), "bytes": pending.get("bytes", 0),
+                            "progress": prog["pct"] if prog and prog["request"] == pending.get("id") else None} if pending else None,
                 "scan_pending": scan_pending,
                 "progress": {"pct": prog["pct"], "at": prog["at"]} if scan_pending and prog and prog["request"] == pol.get("disk_scan") else None,
                 "consent": int(tenant.get("max_auto_level") or 0) >= 1}
@@ -283,18 +286,22 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         offered = {c["key"] for c in rep["categories"] if c["kind"] == "safe"} & SAFE_KEYS
         by_id = {s["id"]: s for s in rep["suggestions"]}
         deletable = {n["id"]: n for n in tree_nodes(rep) if n.get("id") and n.get("deletable")}
-        if (not (body.safe or body.items or body.folders) or not set(body.safe) <= offered or not set(body.items) <= set(by_id)
-                or not set(body.folders) <= set(deletable)):
+        drives = [d["name"] for d in rep.get("backup_drives") or []]
+        if (not (body.safe or body.items or body.folders or body.moves) or not set(body.safe) <= offered or not set(body.items) <= set(by_id)
+                or not set(body.folders) <= set(deletable) or not set(body.moves) <= set(deletable)
+                or (body.moves and body.drive not in drives)):
             raise HTTPException(422, "invalid_selection")
+        moves = [{"path": deletable[i]["path"], "bytes": deletable[i]["bytes"], "drive": body.drive} for i in dict.fromkeys(body.moves)]
         files = [{k: by_id[i][k] for k in ("path", "bytes", "mtime")} for i in dict.fromkeys(body.items)]
         folders = [{"path": deletable[i]["path"], "bytes": deletable[i]["bytes"]} for i in dict.fromkeys(body.folders)]
-        total = (sum(f["bytes"] for f in files) + sum(f["bytes"] for f in folders)
+        total = (sum(f["bytes"] for f in files) + sum(f["bytes"] for f in folders) + sum(m["bytes"] for m in moves)
                  + sum(c["bytes"] for c in rep["categories"] if c["key"] in body.safe))
         _merge_policy(device_id, disk_cleanup={"id": secrets.token_hex(8), "safe": list(dict.fromkeys(body.safe)), "files": files,
-                                               "folders": folders, "bytes": total})
+                                               "folders": folders, "moves": moves, "bytes": total})
         dev = store.device(device_id)
         store.audit("admin:dashboard", "disk.cleanup_requested", {"safe": body.safe, "files": len(files),
-                                                                  "folders": [f["path"] for f in folders], "bytes": total},
+                                                                  "folders": [f["path"] for f in folders],
+                                                                  "moves": [m["path"] + " -> " + m["drive"] for m in moves], "bytes": total},
                     tenant_id=dev["tenant_id"], device_id=device_id)
         return _disk_view(device_id)
 

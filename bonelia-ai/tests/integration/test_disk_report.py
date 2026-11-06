@@ -28,6 +28,8 @@ def report(free=12 * GB, total=237 * GB):
                                        "note": "", "children": []}]},
                         {"id": "f" * 16, "path": "C:\\Users\\anna\\AppData\\Local\\Docker", "bytes": 30 * GB, "deletable": False,
                          "note": "docker", "children": []}],
+            "backup_drives": [{"name": "D:\\", "free": 400 * GB, "total": 931 * GB, "label": "YEDEK"}],
+            "advice": [{"id": "e" * 16, "path": "C:\\Users\\anna\\Downloads\\Alt", "bytes": 9 * GB, "why": "unused", "days": 200, "last_write": 1}],
             "suggestions": [
                 {"id": "a" * 16, "path": "C:\\Users\\anna\\Downloads\\shop-backup-2026-10-01.zip", "bytes": 3 * GB, "mtime": 1, "reason": "old_backup", "group": "shop backup"},
                 {"id": "b" * 16, "path": "C:\\Users\\anna\\Downloads\\film (1).mp4", "bytes": 2 * GB, "mtime": 2, "reason": "duplicate", "group": "abc"},
@@ -46,7 +48,9 @@ class FakeDisk:
             progress(10); progress(60)
         return dict(self.rep)
 
-    def clean(self, req):
+    def clean(self, req, progress=None):
+        if progress:
+            progress(40)
         self.cleaned.append(req)
         return {"id": req["id"], "safe": {k: GB for k in req.get("safe", [])}, "files": [{"path": f["path"], "status": "deleted"} for f in req.get("files", [])],
                 "freed": 3 * GB + GB * len(req.get("safe", []))}
@@ -156,3 +160,33 @@ def test_a_folder_is_deleted_only_if_the_pc_marked_it_deletable(tmp_path, env): 
     assert r.status_code == 200 and r.json()["pending"]["folders"] == 1 and r.json()["pending"]["bytes"] == 9 * GB
     agent.cycle(); agent.cycle()
     assert fd.cleaned[-1]["folders"] == [{"path": "C:\\Users\\anna\\Downloads\\Alt", "bytes": 9 * GB}]
+
+
+def test_move_to_backup_drive_only_to_a_drive_the_pc_reported(tmp_path, env):  # noqa: F811
+    store = env["store"]
+    store.update_tenant(env["a"], max_auto_level=1)
+    dash = TestClient(create_dashboard_app(store, TOKEN, 9999), base_url="http://127.0.0.1:9999", headers=H)
+    s = usb(tmp_path, env, "LAPTOP3", env["a"], scopes=("diagnose", "repair:windows"))
+    dev = s.creds.device_id
+    pc, fd = FakePC(), FakeDisk()
+    agent = Agent(s.client, AgentState(tmp_path / "m.json"), executors=pc.executors(), scan=pc.scan, maintenance_tools=(),
+                  remote=lambda: None, disk_scan=fd.scan, disk_clean=fd.clean)
+    agent.cycle()
+    v = dash.get(f"/api/disk/{dev}").json()
+    assert v["report"]["advice"][0]["why"] == "unused" and v["report"]["backup_drives"][0]["label"] == "YEDEK"
+    assert dash.post(f"/api/disk/{dev}/clean", json={"moves": ["e" * 16], "drive": "Z:\\"}).status_code == 422
+    assert dash.post(f"/api/disk/{dev}/clean", json={"moves": ["f" * 16], "drive": "D:\\"}).status_code == 422  # Docker: never
+    r = dash.post(f"/api/disk/{dev}/clean", json={"moves": ["e" * 16], "drive": "D:\\"})
+    assert r.status_code == 200 and r.json()["pending"]["moves"] == 1
+    seen = []
+    real = fd.clean
+
+    def watched(req, progress=None):
+        def spy(pct):
+            progress(pct)
+            seen.append(dash.get(f"/api/disk/{dev}").json()["pending"]["progress"])
+        return real(req, progress=spy)
+    agent.disk_clean = watched
+    agent.cycle(); agent.cycle()
+    assert fd.cleaned[-1]["moves"] == [{"path": "C:\\Users\\anna\\Downloads\\Alt", "bytes": 9 * GB, "drive": "D:\\"}]
+    assert seen == [40]  # the panel saw how far the copy got

@@ -225,3 +225,67 @@ def test_folder_cleanup_removes_a_link_but_not_what_it_points_to(tmp_path):
     res = disk.clean(layout, {"id": "f2", "folders": [{"path": str(target), "bytes": 650 * MB}]})
     assert res["folders"][0]["status"] == "deleted" and not target.exists()
     assert (keep / "important.doc").exists()
+
+
+# --------------------------------------------------------------------- advice and "move to the backup drive"
+def advice_pc(tmp_path):
+    layout = big_pc(tmp_path)
+    home = tmp_path / "Users" / "anna"
+    models = home / ".lmstudio" / "models"
+    for f in models.rglob("*"):
+        if f.is_file():
+            t = time.time() - 200 * DAY
+            os.utime(f, (t, t))                                          # LM Studio models untouched for 200 days
+    make(home / ".codex" / "sessions" / "2026" / "s.jsonl", 700 * MB, age_days=1)  # Codex used yesterday
+    backup = tmp_path / "D"
+    backup.mkdir()
+    src = home / "Downloads" / "Projekte-Archiv" / "alt.iso"
+    (backup / "AI-Proje-Yedekleri" / "Projekte-Archiv").mkdir(parents=True)
+    (backup / "AI-Proje-Yedekleri" / "Projekte-Archiv" / "alt.iso").write_bytes(src.read_bytes())  # already backed up
+    layout.backup_drives = [backup]
+    return layout
+
+
+def test_advice_says_what_is_backed_up_unused_or_in_use(tmp_path):
+    rep = disk.scan(advice_pc(tmp_path), budget_s=30, **LIMITS)
+    adv = {Path(a["path"]).name: a for a in rep["advice"]}
+    assert adv["Projekte-Archiv"]["why"] == "has_backup" and adv["Projekte-Archiv"]["backup"].endswith("Projekte-Archiv")
+    assert adv["models"]["why"] == "unused" and adv["models"]["days"] >= 199  # the whole models folder, not each model again
+    assert "Qwen-14B" not in adv and "sessions" not in adv                   # in use: no advice
+    assert rep["backup_drives"][0]["name"] == str(tmp_path / "D")
+    nodes = {Path(n["path"]).name: n for n in walk(rep["largest"])}
+    assert nodes["sessions"]["use"] == "in_use" and nodes["Qwen-14B"]["use"] == "unused"
+
+
+def test_move_copies_checks_every_byte_then_deletes_the_original(tmp_path):
+    layout = advice_pc(tmp_path)
+    home = tmp_path / "Users" / "anna"
+    qwen = home / ".lmstudio" / "models" / "lmstudio-community" / "Qwen-14B"
+    original = (qwen / "q.gguf").read_bytes()
+    seen = []
+    res = disk.clean(layout, {"id": "m1", "moves": [{"path": str(qwen), "bytes": 900 * MB, "drive": str(tmp_path / "D")}]},
+                     progress=seen.append)
+    [m] = res["moves"]
+    assert m["status"] == "moved" and not qwen.exists()
+    dest = Path(m["dest"])
+    assert dest == tmp_path / "D" / "BONELIA-Yedek" / "anna" / ".lmstudio" / "models" / "lmstudio-community" / "Qwen-14B"
+    assert (dest / "q.gguf").read_bytes() == original
+    assert res["freed"] >= 900 * MB and seen and seen[-1] == 100
+
+
+def test_move_keeps_the_original_when_space_is_short_or_a_copy_differs(tmp_path, monkeypatch):
+    layout = advice_pc(tmp_path)
+    home = tmp_path / "Users" / "anna"
+    llama = home / ".lmstudio" / "models" / "lmstudio-community" / "Llama-8B"
+    real_usage = disk.shutil.disk_usage
+    monkeypatch.setattr(disk.shutil, "disk_usage", lambda p: real_usage(p)._replace(free=10) if str(p).startswith(str(tmp_path / "D")) else real_usage(p))
+    res = disk.clean(layout, {"id": "m2", "moves": [{"path": str(llama), "bytes": 600 * MB, "drive": str(tmp_path / "D")}]})
+    assert res["moves"][0]["status"] == "no_space" and llama.exists()
+    monkeypatch.setattr(disk.shutil, "disk_usage", real_usage)
+    monkeypatch.setattr(disk, "_same_content", lambda a, b, budget: False)  # e.g. a failing USB stick
+    res = disk.clean(layout, {"id": "m3", "moves": [{"path": str(llama), "bytes": 600 * MB, "drive": str(tmp_path / "D")}]})
+    assert res["moves"][0]["status"] == "verify_failed" and (llama / "l.gguf").exists()
+    # Only to a backup drive the PC itself found, only from places that may be cleaned.
+    res = disk.clean(layout, {"id": "m4", "moves": [{"path": str(llama), "bytes": 1, "drive": str(tmp_path / "elsewhere")},
+                                                    {"path": str(home / ".ollama"), "bytes": 1, "drive": str(tmp_path / "D")}]})
+    assert [m["status"] for m in res["moves"]] == ["not_allowed", "not_allowed"]

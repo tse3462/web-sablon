@@ -39,7 +39,9 @@ def _node(x: Any, depth: int) -> dict[str, Any] | None:
     nid = x.get("id") if isinstance(x.get("id"), str) and re.fullmatch(r"[0-9a-f]{16}", x["id"]) else None
     kids = [k for k in (_node(c, depth - 1) for c in (x.get("children") or [])[:8]) if k] if depth > 0 else []
     return {"id": nid, "path": x["path"][:500], "bytes": x["bytes"], "deletable": bool(nid) and x.get("deletable") is True,
-            "note": (x.get("note") if isinstance(x.get("note"), str) else "")[:20], "children": kids}
+            "note": (x.get("note") if isinstance(x.get("note"), str) else "")[:20], "children": kids,
+            "last_write": _int(x.get("last_write")) or 0, "use": x.get("use") if x.get("use") in ("in_use", "unused") else "",
+            "backup": _str(x.get("backup"), 500)}
 
 
 def tree_nodes(rep: dict[str, Any]):
@@ -70,13 +72,25 @@ def clean_report(raw: Any) -> dict[str, Any]:
         if _str(s.get("path"), 500) and _int(s.get("bytes")) and _int(s.get("mtime")) is not None and s.get("reason") in REASONS:
             out["suggestions"].append({"id": s["id"], "path": s["path"][:500], "bytes": s["bytes"], "mtime": s["mtime"],
                                        "reason": s["reason"], "group": (s.get("group") if isinstance(s.get("group"), str) else "")[:80]})
+    for a in (raw.get("advice") or [])[:20]:
+        if (isinstance(a, dict) and isinstance(a.get("id"), str) and re.fullmatch(r"[0-9a-f]{16}", a["id"]) and _str(a.get("path"), 500)
+                and _int(a.get("bytes")) and a.get("why") in ("has_backup", "unused", "docker_unused")):
+            out.setdefault("advice", []).append({"id": a["id"], "path": a["path"][:500], "bytes": a["bytes"], "why": a["why"],
+                                                 "days": _int(a.get("days")) or 0, "backup": _str(a.get("backup"), 500),
+                                                 "last_write": _int(a.get("last_write")) or 0})
+    for d in (raw.get("backup_drives") or [])[:6]:
+        if isinstance(d, dict) and _str(d.get("name"), 40) and _int(d.get("free")) is not None and _int(d.get("total")) is not None:
+            out.setdefault("backup_drives", []).append({"name": d["name"][:40], "free": d["free"], "total": d["total"],
+                                                        "label": (d.get("label") if isinstance(d.get("label"), str) else "")[:40]})
     res = raw.get("cleanup_result")
     if isinstance(res, dict) and _str(res.get("id"), 40):
         out["cleanup_result"] = {"id": res["id"][:40], "freed": _int(res.get("freed")) or 0,
-                                 "deleted": sum(1 for f in (res.get("files") or []) + (res.get("folders") or [])
-                                                if isinstance(f, dict) and f.get("status") == "deleted"),
-                                 "skipped": sum(1 for f in (res.get("files") or []) + (res.get("folders") or [])
-                                                if isinstance(f, dict) and f.get("status") != "deleted"),
+                                 "deleted": sum(1 for f in (res.get("files") or []) + (res.get("folders") or []) + (res.get("moves") or [])
+                                                if isinstance(f, dict) and f.get("status") in ("deleted", "moved")),
+                                 "skipped": sum(1 for f in (res.get("files") or []) + (res.get("folders") or []) + (res.get("moves") or [])
+                                                if isinstance(f, dict) and f.get("status") not in ("deleted", "moved")),
+                                 "moved": [{"path": _str(m.get("path"), 500), "dest": _str(m.get("dest"), 500), "status": _str(m.get("status"), 20)}
+                                           for m in (res.get("moves") or [])[:20] if isinstance(m, dict)],
                                  "error": _str(res.get("error"), 80)}
     if _str(raw.get("scan_request"), 40):
         out["scan_request"] = raw["scan_request"][:40]

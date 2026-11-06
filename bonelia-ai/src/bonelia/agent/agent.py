@@ -50,9 +50,9 @@ def _windows_disk_scan(progress=None) -> dict | None:
     return disk.scan(disk.Layout.windows(), progress=progress)
 
 
-def _windows_disk_clean(request: dict) -> dict:
+def _windows_disk_clean(request: dict, progress=None) -> dict:
     from ..collectors import disk
-    return disk.clean(disk.Layout.windows(), request)
+    return disk.clean(disk.Layout.windows(), request, progress=progress)
 
 
 class AgentState:
@@ -143,8 +143,13 @@ class Agent:
         pol = self.state.data.get("policy") or {}
         req = pol.get("disk_cleanup")
         if isinstance(req, dict) and req.get("id") and req["id"] != self.state.data.get("disk_cleanup_done"):
+            def progress(pct: int) -> None:  # copying to the backup drive can take minutes: the panel shows how far
+                try:
+                    self.client.disk_progress(str(req["id"]), pct)
+                except (ServerUnavailable, ServerError):
+                    pass
             try:
-                result = self.disk_clean(req)
+                result = self.disk_clean(req, progress=progress)
             except Exception as exc:  # report the failure; never retry a deletion blindly
                 result = {"id": req["id"], "error": type(exc).__name__, "files": [], "safe": {}, "freed": 0}
             self.state.data["disk_cleanup_done"] = req["id"]
