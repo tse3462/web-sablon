@@ -100,3 +100,15 @@ def test_server_notifies_on_important_finding_and_on_repair(tmp_path):
     titles = [s[0] for s in ch.sent]
     assert any("önemli sorun" in x for x in titles) and any("onarıldı" in x for x in titles)
     assert len(titles) == 2  # harmless finding produced no notification
+
+
+def test_program_down_message_carries_intervention_links_and_internet_back(tmp_path):
+    ch = FakeChannel()
+    n = Notifier(Store(tmp_path / "db"), [ch])
+    links = [{"label": "Supabase", "url": "https://supabase.com/dashboard/project/abc"}]
+    assert n.uptime_down("res", "Reservierung", "http_503", links)
+    title, body = ch.sent[-1]
+    assert "Reservierung" in title and "HTTP 503" in body
+    assert "→ Supabase: https://supabase.com/dashboard/project/abc" in body  # one tap from Telegram
+    assert n.internet_back(12)
+    assert "12 dk" in ch.sent[-1][1] and "📶" in ch.sent[-1][0]

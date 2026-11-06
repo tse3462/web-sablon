@@ -18,6 +18,7 @@ import webbrowser
 from pathlib import Path
 from datetime import datetime, timedelta
 from importlib import resources
+from urllib.parse import urlsplit
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -93,11 +94,29 @@ class AppBody(BaseModel):
     check_url: str | None = Field(default=None, max_length=500)
     keyword: str | None = Field(default=None, max_length=200)
     monitor: bool = True
+    # Intervention links, one per line: "Supabase https://…" (label, then the address)
+    links: str | list[dict[str, str]] | None = Field(default=None)
 
 
 APPS_KEY = "apps"
 MAX_APPS = 40
 _URL = re.compile(r"^https?://[^\s<>\"'`]+$", re.IGNORECASE)
+
+
+_LINK = re.compile(r"(https?://[^\s<>\"'`]+)", re.IGNORECASE)
+
+
+def parse_links(raw: str | list[dict[str, str]] | None) -> list[dict[str, str]]:
+    """Intervention links for a program: "Supabase https://…" per line; lines without an http(s) address are dropped."""
+    lines = raw[:2000].splitlines() if isinstance(raw, str) else [f"{x.get('label', '')} {x.get('url', '')}" for x in raw or [] if isinstance(x, dict)]
+    out = []
+    for line in lines[:20]:
+        m = _LINK.search(line)
+        if not m or len(m.group(1)) > 500:
+            continue
+        label = line[:m.start()].strip(" \t:-|–") or (urlsplit(m.group(1)).hostname or "Link")
+        out.append({"label": label[:30], "url": m.group(1)})
+    return out[:6]
 
 
 class TokenBody(BaseModel):
@@ -265,7 +284,8 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         if check_url and not _URL.match(check_url):
             raise HTTPException(422, "invalid_url")
         item = {"id": body.id or secrets.token_hex(6), "name": name, "url": url, "icon": (body.icon.strip() or "🔗")[:8],
-                "check_url": check_url, "keyword": (body.keyword or "").strip() or None, "monitor": body.monitor}
+                "check_url": check_url, "keyword": (body.keyword or "").strip() or None, "monitor": body.monitor,
+                "links": parse_links(body.links)}
         apps = apps_list()
         idx = next((i for i, a in enumerate(apps) if a.get("id") == item["id"]), None)
         if idx is None:

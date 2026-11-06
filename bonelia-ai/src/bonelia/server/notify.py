@@ -162,6 +162,7 @@ _T = {
     "test": {"tr": "BONELİA AI test bildirimi", "de": "BONELİA AI Testbenachrichtigung"},
     "uptime_down": {"tr": "🔴 {name} çalışmıyor", "de": "🔴 {name} ist nicht erreichbar"},
     "uptime_up": {"tr": "🟢 {name} yeniden çalışıyor", "de": "🟢 {name} ist wieder erreichbar"},
+    "internet_back": {"tr": "📶 Ev interneti geri geldi", "de": "📶 Internet zu Hause wieder da"},
     "ssl_expiring": {"tr": "🔐 {name}: SSL sertifikası {days} gün içinde bitiyor", "de": "🔐 {name}: SSL-Zertifikat läuft in {days} Tagen ab"},
 }
 
@@ -241,9 +242,16 @@ class Notifier:
                 "de": {"timeout": "keine Antwort (Zeitüberschreitung)", "connection": "keine Verbindung", "ssl": "SSL-Fehler",
                        "keyword_missing": "erwartete Antwort fehlt (z. B. Datenbank)"}}
 
-    def uptime_down(self, app_id: str, name: str, reason: str) -> bool:
+    def uptime_down(self, app_id: str, name: str, reason: str, links: list[dict] | None = None) -> bool:
         text = self._REASONS[self.lang].get(reason, reason.replace("http_", "HTTP "))
+        # intervention links from the panel (Supabase, Cloudflare, GitHub …): one tap from the message
+        text += "".join(f"\n→ {l.get('label', '')}: {l.get('url', '')}" for l in (links or [])[:6])
         return self._send(f"uptime_down|{app_id}", timedelta(minutes=5), self._title("uptime_down", name=name), text)
+
+    def internet_back(self, minutes: int) -> bool:
+        body = (f"Evdeki internet {minutes} dk kesikti; bu sürede programlar kontrol edilemedi." if self.lang == "tr"
+                else f"Das Internet zu Hause war {minutes} Min. weg; in dieser Zeit wurden die Programme nicht geprüft.")
+        return self._send("internet_back", timedelta(0), self._title("internet_back"), body)
 
     def uptime_up(self, app_id: str, name: str, minutes: int) -> bool:
         self.store.clear_notification(f"uptime_down|{app_id}")

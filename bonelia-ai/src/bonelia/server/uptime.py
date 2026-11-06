@@ -6,6 +6,11 @@ Every minute each monitored program is fetched: its address, or a separate check
 database password here. Two failed checks in a row send one "down" message; the first good check
 afterwards sends "back up after N minutes". HTTPS certificates are checked every six hours and
 reported once a day when they expire within 14 days. Results are kept for 30 days.
+
+When every program fails at the same moment, public addresses are tried first: if those fail too, the
+home internet is out. Those checks are stored as "could not check" (not counted against the programs,
+no false alarm), and one "internet back after N minutes" message follows. Each program can carry
+intervention links (Supabase, Cloudflare, GitHub …) that appear in the panel and in the down message.
 """
 
 from __future__ import annotations
@@ -31,6 +36,10 @@ SSL_EVERY = timedelta(hours=6)
 SSL_WARN_DAYS = 14
 TIMEOUT_S = 10.0
 BARS = 30
+# Public addresses that answer quickly: when every program fails at once, these tell whether the
+# home internet is out (then nothing is counted against the programs and no false alarm goes out).
+PROBES = ("https://www.google.com/generate_204", "https://1.1.1.1/", "https://www.cloudflare.com/cdn-cgi/trace")
+LOCAL_OFFLINE = "local_offline"
 
 SCHEMA = """
 create table if not exists uptime_checks (
@@ -49,8 +58,9 @@ class CheckResult:
 
 
 class UptimeNotifier(Protocol):
-    def uptime_down(self, app_id: str, name: str, reason: str) -> Any: ...
+    def uptime_down(self, app_id: str, name: str, reason: str, links: list[dict] | None = None) -> Any: ...
     def uptime_up(self, app_id: str, name: str, minutes: int) -> Any: ...
+    def internet_back(self, minutes: int) -> Any: ...
     def ssl_expiring(self, app_id: str, name: str, days: int) -> Any: ...
 
 
@@ -100,8 +110,10 @@ def _parse(s: str) -> datetime:
 
 class UptimeMonitor:
     def __init__(self, store, notifier: UptimeNotifier | None, transport: httpx.BaseTransport | None = None,
-                 clock: Callable[[], datetime] = utcnow, ssl_days: Callable[[str], int | None] = certificate_days_left):
+                 clock: Callable[[], datetime] = utcnow, ssl_days: Callable[[str], int | None] = certificate_days_left,
+                 probes: tuple[str, ...] = PROBES):
         self.store, self.notifier, self.transport, self.clock, self.ssl_days = store, notifier, transport, clock, ssl_days
+        self.probes = probes
         self._lock = threading.Lock()
         with store._lock:
             store._db.executescript(SCHEMA)
@@ -124,18 +136,43 @@ class UptimeMonitor:
             pass
 
     # ------------------------------------------------------------------ checking
+    def _internet_ok(self) -> bool:
+        for url in self.probes:
+            try:
+                if check_target(url, None, transport=self.transport, timeout=5.0).ok:
+                    return True
+            except Exception:
+                continue
+        return False
+
     def run_once(self) -> None:
         with self._lock:  # the server loop and "check now" in the panel never overlap
             now = self.clock()
             state = self._state()
             apps = self.apps()
+            results = []
             for a in apps:
                 if a.get("monitor", True) is False:
                     continue
                 url = a.get("check_url") or a.get("url")
-                if not url:
-                    continue
-                res = check_target(url, a.get("keyword") or None, transport=self.transport)
+                if url:
+                    results.append((a, url, check_target(url, a.get("keyword") or None, transport=self.transport)))
+            net = state.setdefault("_net", {})
+            if results and not any(r.ok for _, _, r in results) and not self._internet_ok():
+                # The home internet is out: record "could not check", count nothing against the programs.
+                for a, _, _ in results:
+                    self.store._x("insert into uptime_checks (app_id, at, ok, code, ms, error) values (?,?,?,?,?,?)",
+                                  (a["id"], _iso(now), 0, None, None, LOCAL_OFFLINE))
+                net.setdefault("down_since", None)
+                if not net["down_since"]:
+                    net["down_since"] = _iso(now)
+                self._save(state, apps, now)
+                return
+            if net.get("down_since"):
+                minutes = max(1, round((now - _parse(net["down_since"])).total_seconds() / 60))
+                self._notify("internet_back", minutes)
+                net["down_since"] = None
+            for a, url, res in results:
                 self.store._x("insert into uptime_checks (app_id, at, ok, code, ms, error) values (?,?,?,?,?,?)",
                               (a["id"], _iso(now), int(res.ok), res.code, res.ms, res.error))
                 st = state.setdefault(a["id"], {"fails": 0, "alerted": False})
@@ -146,18 +183,19 @@ class UptimeMonitor:
                     st.update(fails=0, alerted=False, down_since=None)
                 else:
                     st["fails"] = int(st.get("fails", 0)) + 1
-                    st.setdefault("down_since", None)
-                    if not st["down_since"]:
+                    if not st.get("down_since"):
                         st["down_since"] = _iso(now)
                     st["reason"] = res.error
                     if st["fails"] >= FAILURES_BEFORE_ALERT and not st.get("alerted"):
-                        self._notify("uptime_down", a["id"], a["name"], res.error or "down")
+                        self._notify("uptime_down", a["id"], a["name"], res.error or "down", a.get("links") or [])
                         st["alerted"] = True
                 self._check_certificate(a, url, st, now)
-            known = {a["id"] for a in apps}
-            state = {k: v for k, v in state.items() if k in known}
-            self.store.set_setting(STATE_KEY, state)
-            self.store._x("delete from uptime_checks where at < ?", (_iso(now - KEEP),))
+            self._save(state, apps, now)
+
+    def _save(self, state: dict[str, Any], apps: list[dict[str, Any]], now: datetime) -> None:
+        known = {a["id"] for a in apps}
+        self.store.set_setting(STATE_KEY, {k: v for k, v in state.items() if k in known or k.startswith("_")})
+        self.store._x("delete from uptime_checks where at < ?", (_iso(now - KEEP),))
 
     def _check_certificate(self, a: dict[str, Any], url: str, st: dict[str, Any], now: datetime) -> None:
         parts = urlsplit(url)
@@ -181,8 +219,9 @@ class UptimeMonitor:
         out = []
         for a in self.apps():
             monitored = a.get("monitor", True) is not False and bool(a.get("check_url") or a.get("url"))
-            rows = self.store._q("select at, ok, code, ms, error from uptime_checks where app_id=? and at>=? order by at",
-                                 (a["id"], _iso(now - KEEP)))
+            all_rows = self.store._q("select at, ok, code, ms, error from uptime_checks where app_id=? and at>=? order by at",
+                                     (a["id"], _iso(now - KEEP)))
+            rows = [r for r in all_rows if r["error"] != LOCAL_OFFLINE]  # home internet out: not the program's fault
             day = [r for r in rows if _parse(r["at"]) >= now - timedelta(days=1)]
             week = [r for r in rows if _parse(r["at"]) >= now - timedelta(days=7)]
 
@@ -191,14 +230,15 @@ class UptimeMonitor:
 
             last = rows[-1] if rows else None
             st = state.get(a["id"], {})
-            status = "paused" if not monitored else "unknown" if not last else ("up" if last["ok"] else "down")
-            bars = ["up" if r["ok"] else "down" for r in rows[-BARS:]]
+            status = ("paused" if not monitored else "local_offline" if all_rows and all_rows[-1]["error"] == LOCAL_OFFLINE
+                      else "unknown" if not last else ("up" if last["ok"] else "down"))
+            bars = ["none" if r["error"] == LOCAL_OFFLINE else "up" if r["ok"] else "down" for r in all_rows[-BARS:]]
             ms = [r["ms"] for r in day if r["ok"] and r["ms"] is not None]
             out.append({
                 "id": a["id"], "name": a.get("name", ""), "url": a.get("url", ""), "check_url": a.get("check_url") or a.get("url"),
-                "keyword": a.get("keyword") or None, "monitored": monitored, "status": status,
+                "keyword": a.get("keyword") or None, "monitored": monitored, "status": status, "links": a.get("links") or [],
                 "down_since": st.get("down_since") if status == "down" else None, "reason": st.get("reason") if status == "down" else None,
-                "last_at": last["at"] if last else None, "last_ms": last["ms"] if last else None,
+                "last_at": all_rows[-1]["at"] if all_rows else None, "last_ms": last["ms"] if last else None,
                 "avg_ms_24h": round(sum(ms) / len(ms)) if ms else None,
                 "uptime_24h": pct(day), "uptime_7d": pct(week), "uptime_30d": pct(rows),
                 "checks_24h": len(day), "checks_30d": len(rows), "ssl_days": st.get("ssl_days"),

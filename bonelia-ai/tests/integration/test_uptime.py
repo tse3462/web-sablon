@@ -20,8 +20,12 @@ class Sent:
     def __init__(self):
         self.messages: list[tuple[str, str]] = []
 
-    def uptime_down(self, app_id, name, reason):
+    def uptime_down(self, app_id, name, reason, links=None):
         self.messages.append(("down", f"{name}: {reason}"))
+        self.links = links
+
+    def internet_back(self, minutes):
+        self.messages.append(("internet", str(minutes)))
 
     def uptime_up(self, app_id, name, minutes):
         self.messages.append(("up", f"{name}: {minutes}"))
@@ -60,7 +64,9 @@ def test_alert_after_two_failures_then_recovery_with_duration(tmp_path):
                                  {"id": "off", "name": "Nicht überwacht", "url": "https://off.test/", "monitor": False}])
     answers = {"https://res.test/health": (200, '{"database":"ok"}')}
     sent, now = Sent(), [utcnow()]
-    mon = UptimeMonitor(store, sent, transport=transport(answers), clock=lambda: now[0], ssl_days=lambda host: 90)
+    answers["https://probe.test/"] = (204, "")  # the home internet works
+    mon = UptimeMonitor(store, sent, transport=transport(answers), clock=lambda: now[0], ssl_days=lambda host: 90,
+                        probes=("https://probe.test/",))
 
     mon.run_once()
     answers["https://res.test/health"] = (503, '{"database":"unavailable"}')
@@ -107,3 +113,46 @@ def test_panel_saves_check_address_and_shows_uptime(tmp_path):
     u = c.get("/api/uptime", headers=H).json()["apps"]
     assert u[0]["name"] == "Reservierung" and u[0]["status"] == "up" and u[0]["uptime_24h"] == 100.0
     assert c.get("/api/uptime").status_code == 403
+
+
+def test_home_internet_down_is_not_counted_as_program_outage(tmp_path):
+    """Everything failing at once is checked against public addresses first (user request 06.11.2026)."""
+    store = Store(tmp_path / "db.sqlite")
+    store.set_setting(APPS_KEY, [{"id": "a", "name": "Reservierung", "url": "https://a.test/", "monitor": True},
+                                 {"id": "b", "name": "Shop", "url": "https://b.test/", "monitor": True}])
+    offline = httpx.ConnectError("no route")
+    answers = {"https://a.test/": offline, "https://b.test/": offline, "https://probe.test/": offline}
+    sent, now = Sent(), [utcnow()]
+    mon = UptimeMonitor(store, sent, transport=transport(answers), clock=lambda: now[0], ssl_days=lambda h: 90,
+                        probes=("https://probe.test/",))
+    for _ in range(3):
+        mon.run_once(); now[0] += timedelta(minutes=1)
+    assert sent.messages == []  # no false alarms while the home internet is out
+    s = {x["id"]: x for x in mon.summary()}
+    assert s["a"]["status"] == "local_offline" and s["a"]["bars"][-3:] == ["none", "none", "none"]
+    assert s["a"]["uptime_24h"] is None  # those minutes do not count against the program
+    answers.update({"https://a.test/": (200, "ok"), "https://b.test/": (200, "ok"), "https://probe.test/": (204, "")})
+    mon.run_once()
+    assert sent.messages == [("internet", "3")]
+    assert {x["id"]: x for x in mon.summary()}["a"]["uptime_24h"] == 100.0
+
+    # Only one program failing while the internet works is a real outage.
+    answers["https://b.test/"] = (500, "boom")
+    for _ in range(2):
+        now[0] += timedelta(minutes=1); mon.run_once()
+    assert sent.messages[-1] == ("down", "Shop: http_500")
+
+
+def test_intervention_links_reach_the_panel_and_the_alarm(tmp_path):
+    store = Store(tmp_path / "db.sqlite")
+    c = TestClient(create_dashboard_app(store, TOKEN, 9999), base_url="http://127.0.0.1:9999")
+    links = "Supabase https://supabase.com/dashboard/project/abc\nGitHub: https://github.com/x/y/actions\nkaputt\nftp://nein"
+    saved = c.post("/api/apps", headers=H, json={"name": "Reservierung", "url": "https://res.test/", "links": links}).json()["apps"][0]
+    assert saved["links"] == [{"label": "Supabase", "url": "https://supabase.com/dashboard/project/abc"},
+                              {"label": "GitHub", "url": "https://github.com/x/y/actions"}]
+    sent = Sent()
+    mon = UptimeMonitor(store, sent, transport=transport({"https://res.test/": (503, "x"), "https://probe.test/": (204, "")}),
+                        ssl_days=lambda h: 90, probes=("https://probe.test/",))
+    mon.run_once(); mon.run_once()
+    assert sent.messages == [("down", "Reservierung: http_503")] and sent.links == saved["links"]
+    assert c.get("/api/uptime", headers=H).json()["apps"][0]["links"] == saved["links"]
