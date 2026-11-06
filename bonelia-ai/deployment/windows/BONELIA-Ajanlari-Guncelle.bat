@@ -9,11 +9,14 @@ set "ROOT=%CD%"
 set "CFG=%ROOT%\deployment\server.home.toml"
 if defined BONELIA_CONFIG set "CFG=%BONELIA_CONFIG%"
 
-set "EXE=%ROOT%\.venv\Scripts\bonelia-server.exe"
-if not exist "%EXE%" (
-  for /f "delims=" %%i in ('where bonelia-server.exe 2^>nul') do set "EXE=%%i"
+rem Signed python.exe, not pip's unsigned bonelia-server.exe: Windows Smart App Control blocks the latter.
+set "PY=%ROOT%\.venv\Scripts\python.exe"
+if not exist "%PY%" (
+  set "PYF="
+  for /f "delims=" %%i in ('where python.exe 2^>nul') do if not defined PYF set "PYF=%%i"
+  call set "PY=%%PYF%%"
 )
-if not exist "%EXE%" (
+if not exist "%PY%" (
   echo Kurulum bulunamadi / Installation nicht gefunden: %ROOT%\.venv
   goto :fail
 )
@@ -33,7 +36,7 @@ if not defined AGENT (
 )
 
 echo Gonderiliyor / Wird veroeffentlicht: %AGENT%
-"%EXE%" --config "%CFG%" publish-agent "%AGENT%"
+"%PY%" -m bonelia.server --config "%CFG%" publish-agent "%AGENT%"
 if errorlevel 1 goto :fail
 
 echo.

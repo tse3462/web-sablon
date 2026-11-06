@@ -19,7 +19,7 @@ pip install -e ".[server]"
 
 
 rem Bring the server AND the phone panel back up in the background with the new code.
-rem (Durdur above stopped both, since they are the same bonelia-server.exe; both must
+rem (Durdur above stopped both, since they are the same server program; both must
 rem be restarted or the panel keeps serving the old version and the old phone link.)
 call "%~dp0BONELIA-Server-Baslat.bat" /quiet
 call "%~dp0BONELIA-Panel-Baslat.bat" /quiet

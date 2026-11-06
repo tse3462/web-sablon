@@ -13,17 +13,20 @@ if %ERRORLEVEL%==0 (
   goto :end
 )
 
-set "EXE=%ROOT%\.venv\Scripts\bonelia-server.exe"
-if not exist "%EXE%" (
-  for /f "delims=" %%i in ('where bonelia-server.exe 2^>nul') do set "EXE=%%i"
+rem Signed python.exe, not pip's unsigned bonelia-server.exe: Windows Smart App Control blocks the latter.
+set "PY=%ROOT%\.venv\Scripts\python.exe"
+if not exist "%PY%" (
+  set "PYF="
+  for /f "delims=" %%i in ('where python.exe 2^>nul') do if not defined PYF set "PYF=%%i"
+  call set "PY=%%PYF%%"
 )
-if not exist "%EXE%" (
+if not exist "%PY%" (
   echo Kurulum bulunamadi / Installation nicht gefunden: %ROOT%\.venv
   goto :end
 )
 
 if not exist "C:\BoneliaAI" mkdir "C:\BoneliaAI"
-powershell -NoProfile -Command "Start-Process -FilePath '%EXE%' -ArgumentList '--config','\"%CFG%\"','serve' -WorkingDirectory '%ROOT%' -WindowStyle Hidden -RedirectStandardError 'C:\BoneliaAI\server.log' -RedirectStandardOutput 'C:\BoneliaAI\server-out.log'"
+powershell -NoProfile -Command "Start-Process -FilePath '%PY%' -ArgumentList '-m','bonelia.server','--config','\"%CFG%\"','serve' -WorkingDirectory '%ROOT%' -WindowStyle Hidden -RedirectStandardError 'C:\BoneliaAI\server.log' -RedirectStandardOutput 'C:\BoneliaAI\server-out.log'"
 
 set /a N=0
 :wait

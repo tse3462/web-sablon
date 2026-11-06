@@ -627,7 +627,11 @@ function renderVault(){const host=$("#vault");if(!host)return;
  host.querySelectorAll("[data-vs]").forEach(b=>b.onclick=()=>{VSHOW[b.dataset.vs]=!VSHOW[b.dataset.vs];renderVault()});
  host.querySelectorAll("[data-vc]").forEach(b=>b.onclick=async()=>{const e=VENT.find(x=>x.id===b.dataset.vc),sec=e&&vSecret(e);if(!sec)return;
   const ok=await copyText(sec.password||"");const old=b.textContent;b.textContent=ok?t("rd_copied"):t("vt_copyfail");setTimeout(()=>{b.textContent=old},1500)});
- host.querySelectorAll("[data-vgo]").forEach(a=>a.onclick=()=>{const e=VENT.find(x=>x.id===a.dataset.vgo),sec=e&&vSecret(e);if(sec)copyOld(sec.password||"")});
+ // RustDesk takes the password from the link (rustdesk://ID?password=…) and connects at once; it is put
+ // into the link only at the moment of the tap. The copy stays as a fallback for older RustDesk apps.
+ host.querySelectorAll("[data-vgo]").forEach(a=>a.onclick=()=>{const e=VENT.find(x=>x.id===a.dataset.vgo),sec=e&&vSecret(e);if(!sec)return;
+  copyOld(sec.password||"");a.href="rustdesk://"+encodeURIComponent(e.rustdesk_id)+"?password="+encodeURIComponent(sec.password||"");
+  setTimeout(()=>{a.href="rustdesk://"+encodeURIComponent(e.rustdesk_id)},1500)});
  host.querySelectorAll("[data-vrot]").forEach(b=>b.onclick=async()=>{if(!confirm(t("vt_rot_q")))return;
   try{const j=await api("/api/vault/rotate/"+encodeURIComponent(b.dataset.vrot),{});VENT=j.entries;renderVault()}catch(x){alert(errT(x.message))}});
  host.querySelectorAll("[data-ved]").forEach(b=>b.onclick=()=>{const e=VENT.find(x=>x.id===b.dataset.ved),sec=e&&vSecret(e);if(!e||!sec)return;

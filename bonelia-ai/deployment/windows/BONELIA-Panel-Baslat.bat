@@ -10,16 +10,19 @@ set "PORT=8750"
 curl.exe -s -o nul --max-time 2 "http://127.0.0.1:%PORT%/" 2>nul
 if %ERRORLEVEL%==0 goto :running
 
-set "EXE=%ROOT%\.venv\Scripts\bonelia-server.exe"
-if not exist "%EXE%" (
-  for /f "delims=" %%i in ('where bonelia-server.exe 2^>nul') do set "EXE=%%i"
+rem Signed python.exe, not pip's unsigned bonelia-server.exe: Windows Smart App Control blocks the latter.
+set "PY=%ROOT%\.venv\Scripts\python.exe"
+if not exist "%PY%" (
+  set "PYF="
+  for /f "delims=" %%i in ('where python.exe 2^>nul') do if not defined PYF set "PYF=%%i"
+  call set "PY=%%PYF%%"
 )
-if not exist "%EXE%" (
+if not exist "%PY%" (
   echo Kurulum bulunamadi / Installation nicht gefunden.
   if not defined CI timeout /t 5 >nul
   exit /b 1
 )
-powershell -NoProfile -Command "Start-Process -FilePath '%EXE%' -ArgumentList '--config','\"%CFG%\"','dashboard','--host','auto','--port','%PORT%','--no-browser' -WorkingDirectory '%ROOT%' -WindowStyle Hidden"
+powershell -NoProfile -Command "Start-Process -FilePath '%PY%' -ArgumentList '-m','bonelia.server','--config','\"%CFG%\"','dashboard','--host','auto','--port','%PORT%','--no-browser' -WorkingDirectory '%ROOT%' -WindowStyle Hidden"
 :running
 if "%~1"=="/quiet" exit /b 0
 timeout /t 3 /nobreak >nul
