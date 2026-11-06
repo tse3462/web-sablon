@@ -163,6 +163,8 @@ _T = {
     "uptime_down": {"tr": "🔴 {name} çalışmıyor", "de": "🔴 {name} ist nicht erreichbar"},
     "uptime_up": {"tr": "🟢 {name} yeniden çalışıyor", "de": "🟢 {name} ist wieder erreichbar"},
     "repair_result": {"tr": "🤖 {name}: yapay zekâ incelemesi", "de": "🤖 {name}: KI-Prüfung"},
+    "disk_low": {"tr": "💽 {customer} · {device}: disk dolmak üzere", "de": "💽 {customer} · {device}: Festplatte fast voll"},
+    "disk_drop": {"tr": "💽 {customer} · {device}: disk hızla doluyor", "de": "💽 {customer} · {device}: Festplatte füllt sich schnell"},
     "internet_back": {"tr": "📶 Ev interneti geri geldi", "de": "📶 Internet zu Hause wieder da"},
     "ssl_expiring": {"tr": "🔐 {name}: SSL sertifikası {days} gün içinde bitiyor", "de": "🔐 {name}: SSL-Zertifikat läuft in {days} Tagen ab"},
 }
@@ -286,6 +288,20 @@ class Notifier:
         if report.get("run_url"):
             body += f"\n{T['details']}: {report['run_url']}"
         return self._send(f"repair_result|{app_id}|{request_id}", timedelta(days=30), self._title("repair_result", name=name), body)
+
+    def disk_low(self, device_id: str, customer: str, device: str, free: int, total: int) -> bool:
+        gb = lambda b: f"{b / 1024 ** 3:.1f}".replace(".", "," if self.lang == "de" else ".")  # noqa: E731
+        pct = round(100 * free / total) if total else 0
+        body = (f"Boş: {gb(free)} GB / {gb(total)} GB (%{pct}). Panel → Bilgisayarlar → Disk: neyin yer kapladığını ve neyin silinebileceğini gösterir."
+                if self.lang == "tr" else
+                f"Frei: {gb(free)} GB von {gb(total)} GB ({pct} %). Panel → Computer → Festplatte zeigt, was Platz belegt und was weg kann.")
+        return self._send(f"disk_low|{device_id}", timedelta(hours=23), self._title("disk_low", customer=customer, device=device), body)
+
+    def disk_drop(self, device_id: str, customer: str, device: str, lost: int, days: int) -> bool:
+        gb = f"{lost / 1024 ** 3:.0f}"
+        body = (f"Son {days} günde {gb} GB azaldı. Panel → Bilgisayarlar → Disk ile nedenine bakın."
+                if self.lang == "tr" else f"In {days} Tagen {gb} GB weniger frei. Panel → Computer → Festplatte zeigt den Grund.")
+        return self._send(f"disk_drop|{device_id}", timedelta(days=6), self._title("disk_drop", customer=customer, device=device), body)
 
     def internet_back(self, minutes: int) -> bool:
         body = (f"Evdeki internet {minutes} dk kesikti; bu sürede programlar kontrol edilemedi." if self.lang == "tr"

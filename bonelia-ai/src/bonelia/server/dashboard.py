@@ -32,6 +32,7 @@ from .notify import TELEGRAM_KEY, TelegramAPI, build_notifier, extract_token
 from .repair import TOKEN_KEY as REPAIR_TOKEN_KEY, TOKEN_RE, valid_repo
 from .uptime import UptimeMonitor, check_settings, normalize_keyword
 from .vault_store import VaultStore
+from .disk_store import SAFE_KEYS, DiskStore
 from ..security.vault import valid_box
 from .store import Store
 
@@ -140,6 +141,11 @@ class VaultReset(BaseModel):
     confirm: str = Field(max_length=10)
 
 
+class DiskCleanBody(BaseModel):
+    safe: list[str] = Field(default_factory=list, max_length=10)
+    items: list[str] = Field(default_factory=list, max_length=400)
+
+
 class TokenBody(BaseModel):
     token: str = Field(max_length=4000)  # may be the whole @BotFather message; the token is extracted
 
@@ -227,11 +233,66 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         vaults.reset()
         return {"meta": None, "entries": []}
 
+    # ---------------------------------------------------------------- disk space (06.11.2026)
+    disks = DiskStore(store)
+
+    def _merge_policy(device_id: str, **changes: Any) -> dict[str, Any]:
+        pol = store.device_policy(device_id)
+        pol.update(changes)
+        store.set_device_policy(device_id, pol, actor="admin:dashboard")
+        return pol
+
+    def _disk_view(device_id: str) -> dict[str, Any]:
+        dev = store.device(device_id)
+        if dev is None:
+            raise HTTPException(404, "unknown_device")
+        rep, pol = disks.latest(device_id), store.device_policy(device_id)
+        tenant = store.tenant(dev["tenant_id"]) or {}
+        pending = pol.get("disk_cleanup")
+        return {"device": {"id": device_id, "label": dev["label"], "customer": tenant.get("name", "")},
+                "report": rep, "history": disks.history(device_id),
+                "pending": {"safe": pending.get("safe", []), "files": len(pending.get("files", [])), "bytes": pending.get("bytes", 0)} if pending else None,
+                "scan_pending": bool(pol.get("disk_scan")) and pol.get("disk_scan") != (rep or {}).get("scan_request"),
+                "consent": int(tenant.get("max_auto_level") or 0) >= 1}
+
+    @app.get("/api/disk/{device_id}")
+    def disk_get(device_id: str) -> dict[str, Any]:
+        return _disk_view(device_id)
+
+    @app.post("/api/disk/{device_id}/scan")
+    def disk_scan(device_id: str) -> dict[str, Any]:
+        if store.device(device_id) is None:
+            raise HTTPException(404, "unknown_device")
+        _merge_policy(device_id, disk_scan=secrets.token_hex(6))
+        return _disk_view(device_id)
+
+    @app.post("/api/disk/{device_id}/clean")
+    def disk_clean(device_id: str, body: DiskCleanBody) -> dict[str, Any]:
+        """Only what the owner picked from the PC's own report; the agent re-checks every file before deleting."""
+        view = _disk_view(device_id)
+        rep = view["report"]
+        if rep is None:
+            raise HTTPException(409, "no_report")
+        if not view["consent"]:
+            raise HTTPException(409, "consent_needed")
+        offered = {c["key"] for c in rep["categories"] if c["kind"] == "safe"} & SAFE_KEYS
+        by_id = {s["id"]: s for s in rep["suggestions"]}
+        if not (body.safe or body.items) or not set(body.safe) <= offered or not set(body.items) <= set(by_id):
+            raise HTTPException(422, "invalid_selection")
+        files = [{k: by_id[i][k] for k in ("path", "bytes", "mtime")} for i in dict.fromkeys(body.items)]
+        total = sum(f["bytes"] for f in files) + sum(c["bytes"] for c in rep["categories"] if c["key"] in body.safe)
+        _merge_policy(device_id, disk_cleanup={"id": secrets.token_hex(8), "safe": list(dict.fromkeys(body.safe)), "files": files, "bytes": total})
+        dev = store.device(device_id)
+        store.audit("admin:dashboard", "disk.cleanup_requested", {"safe": body.safe, "files": len(files), "bytes": total},
+                    tenant_id=dev["tenant_id"], device_id=device_id)
+        return _disk_view(device_id)
+
     @app.get("/api/overview")
     def overview() -> dict[str, Any]:
         now = utcnow()
         tenants = {t["id"]: {**t, "repair_level": int(t["max_auto_level"])} for t in store.tenants()}
         devices = []
+        disk_sums = disks.summaries()
         for d in store.devices():
             scopes = json.loads(d["scopes"]) if isinstance(d["scopes"], str) else d["scopes"]
             seen = datetime.fromisoformat(d["last_seen_at"]) if d.get("last_seen_at") else None
@@ -241,7 +302,8 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
                 "label": d["label"], "kind": kind, "status": d["status"], "last_seen_at": d.get("last_seen_at"),
                 "online": bool(kind == "agent" and d["status"] == "active" and seen and now - seen < timedelta(minutes=ONLINE_MINUTES)),
                 "last_status": json.loads(d["last_status"]) if d.get("last_status") else None, "scopes": scopes,
-                "backup": (json.loads(d["policy"]) if d.get("policy") else {}).get("backup")})
+                "backup": (json.loads(d["policy"]) if d.get("policy") else {}).get("backup"),
+                "disk": disk_sums.get(d["id"])})
         important = {}
         for r in store.findings(since(24)):
             ev = DiagnosticEvent.model_validate_json(r["payload"])

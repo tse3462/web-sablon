@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import secrets
+import sys
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -40,6 +41,18 @@ DENIED_RETRY_S = 6 * 3600
 # nothing unless the customer has allowed repairs. Default: delete temp files older than 7 days.
 MAINTENANCE_INTERVAL_S = 24 * 3600
 MAINTENANCE_TOOLS: tuple[str, ...] = ("windows.clean_temp",)
+
+
+def _windows_disk_scan() -> dict | None:
+    if sys.platform != "win32":
+        return None
+    from ..collectors import disk
+    return disk.scan(disk.Layout.windows())
+
+
+def _windows_disk_clean(request: dict) -> dict:
+    from ..collectors import disk
+    return disk.clean(disk.Layout.windows(), request)
 
 
 class AgentState:
@@ -72,13 +85,17 @@ class Agent:
                  scan: Callable[..., Any] = run_scan, own_exe: Path | None = None, self_update: bool = False,
                  maintenance_interval_s: int = MAINTENANCE_INTERVAL_S, maintenance_tools: tuple[str, ...] = MAINTENANCE_TOOLS,
                  remote: Callable[[], dict | None] | None = None,
-                 set_remote_password: Callable[[str], bool | str] | None = None):
+                 set_remote_password: Callable[[str], bool | str] | None = None,
+                 disk_scan: Callable[[], dict | None] | None = None, disk_clean: Callable[[dict], dict] | None = None):
         self.client, self.state, self.lang, self.executors, self.scan = client, state, lang, executors, scan
         self.own_exe, self.self_update = own_exe, self_update
         self.maintenance_interval_s, self.maintenance_tools = maintenance_interval_s, maintenance_tools
         self.remote = remote if remote is not None else rustdesk_info  # RustDesk ID for "connect" in the panel
         self._remote_cache: tuple[float, dict | None] | None = None
         self.set_remote_password = set_remote_password if set_remote_password is not None else set_rustdesk_password
+        # Disk report once a day (and on "scan now"); cleanup only as picked by the owner in the panel.
+        self.disk_scan = disk_scan if disk_scan is not None else _windows_disk_scan
+        self.disk_clean = disk_clean if disk_clean is not None else _windows_disk_clean
 
     def remote_info(self) -> dict | None:
         """RustDesk state, read at most every 15 minutes (it starts a program)."""
@@ -121,6 +138,34 @@ class Agent:
         sealed = {"box": seal(pub, {"password": password, "rustdesk_id": remote["rustdesk_id"]}),
                   "for": fingerprint(pub), "rotate": v.get("rotate")}
         return sealed, marker
+
+    def disk_cycle(self) -> None:
+        pol = self.state.data.get("policy") or {}
+        req = pol.get("disk_cleanup")
+        if isinstance(req, dict) and req.get("id") and req["id"] != self.state.data.get("disk_cleanup_done"):
+            try:
+                result = self.disk_clean(req)
+            except Exception as exc:  # report the failure; never retry a deletion blindly
+                result = {"id": req["id"], "error": type(exc).__name__, "files": [], "safe": {}, "freed": 0}
+            self.state.data["disk_cleanup_done"] = req["id"]
+            self.state.data["disk_cleanup_result"] = result  # kept until the server has it
+            self.state.save()
+        want = pol.get("disk_scan")
+        due = time.time() - float(self.state.data.get("disk_at", 0)) >= 24 * 3600
+        pending = self.state.data.get("disk_cleanup_result")
+        if not (due or pending or (want and want != self.state.data.get("disk_scan_seen"))):
+            return
+        rep = self.disk_scan()
+        if not rep:
+            return
+        if pending:
+            rep["cleanup_result"] = pending
+        if want:
+            rep["scan_request"] = want
+        self.client.disk_report(rep)
+        self.state.data.update(disk_at=time.time(), disk_scan_seen=want)
+        self.state.data.pop("disk_cleanup_result", None)
+        self.state.save()
 
     def cycle(self) -> dict[str, Any]:
         summary: dict[str, Any] = {"new_findings": 0, "sent": False, "repairs": [], "offline": False}
@@ -235,6 +280,7 @@ class Agent:
                 if isinstance(resp, dict) and isinstance(resp.get("policy"), dict) and resp["policy"] != self.state.data.get("policy"):
                     self.state.data["policy"] = resp["policy"]  # used from the next cycle on
                     self.state.save()
+                self.disk_cycle()
             except (ServerUnavailable, ServerError):
                 pass
         return summary

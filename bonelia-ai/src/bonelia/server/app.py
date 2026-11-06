@@ -48,6 +48,7 @@ from .config import ServerConfig
 from .notify import Notifier, build_notifier
 from .uptime import UptimeMonitor
 from .vault_store import VaultStore
+from .disk_store import DiskStore
 from ..collectors.remote import VAULT_ERRORS
 from .store import Store
 
@@ -337,6 +338,26 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         return Response(content=f.read_bytes(), media_type="application/octet-stream")
 
     vaults = VaultStore(store)
+    disks = DiskStore(store)
+
+    class DiskReportBody(BaseModel):
+        report: dict[str, Any]
+
+    @app.post("/v1/disk-report")
+    async def disk_report(auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        """Daily disk report of an agent; alerts go to the owner's phone, a finished cleanup is cleared."""
+        dev, tenant = auth["device"], auth["tenant"]
+        body = parse(DiskReportBody, auth["body"])
+        for alert in disks.accept(dev["id"], body.report):
+            await run_in_threadpool(safe_notify, getattr(notifier, alert[0]), dev["id"], tenant["name"], dev["label"], *alert[1:])
+        res = body.report.get("cleanup_result")
+        pol = store.device_policy(dev["id"])
+        if isinstance(res, dict) and isinstance(pol.get("disk_cleanup"), dict) and res.get("id") == pol["disk_cleanup"].get("id"):
+            pol.pop("disk_cleanup")
+            store.set_device_policy(dev["id"], pol, actor="device")
+            store.audit("device", "disk.cleanup_done", {"freed": res.get("freed"), "id": res.get("id")},
+                        tenant_id=tenant["id"], device_id=dev["id"])
+        return {"ok": True}
 
     class Heartbeat(BaseModel):
         status: dict[str, Any] = Field(default_factory=dict)

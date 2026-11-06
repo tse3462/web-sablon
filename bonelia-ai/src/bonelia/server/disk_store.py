@@ -1,0 +1,114 @@
+"""Disk reports from the agents (user request 06.11.2026): latest report per PC, daily free space for the
+trend, and the alerts "almost full" (under 15 % free) and "big drop" (over 10 GB less within a week)."""
+
+from __future__ import annotations
+
+import json
+import re
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from ..contracts import utcnow
+
+GB = 1024 ** 3
+LOW_SHARE = 0.15
+DROP_BYTES = 10 * GB
+DROP_DAYS = 7
+REASONS = {"old_backup", "duplicate", "old_download"}
+SAFE_KEYS = {"temp", "recycle", "pip_cache", "npm_cache", "browser_cache"}
+SCHEMA = """
+create table if not exists disk_reports (device_id text primary key, at text not null, report text not null);
+create table if not exists disk_history (device_id text not null, day text not null, free integer not null,
+  total integer not null, primary key (device_id, day));
+"""
+
+
+def _int(v: Any) -> int | None:
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+
+
+def _str(v: Any, n: int) -> str | None:
+    return v[:n] if isinstance(v, str) and v else None
+
+
+def clean_report(raw: Any) -> dict[str, Any]:
+    """Keep only the known fields, in bounded size: a report is data from a PC, not trusted input."""
+    raw = raw if isinstance(raw, dict) else {}
+    out: dict[str, Any] = {"at": _int(raw.get("at")) or 0, "partial": raw.get("partial") is True,
+                           "drives": [], "categories": [], "largest": [], "suggestions": []}
+    for d in (raw.get("drives") or [])[:5]:
+        if isinstance(d, dict) and _str(d.get("name"), 40) and _int(d.get("total")) is not None and _int(d.get("free")) is not None:
+            out["drives"].append({"name": d["name"][:40], "total": d["total"], "free": d["free"]})
+    for c in (raw.get("categories") or [])[:20]:
+        if isinstance(c, dict) and _str(c.get("key"), 40) and c.get("kind") in ("safe", "info") and _int(c.get("bytes")) is not None:
+            out["categories"].append({"key": c["key"][:40], "kind": c["kind"], "bytes": c["bytes"]})
+    for f in (raw.get("largest") or [])[:20]:
+        if isinstance(f, dict) and _str(f.get("path"), 500) and _int(f.get("bytes")) is not None:
+            out["largest"].append({"path": f["path"][:500], "bytes": f["bytes"]})
+    for s in (raw.get("suggestions") or [])[:400]:
+        if not isinstance(s, dict) or not (isinstance(s.get("id"), str) and re.fullmatch(r"[0-9a-f]{16}", s["id"])):
+            continue
+        if _str(s.get("path"), 500) and _int(s.get("bytes")) and _int(s.get("mtime")) is not None and s.get("reason") in REASONS:
+            out["suggestions"].append({"id": s["id"], "path": s["path"][:500], "bytes": s["bytes"], "mtime": s["mtime"],
+                                       "reason": s["reason"], "group": (s.get("group") if isinstance(s.get("group"), str) else "")[:80]})
+    res = raw.get("cleanup_result")
+    if isinstance(res, dict) and _str(res.get("id"), 40):
+        out["cleanup_result"] = {"id": res["id"][:40], "freed": _int(res.get("freed")) or 0,
+                                 "deleted": sum(1 for f in (res.get("files") or []) if isinstance(f, dict) and f.get("status") == "deleted"),
+                                 "skipped": sum(1 for f in (res.get("files") or []) if isinstance(f, dict) and f.get("status") != "deleted"),
+                                 "error": _str(res.get("error"), 80)}
+    if _str(raw.get("scan_request"), 40):
+        out["scan_request"] = raw["scan_request"][:40]
+    return out
+
+
+class DiskStore:
+    def __init__(self, store):
+        self.store = store
+        with store._lock:
+            store._db.executescript(SCHEMA)
+
+    def accept(self, device_id: str, raw: Any, now: datetime | None = None) -> list[tuple]:
+        """Store the report; return the alerts it calls for: ("disk_low", free, total), ("disk_drop", lost, days)."""
+        now = now or utcnow()
+        rep = clean_report(raw)
+        self.store._x("insert into disk_reports (device_id, at, report) values (?,?,?) on conflict(device_id) do update set "
+                      "at=excluded.at, report=excluded.report", (device_id, now.isoformat(), json.dumps(rep)))
+        if not rep["drives"]:
+            return []
+        drive = rep["drives"][0]
+        day = now.date().isoformat()
+        self.store._x("insert into disk_history (device_id, day, free, total) values (?,?,?,?) on conflict(device_id, day) do update set "
+                      "free=excluded.free, total=excluded.total", (device_id, day, drive["free"], drive["total"]))
+        self.store._x("delete from disk_history where device_id=? and day < ?", (device_id, (now - timedelta(days=60)).date().isoformat()))
+        alerts: list[tuple] = []
+        since = (now - timedelta(days=DROP_DAYS)).date().isoformat()
+        rows = self.store._q("select day, free from disk_history where device_id=? and day>=? and day<? order by day limit 1",
+                             (device_id, since, day))
+        if rows and rows[0]["free"] - drive["free"] > DROP_BYTES:
+            days = (now.date() - datetime.fromisoformat(rows[0]["day"]).date()).days
+            alerts.append(("disk_drop", rows[0]["free"] - drive["free"], days))
+        if drive["total"] and drive["free"] / drive["total"] < LOW_SHARE:
+            alerts.append(("disk_low", drive["free"], drive["total"]))
+        return alerts
+
+    def latest(self, device_id: str) -> dict[str, Any] | None:
+        rows = self.store._q("select report from disk_reports where device_id=?", (device_id,))
+        return json.loads(rows[0]["report"]) if rows else None
+
+    def summaries(self) -> dict[str, dict[str, int]]:
+        out = {}
+        for r in self.store._q("select device_id, report from disk_reports"):
+            rep = json.loads(r["report"])
+            if rep.get("drives"):
+                out[r["device_id"]] = {"free": rep["drives"][0]["free"], "total": rep["drives"][0]["total"], "at": rep.get("at", 0)}
+        return out
+
+    def history(self, device_id: str, days: int = 30) -> list[dict[str, Any]]:
+        since = (utcnow() - timedelta(days=days)).date().isoformat()
+        return [dict(r) for r in self.store._q("select day, free, total from disk_history where device_id=? and day>=? order by day",
+                                               (device_id, since))]
+
+
+def utc(ts: int) -> datetime:
+    return datetime.fromtimestamp(ts, tz=timezone.utc)

@@ -169,6 +169,9 @@ class ServerClient:
     def heartbeat(self, status: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/v1/heartbeat", {"status": status})
 
+    def disk_report(self, report: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/v1/disk-report", {"report": report})
+
     def adapters(self) -> list[dict[str, Any]]:
         return self._request("GET", "/v1/adapters").get("adapters", [])
 
