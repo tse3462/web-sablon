@@ -55,6 +55,14 @@ def _windows_disk_clean(request: dict, progress=None) -> dict:
     return disk.clean(disk.Layout.windows(), request, progress=progress)
 
 
+def pause_after(summary: dict | None, interval_s: int) -> int:
+    """Next cycle: the normal interval, or within a minute while the server cannot be reached (e.g. right after a
+    restart, when the agent starts before the server) or the cycle failed."""
+    if not summary or summary.get("offline"):
+        return 60
+    return max(60, interval_s)
+
+
 class AgentState:
     def __init__(self, path: Path):
         self.path = path
@@ -326,9 +334,10 @@ class Agent:
 
     def run_forever(self, interval_s: int = 300) -> None:
         while True:
+            s = None
             try:
                 s = self.cycle()
                 log.info("cycle: %s", s)
             except Exception as exc:  # the agent must never die on one bad cycle
                 log.exception("cycle failed: %s", exc)
-            time.sleep(max(60, interval_s))
+            time.sleep(pause_after(s, interval_s))

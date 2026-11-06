@@ -362,3 +362,11 @@ def test_rustdesk_id_reaches_the_panel_and_nothing_else_slips_through(tmp_path, 
     s.client.heartbeat({"cycles": 2, "remote": {"installed": True, "rustdesk_id": "123; rm -rf /", "service": "<b>x</b>"}})
     status = json.loads(env["store"].device(s.creds.device_id)["last_status"])
     assert status["remote"] == {"installed": True, "rustdesk_id": None, "service": "unknown"}
+
+
+def test_agent_retries_within_a_minute_while_the_server_is_unreachable():
+    """Seen 06.11.2026 after a restart: the agent came up before the server and stayed silent for 5-minute rounds."""
+    from bonelia.agent.agent import pause_after
+    assert pause_after({"offline": True}, 300) == 60
+    assert pause_after({"offline": False}, 300) == 300
+    assert pause_after(None, 300) == 60  # a failed cycle is retried soon, too
