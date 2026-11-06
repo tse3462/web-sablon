@@ -247,7 +247,8 @@ def test_scan_includes_health_checks():
 
 
 def test_program_probe_and_tools_work_on_real_windows():
-    """Rescue (06.11.2026): window states, session numbers, start / end a real program, and the agent's snapshot."""
+    """Rescue (06.11.2026): window states, session numbers, a real program's owner check, ending it, and the agent's
+    snapshot. Starting again from an elevated process needs a desktop (explorer); without one it must refuse."""
     import os
     import time
 
@@ -255,16 +256,26 @@ def test_program_probe_and_tools_work_on_real_windows():
 
     assert isinstance(programs.windows_hung_states(), dict)
     assert programs.own_session_id() >= 0
+    assert programs.system32("icacls.exe").lower().endswith("\\system32\\icacls.exe")
     ops = programs.WindowsOps()
     snap = ops.snapshot()
     assert snap is not None and 0 < snap["mem_pct"] <= 100 and snap["total_mb"] > 0
-    me = ops.info(os.getpid())
-    assert me is not None and me["name"].lower().startswith("python")
-    pid = ops.launch([sys.executable, "-c", "import time; time.sleep(60)"], None)
-    assert pid and ops.alive(pid)
-    ops.kill(pid)
-    for _ in range(20):
-        if not ops.alive(pid):
-            break
-        time.sleep(0.5)
-    assert not ops.alive(pid)
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        info = ops.info(child.pid)
+        assert info is not None and os.path.isabs(info["cmd"][0]) and info["cmd"][0].lower().endswith(".exe")
+        if not ops.service and ops.target_session():
+            assert info["own_session"] is True  # same user, same session
+        ops.kill(child.pid)
+        for _ in range(20):
+            if not ops.alive(child.pid):
+                break
+            time.sleep(0.5)
+        assert not ops.alive(child.pid)
+    finally:
+        child.kill()
+    assert ops.launch(["python.exe", "-c", "pass"], None) is None  # only a full program path is started
+    pid = ops.launch([sys.executable, "-c", "import time; time.sleep(30)"], os.getcwd())
+    if pid:
+        assert ops.alive(pid)
+        ops.kill(pid)

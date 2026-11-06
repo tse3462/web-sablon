@@ -194,6 +194,13 @@ def _agent_command(args) -> int:
     except OSError:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, handlers=handlers)
+    if sys.platform == "win32":  # agents installed by an older version: lock their folder (SYSTEM only)
+        from ..collectors.programs import own_session_id
+        if own_session_id() == 0:
+            try:
+                inst.secure_agent_dir()
+            except OSError:
+                pass
     try:
         creds = inst.load_credentials()
     except (OSError, ValueError) as exc:
@@ -269,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     ai_.add_argument("--no-start", action="store_true")
     sw = sub.add_parser("session-watch", help="(started by the agent) report frozen windows of the signed-in user")
     sw.add_argument("--dir", required=True)
+    sw.add_argument("--alive", required=True)
     sub.add_parser("agent-uninstall", help="remove the agent completely from this PC")
     sub.add_parser("agent-status")
     rc = sub.add_parser("recovery", help="open the guided Windows recovery screen on THIS PC (works offline)")
@@ -289,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "session-watch":  # runs in the user's session; needs no key and changes nothing
         from ..collectors.programs import session_watch
-        return session_watch(Path(args.dir))
+        return session_watch(Path(args.dir), Path(args.alive))
 
     if args.cmd == "enroll":
         home = PortableHome(Path(args.home) if args.home else None).ensure()

@@ -32,7 +32,7 @@ def save_credentials(creds: DeviceCredentials) -> Path:
     p = cred_path()
     p.write_bytes(dpapi.protect(creds.to_json()))
     # Only SYSTEM and Administrators may read the agent's key
-    subprocess.run(["icacls", str(p), "/inheritance:r", "/grant:r", "*S-1-5-18:F", "*S-1-5-32-544:F"],
+    subprocess.run([_tool("icacls"), str(p), "/inheritance:r", "/grant:r", "*S-1-5-18:F", "*S-1-5-32-544:F"],
                    capture_output=True, check=False)
     return p
 
@@ -41,7 +41,31 @@ def load_credentials() -> DeviceCredentials:
     return DeviceCredentials.from_json(dpapi.unprotect(cred_path().read_bytes()))
 
 
+_SYSTEM_TOOLS = {"schtasks": "schtasks.exe", "icacls": "icacls.exe", "taskkill": "taskkill.exe",
+                 "powershell": r"WindowsPowerShell\v1.0\powershell.exe", "powershell.exe": r"WindowsPowerShell\v1.0\powershell.exe"}
+
+
+def _tool(name: str) -> str:
+    """Windows' own tools by full path, never a same-named file next to the agent or on the PATH."""
+    from ..collectors.programs import system32
+    rel = _SYSTEM_TOOLS.get(name.lower())
+    return system32(rel) if rel else name
+
+
+def secure_agent_dir(d: Path | None = None) -> None:
+    """Only SYSTEM and administrators may change anything in the agent's folder; users may only read
+    (review 06.11.2026: a file planted there would otherwise run with SYSTEM rights)."""
+    d = d or agent_dir()
+    _run(["icacls", str(d), "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F",
+          "*S-1-5-32-545:(OI)(CI)RX"])
+    _run(["icacls", str(d / "*"), "/setowner", "*S-1-5-18", "/T", "/C", "/Q"])  # nothing stays owned by a user
+    session = d / "session"
+    if session.is_dir():  # made by an older version: back to the locked rights of the folder above
+        _run(["icacls", str(session), "/reset", "/T", "/C", "/Q"])
+
+
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
+    cmd = [_tool(cmd[0]), *cmd[1:]] if cmd else cmd
     try:
         # errors="replace": schtasks/icacls output on a non-UTF-8 code page (e.g. German cp1252) must
         # never raise a UnicodeDecodeError while being read.
@@ -82,6 +106,7 @@ def install_task(start_now: bool = True) -> tuple[bool, str]:
     """Copy the program to %ProgramData%\\BONELIA-AI and register a SYSTEM task that starts at boot."""
     d = agent_dir()
     d.mkdir(parents=True, exist_ok=True)
+    secure_agent_dir(d)
     if getattr(sys, "frozen", False):
         exe = d / "BoneliaAI-Agent.exe"
         try:

@@ -95,3 +95,25 @@ def test_agent_install_run_decodes_non_utf8_output(monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
     inst._run(["schtasks", "/Query"])
     assert captured.get("encoding") == "utf-8" and captured.get("errors") == "replace"
+
+
+def test_agent_folder_is_locked_and_windows_tools_are_called_by_full_path(monkeypatch, tmp_path):
+    """Review 06.11.2026: users must not be able to drop a DLL / icacls.exe / update.ps1 next to the SYSTEM agent,
+    and Windows' own tools are never looked up in the agent's folder or the PATH."""
+    import subprocess
+
+    from bonelia.agent import install as inst
+    from bonelia.collectors import programs
+
+    monkeypatch.setattr(programs, "IS_WINDOWS", True)
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    assert inst._tool("schtasks").endswith("schtasks.exe") and "System32" in inst._tool("schtasks")
+    assert inst._tool("rustdesk.exe") == "rustdesk.exe"  # not a Windows tool: unchanged
+    assert inst._tool("powershell").endswith("powershell.exe") and "WindowsPowerShell" in inst._tool("powershell")
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0, "", ""))
+    inst.secure_agent_dir(tmp_path)
+    lock = calls[0]
+    assert lock[0].endswith("icacls.exe") and lock[1] == str(tmp_path) and "/inheritance:r" in lock
+    assert "*S-1-5-18:(OI)(CI)F" in lock and "*S-1-5-32-544:(OI)(CI)F" in lock and "*S-1-5-32-545:(OI)(CI)RX" in lock
+    assert any("/setowner" in c for c in calls)

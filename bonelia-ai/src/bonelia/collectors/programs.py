@@ -5,10 +5,13 @@ Two ways the agent runs:
 * as the signed-in user (the owner's own PC): everything is read and done directly;
 * as SYSTEM in session 0 (customer PCs): Windows hides the user's windows from session 0, so a small
   watcher (``session-watch``) is started in the signed-in user's session. It only writes which windows do
-  not answer into %ProgramData%\\BONELIA-AI\\session; the agent reads that as untrusted data and checks every
-  process itself before acting (right program, signed-in user's session, never a Windows program).
-  Programs are ended by the agent; closing politely and starting again happen in the user's session
-  (CreateProcessAsUser), so a restarted program opens on the user's screen as the user, not as SYSTEM.
+  not answer into %ProgramData%\\BONELIA-AI\\session\\<session>\\ (a folder made by the agent that only that
+  user may write into); the agent reads it as untrusted data and checks every process itself (that program,
+  owned by that user, never a Windows program). Ending, closing and starting all run IN the user's session
+  WITH the user's own rights (CreateProcessAsUser + taskkill), so Windows itself refuses anything the user
+  could not do -- a forged report can never make SYSTEM end or start something on its behalf.
+* On the owner's PC the agent is elevated; a program is started again with the desktop's normal rights
+  (explorer's token) or not at all -- never elevated.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ STATES_FRESH_S = 45  # the watcher writes every 10 s
 HELPER_RETRY_S = 60
 ALIVE_STALE_S = 300  # the watcher stops when the agent has not been seen for five minutes
 MAX_WINDOWS = 500
+MAX_REPORT_BYTES = 256 * 1024
 
 
 # ---------- data written by the watcher (user-writable, so parsed defensively)
@@ -36,7 +40,7 @@ def parse_states(raw: Any) -> dict[int, bool]:
     if not isinstance(states, dict):
         return out
     for k, v in list(states.items())[:MAX_WINDOWS]:
-        if isinstance(k, str) and k.isdigit() and 0 < int(k) < 2**32 and isinstance(v, bool):
+        if isinstance(k, str) and k.isascii() and k.isdecimal() and len(k) <= 10 and 0 < int(k) < 2**32 and isinstance(v, bool):
             out[int(k)] = v
     return out
 
@@ -45,25 +49,33 @@ def read_states(path: Path, now: float | None = None) -> dict[int, bool] | None:
     """The watcher's last report, or None when it is missing or older than STATES_FRESH_S."""
     now = time.time() if now is None else now
     try:
-        if now - path.stat().st_mtime > STATES_FRESH_S:
+        st = os.lstat(path)
+        if path.is_symlink() or getattr(st, "st_file_attributes", 0) & 0x400 or not path.is_file():  # no links
             return None
-        return parse_states(json.loads(path.read_text(encoding="utf-8")))
+        if now - st.st_mtime > STATES_FRESH_S or st.st_size > MAX_REPORT_BYTES:
+            return None
+        with open(path, "rb") as f:
+            data = f.read(MAX_REPORT_BYTES + 1)
+        return parse_states(json.loads(data.decode("utf-8"))) if len(data) <= MAX_REPORT_BYTES else None
     except (OSError, ValueError):
         return None
 
 
-def session_watch(folder: Path, window_states: Callable[[], dict[int, bool]] | None = None,
-                  session_id: int | None = None, interval_s: float = 10, rounds: int | None = None,
-                  clock: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep) -> int:
-    """The watcher in the user's session: write which windows do not answer; stop when the agent is gone."""
+def session_watch(folder: Path, alive: Path, window_states: Callable[[], dict[int, bool]] | None = None,
+                  interval_s: float = 10, rounds: int | None = None,
+                  clock: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
+                  single: Callable[[], bool] | None = None) -> int:
+    """The watcher in the user's session: write which windows do not answer into <folder>/windows.json; stop when
+    the agent is gone (``alive`` older than five minutes) or another watcher already runs in this session."""
+    if not (single or _single_watcher)():
+        return 0
     window_states = window_states or windows_hung_states
-    sid = own_session_id() if session_id is None else session_id
-    out = folder / f"windows-{sid}.json"
+    out = folder / "windows.json"
     n = 0
     while rounds is None or n < rounds:
         n += 1
         try:
-            if clock() - (folder / "agent.alive").stat().st_mtime > ALIVE_STALE_S:
+            if clock() - alive.stat().st_mtime > ALIVE_STALE_S:
                 return 0
         except OSError:
             return 0
@@ -79,16 +91,40 @@ def session_watch(folder: Path, window_states: Callable[[], dict[int, bool]] | N
     return 0
 
 
+def system32(name: str) -> str:
+    """Windows' own tools by full path: never a same-named file from the program's folder or the PATH."""
+    if not IS_WINDOWS:
+        return name
+    return os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", name)
+
+
+_MUTEX = None
+
+
+def _single_watcher() -> bool:
+    """One watcher per session (a per-session named mutex); off Windows always True."""
+    global _MUTEX
+    if not IS_WINDOWS:
+        return True
+    _MUTEX = _k32.CreateMutexW(None, False, "Local\\BONELIA-AI-session-watch")
+    return bool(_MUTEX) and ctypes.get_last_error() != 183  # ERROR_ALREADY_EXISTS
+
+
 # ---------- Windows calls (ctypes); every function is harmless off Windows
 if IS_WINDOWS:  # pragma: no cover - exercised by tests/windows on a real Windows host
     import ctypes
     from ctypes import wintypes
 
-    _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    _u32 = ctypes.WinDLL("user32", use_last_error=True)
-    _adv = ctypes.WinDLL("advapi32", use_last_error=True)
-    _wts = ctypes.WinDLL("wtsapi32", use_last_error=True)
-    _env = ctypes.WinDLL("userenv", use_last_error=True)
+    def _dll(name: str):  # by full path: a planted DLL next to the program is never loaded
+        return ctypes.WinDLL(system32(name + ".dll"), use_last_error=True)
+
+    _k32 = _dll("kernel32")
+    _u32 = _dll("user32")
+    _adv = _dll("advapi32")
+    _wts = _dll("wtsapi32")
+    _env = _dll("userenv")
+    _k32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    _k32.CreateMutexW.restype = wintypes.HANDLE
 
     _WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     _u32.EnumWindows.argtypes = [_WNDENUMPROC, wintypes.LPARAM]
@@ -125,6 +161,8 @@ if IS_WINDOWS:  # pragma: no cover - exercised by tests/windows on a real Window
     _wts.WTSEnumerateSessionsW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
                                            ctypes.POINTER(ctypes.POINTER(_WTS_SESSION_INFO)), ctypes.POINTER(wintypes.DWORD)]
     _wts.WTSFreeMemory.argtypes = [ctypes.c_void_p]
+    _wts.WTSQuerySessionInformationW.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_int, ctypes.POINTER(wintypes.LPWSTR),
+                                                 ctypes.POINTER(wintypes.DWORD)]
     _adv.DuplicateTokenEx.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
                                       ctypes.POINTER(wintypes.HANDLE)]
     _adv.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
@@ -170,8 +208,25 @@ def active_session_id() -> int | None:
                     return int(info[i].SessionId)
         finally:
             _wts.WTSFreeMemory(info)
-    sid = _k32.WTSGetActiveConsoleSessionId()
-    return None if sid in (0, 0xFFFFFFFF) else int(sid)
+    return None
+
+
+def session_user(sid: int) -> str | None:
+    """DOMAIN\\user signed in to that session."""
+    if not IS_WINDOWS:
+        return None
+
+    def q(cls: int) -> str:
+        buf, n = wintypes.LPWSTR(), wintypes.DWORD()
+        if not _wts.WTSQuerySessionInformationW(None, sid, cls, ctypes.byref(buf), ctypes.byref(n)):
+            return ""
+        try:
+            return buf.value or ""
+        finally:
+            _wts.WTSFreeMemory(buf)
+
+    user, domain = q(5), q(7)  # WTSUserName, WTSDomainName
+    return f"{domain}\\{user}" if user and domain else (user or None)
 
 
 def _top_windows() -> list[tuple[int, int]]:
@@ -219,8 +274,10 @@ def _finish(pi, wait_s: float | None) -> int:
         _k32.CloseHandle(pi.hProcess)
 
 
-def run_as_active_user(cmdline: str, cwd: str | None = None, hidden: bool = True, wait_s: float | None = None) -> int | None:
-    """Start a program in the signed-in user's session as that user (only possible for SYSTEM)."""
+def run_as_active_user(cmdline: str, cwd: str | None = None, hidden: bool = True, wait_s: float | None = None,
+                       app: str | None = None) -> int | None:
+    """Start a program in the signed-in user's session as that user (only possible for SYSTEM).
+    app: the program file by full path (then the command line's first word is only its name for the program)."""
     if not IS_WINDOWS:
         return None
     sid = active_session_id()
@@ -233,10 +290,11 @@ def run_as_active_user(cmdline: str, cwd: str | None = None, hidden: bool = True
         if not _adv.DuplicateTokenEx(user, _MAXIMUM_ALLOWED, None, _SECURITY_IMPERSONATION, _TOKEN_PRIMARY, ctypes.byref(primary)):
             return None
         try:
-            _env.CreateEnvironmentBlock(ctypes.byref(env), primary, False)
+            if not _env.CreateEnvironmentBlock(ctypes.byref(env), primary, False):
+                return None  # never start the user's program with SYSTEM's environment
             si, pi = _startupinfo(hidden), _PROCESS_INFORMATION()
             flags = _CREATE_UNICODE_ENVIRONMENT | (_CREATE_NO_WINDOW if hidden else _CREATE_NEW_CONSOLE)
-            ok = _adv.CreateProcessAsUserW(primary, None, ctypes.create_unicode_buffer(cmdline), None, None, False, flags,
+            ok = _adv.CreateProcessAsUserW(primary, app, ctypes.create_unicode_buffer(cmdline), None, None, False, flags,
                                            env, cwd if cwd and os.path.isdir(cwd) else None, ctypes.byref(si), ctypes.byref(pi))
             return _finish(pi, wait_s) if ok else None
         finally:
@@ -247,7 +305,7 @@ def run_as_active_user(cmdline: str, cwd: str | None = None, hidden: bool = True
         _k32.CloseHandle(user)
 
 
-def _run_as_shell_user(cmdline: str, cwd: str | None) -> int | None:
+def _run_as_shell_user(cmdline: str, cwd: str | None, app: str | None = None) -> int | None:
     """An elevated agent (owner's PC) starts programs with the desktop's normal rights, like a double-click:
     the token of explorer.exe in this session."""
     import psutil
@@ -268,7 +326,7 @@ def _run_as_shell_user(cmdline: str, cwd: str | None) -> int | None:
             if not _adv.DuplicateTokenEx(tok, _MAXIMUM_ALLOWED, None, _SECURITY_IMPERSONATION, _TOKEN_PRIMARY, ctypes.byref(primary)):
                 return None
             si, pi = _startupinfo(False), _PROCESS_INFORMATION()
-            ok = _adv.CreateProcessWithTokenW(primary, 0, None, ctypes.create_unicode_buffer(cmdline), 0, None,
+            ok = _adv.CreateProcessWithTokenW(primary, 0, app, ctypes.create_unicode_buffer(cmdline), 0, None,
                                               cwd if cwd and os.path.isdir(cwd) else None, ctypes.byref(si), ctypes.byref(pi))
             return _finish(pi, None) if ok else None
         finally:
@@ -292,14 +350,30 @@ def agent_session_dir() -> Path:
     return agent_dir() / "session"
 
 
-def helper_cmdline(folder: Path) -> str:
+def _is_link(p: Path) -> bool:
+    try:
+        return p.is_symlink() or bool(getattr(os.lstat(p), "st_file_attributes", 0) & 0x400)  # symlink or junction
+    except OSError:
+        return False
+
+
+def _icacls(*args: str) -> bool:
+    r = subprocess.run([system32("icacls.exe"), *args], capture_output=True, check=False,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return r.returncode == 0
+
+
+def helper_command(folder: Path, alive: Path) -> tuple[str, str]:
+    """(program file, command line) of the watcher; the program file is passed by full path."""
     if getattr(sys, "frozen", False):
-        args = [sys.executable, "session-watch", "--dir", str(folder)]
+        app = sys.executable
+        args = [app, "session-watch", "--dir", str(folder), "--alive", str(alive)]
     else:
         exe = Path(sys.executable)
         pyw = exe.with_name("pythonw.exe")
-        args = [str(pyw if pyw.is_file() else exe), "-m", "bonelia", "session-watch", "--dir", str(folder)]
-    return subprocess.list2cmdline(args)
+        app = str(pyw if pyw.is_file() else exe)
+        args = [app, "-m", "bonelia", "session-watch", "--dir", str(folder), "--alive", str(alive)]
+    return app, subprocess.list2cmdline(args)
 
 
 class WindowsOps:
@@ -310,38 +384,68 @@ class WindowsOps:
         self.folder = folder or agent_session_dir()
         self.clock = clock
         self._helper_at = 0.0
+        self._ready: dict[tuple[int, str], Path] = {}
 
-    # -- reading
+    # -- whose session
     def target_session(self) -> int | None:
         return active_session_id() if self.service else own_session_id()
 
+    def target_user(self) -> str | None:
+        if self.service:
+            sid = active_session_id()
+            return session_user(sid) if sid is not None else None
+        import psutil
+        try:
+            return psutil.Process(os.getpid()).username()
+        except psutil.Error:
+            return None
+
+    # -- reading
     def hung_states(self) -> dict[int, bool] | None:
         if not self.service:
             return windows_hung_states()
         sid = active_session_id()
-        if sid is None:
+        user = session_user(sid) if sid is not None else None
+        if sid is None or not user:
             return None
-        self._keep_helper()
-        return read_states(self.folder / f"windows-{sid}.json", self.clock())
+        d = self._session_folder(sid, user)
+        if d is None:
+            return None
+        states = read_states(d / "windows.json", self.clock())
+        if states is None and self.clock() - self._helper_at >= HELPER_RETRY_S:
+            self._helper_at = self.clock()  # the watcher itself refuses to run twice in a session
+            app, line = helper_command(d, self.folder / "agent.alive")
+            run_as_active_user(line, hidden=True, app=app)
+        return states
 
-    def _keep_helper(self) -> None:
-        """Session 0: keep the watcher running in the user's session (and tell it the agent is alive)."""
+    def _session_folder(self, sid: int, user: str) -> Path | None:
+        """Session 0: a folder only the signed-in user may write files into (not delete or replace), made and
+        secured by the agent; agent.alive lies one level up where users may only read."""
+        import hashlib
+
         try:
-            first = not self.folder.is_dir()
+            if _is_link(self.folder):
+                return None
             self.folder.mkdir(parents=True, exist_ok=True)
-            if first:  # the watcher runs as the user and must be able to write its report here
-                subprocess.run(["icacls", str(self.folder), "/grant", "*S-1-5-32-545:(OI)(CI)M"], capture_output=True, check=False,
-                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             (self.folder / "agent.alive").write_text(str(int(self.clock())), encoding="ascii")
         except OSError:
-            return
-        sid = active_session_id()
-        if sid is None or read_states(self.folder / f"windows-{sid}.json", self.clock()) is not None:
-            return
-        if self.clock() - self._helper_at < HELPER_RETRY_S:
-            return
-        self._helper_at = self.clock()
-        run_as_active_user(helper_cmdline(self.folder), hidden=True)
+            return None
+        key = (sid, user.lower())
+        d = self._ready.get(key)
+        if d is not None and d.is_dir() and not _is_link(d):
+            return d
+        d = self.folder / f"{sid}-{hashlib.sha256(user.lower().encode()).hexdigest()[:10]}"
+        try:
+            if d.exists() or _is_link(d):  # left from before (or made by someone else): moved aside, never reused
+                os.rename(d, d.with_name(d.name + f".old{int(self.clock())}"))
+            d.mkdir()
+        except OSError:
+            return None
+        if not _icacls(str(d), "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F",
+                       f"{user}:(RX,WD)", f"{user}:(OI)(IO)M"):
+            return None
+        self._ready[key] = d
+        return d
 
     def snapshot(self) -> dict[str, Any] | None:
         if not IS_WINDOWS:
@@ -368,27 +472,33 @@ class WindowsOps:
 
     # -- for the tools
     def info(self, pid: int) -> dict[str, Any] | None:
+        """The program behind a number: name, its own program file (not what it says about itself), owner check."""
         import psutil
 
         try:
             p = psutil.Process(pid)
-            name, exe = p.name(), p.exe()
-            cmd = p.cmdline() or [exe]
+            name, exe, owner = p.name(), p.exe(), p.username()
+            args = p.cmdline()[1:]
             try:
                 cwd = p.cwd()
             except (psutil.Error, OSError):
                 cwd = str(Path(exe).parent)
         except (psutil.Error, OSError):
             return None
-        target = self.target_session()
-        return {"name": name, "own_session": target is not None and target > 0 and process_session(pid) == target,
-                "cmd": cmd, "cwd": cwd}
+        target, user = self.target_session(), self.target_user()
+        mine = (target is not None and target > 0 and process_session(pid) == target
+                and bool(user) and str(owner).lower() == str(user).lower())
+        return {"name": name, "own_session": mine, "cmd": [exe, *args], "cwd": cwd}
 
     def is_hung(self, pid: int) -> bool | None:
         states = self.hung_states()
         return None if states is None else states.get(pid)
 
     def kill(self, pid: int) -> None:
+        if self.service:  # with the user's own rights: Windows refuses what the user could not end
+            tk = system32("taskkill.exe")
+            run_as_active_user(subprocess.list2cmdline([tk, "/F", "/T", "/PID", str(int(pid))]), hidden=True, wait_s=15, app=tk)
+            return
         import psutil
 
         try:
@@ -407,7 +517,8 @@ class WindowsOps:
         import psutil
 
         if self.service:
-            run_as_active_user(f"taskkill.exe /PID {int(pid)}", hidden=True, wait_s=15)
+            tk = system32("taskkill.exe")
+            run_as_active_user(subprocess.list2cmdline([tk, "/PID", str(int(pid))]), hidden=True, wait_s=15, app=tk)
         else:
             for hwnd, wpid in _top_windows():
                 if wpid == pid:
@@ -421,18 +532,17 @@ class WindowsOps:
             return True  # already gone
 
     def launch(self, cmd: list[str], cwd: str | None) -> int | None:
-        if not cmd:
+        """Start the program again as the user, with normal rights; None if that is not possible."""
+        if not cmd or not os.path.isabs(cmd[0]) or not os.path.isfile(cmd[0]):
             return None
-        line = subprocess.list2cmdline(cmd)
+        app, line = cmd[0], subprocess.list2cmdline(cmd)
         if self.service:
-            return run_as_active_user(line, cwd, hidden=False)
-        if _is_elevated():
-            pid = _run_as_shell_user(line, cwd)
-            if pid:
-                return pid
+            return run_as_active_user(line, cwd, hidden=False, app=app)
+        if _is_elevated():  # never start a program with the agent's admin rights
+            return _run_as_shell_user(line, cwd, app=app)
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        p = subprocess.Popen(cmd, cwd=cwd if cwd and os.path.isdir(cwd) else None, creationflags=flags, close_fds=True,
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        p = subprocess.Popen(cmd, executable=app, cwd=cwd if cwd and os.path.isdir(cwd) else None, creationflags=flags,
+                             close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return p.pid
 
     def alive(self, pid: int) -> bool:
