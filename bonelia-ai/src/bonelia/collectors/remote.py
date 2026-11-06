@@ -94,6 +94,7 @@ def set_rustdesk_password(password: str, exe_paths: list[Path] | None = None,
     _, out = run([str(exe), "--password", password])
     text = (out or "").lower()
     if "done!" in text:
+        allow_password_logins(exe, run)
         return "ok"
     if "administrative privileges" in text:
         return "not_admin"
@@ -102,3 +103,17 @@ def set_rustdesk_password(password: str, exe_paths: list[Path] | None = None,
     if "rejected" in text:
         return "rejected"
     return "failed"
+
+
+def allow_password_logins(exe: Path, run: Callable[[list[str]], tuple[int, str]] = _run) -> None:
+    """A permanent password only works when RustDesk accepts it: verification method not "one-time
+    password only" and approval not "click only". Both are switched to RustDesk's default "both" when
+    needed, so the owner can log in with the password and a person at the PC can still accept by click."""
+    def option(key: str) -> str:
+        _, out = run([str(exe), "--option", key])
+        return (out or "").strip().splitlines()[-1].strip() if (out or "").strip() else ""
+
+    if option("verification-method") == "use-temporary-password":
+        run([str(exe), "--option", "verification-method", "use-both-passwords"])
+    if option("approve-mode") == "click":
+        run([str(exe), "--option", "approve-mode", ""])

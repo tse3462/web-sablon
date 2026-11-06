@@ -39,7 +39,7 @@ def test_new_password_counts_only_when_rustdesk_says_done(tmp_path):
         return result, calls
 
     result, calls = with_output("Done!\r\n")
-    assert result == "ok" and calls == [[str(exe), "--password", "Ab3dEf7hJk2mNp4q"]]
+    assert result == "ok" and calls[0] == [str(exe), "--password", "Ab3dEf7hJk2mNp4q"]
     assert with_output("Installation and administrative privileges required!\n")[0] == "not_admin"
     assert with_output("Settings are disabled!\n")[0] == "disabled"
     assert with_output("Changing permanent password is disabled!\n")[0] == "disabled"
@@ -48,3 +48,26 @@ def test_new_password_counts_only_when_rustdesk_says_done(tmp_path):
     assert set_rustdesk_password("with space", exe_paths=[exe], windows=True, run=lambda c: (0, "Done!")) == "invalid"
     assert set_rustdesk_password("Ab3dEf7hJk2mNp4q", exe_paths=[tmp_path / "nope.exe"], windows=True) == "missing"
     assert set_rustdesk_password("Ab3dEf7hJk2mNp4q", windows=False) == "not_windows"
+
+
+def test_new_password_also_opens_rustdesk_for_password_logins(tmp_path):
+    """Seen 06.11.2026: password refused, only "accept" on the PC worked. RustDesk can be set to one-time
+    passwords only, or to click-only approval; then a permanent password never works."""
+    exe = tmp_path / "rustdesk.exe"; exe.write_bytes(b"x")
+    answers = {("--password",): "Done!\n", ("--option", "verification-method"): "use-temporary-password\n",
+               ("--option", "approve-mode"): "click\n"}
+    calls = []
+
+    def run(cmd):
+        calls.append(cmd[1:])
+        return 0, answers.get(tuple(cmd[1:3]) if cmd[1] == "--option" and len(cmd) == 3 else (cmd[1],), "")
+
+    assert set_rustdesk_password("Ab3dEf7hJk2mNp4q", exe_paths=[exe], windows=True, run=run) == "ok"
+    assert ["--option", "verification-method", "use-both-passwords"] in calls
+    assert ["--option", "approve-mode", ""] in calls  # "" = accept by password or by click
+
+    # Already allowing passwords: nothing is changed.
+    calls.clear()
+    answers.update({("--option", "verification-method"): "\n", ("--option", "approve-mode"): "password\n"})
+    assert set_rustdesk_password("Ab3dEf7hJk2mNp4q", exe_paths=[exe], windows=True, run=run) == "ok"
+    assert not [c for c in calls if len(c) == 3]

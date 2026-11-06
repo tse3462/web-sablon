@@ -98,8 +98,9 @@ class Agent:
         pub = v.get("pub")
         if not pub or not remote or not remote.get("installed") or not remote.get("rustdesk_id"):
             return None, None
-        # "v2": passwords set by older agents were not checked against RustDesk's answer; set them again once.
-        marker = f"v2|{fingerprint(pub)}|{v.get('rotate') or ''}"
+        # Passwords set by older agents were not checked against RustDesk's answer; they are set again once.
+        # v3: also make RustDesk accept the permanent password (not "one-time only" / "click only").
+        marker = f"v3|{fingerprint(pub)}|{v.get('rotate') or ''}"
         if self.state.data.get("rd_vaulted") == marker:
             return None, None
         failed = self.state.data.get("rd_vault_failed_at", 0)
