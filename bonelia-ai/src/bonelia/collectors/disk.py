@@ -24,7 +24,7 @@ import stat
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 KEEP_BACKUPS = 2
 OLD_DAYS = 90
@@ -190,7 +190,7 @@ def _item(path: str, st: os.stat_result, reason: str, group: str) -> dict[str, A
 
 # ---------------------------------------------------------------------------------------- scan
 def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_min: int = DUP_MIN,
-         now: float | None = None) -> dict[str, Any]:
+         now: float | None = None, progress: Callable[[int], Any] | None = None) -> dict[str, Any]:
     # Each part gets its own share of the time, the users' own files first: measuring big folders such as
     # Docker or AppData must never use up the time before backups and copies are found (seen 06.11.2026).
     now = time.time() if now is None else now
@@ -202,6 +202,14 @@ def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_mi
         pass
     memo: dict[str, int] = {}
     budgets = []
+
+    def step(pct: int) -> None:  # for the progress bar in the panel; never allowed to stop the scan
+        if progress:
+            try:
+                progress(pct)
+            except Exception:
+                pass
+    step(5)
 
     # Suggestions from the users' own folders
     budget = Budget(budget_s * 0.5)
@@ -259,6 +267,7 @@ def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_mi
             suggestions.append(_item(f[0], f[1], "old_download", ""))
             taken.add(f[0])
 
+    step(50)
     # Known space hogs
     budget = Budget(budget_s * 0.2)
     budgets.append(budget)
@@ -274,6 +283,7 @@ def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_mi
                             "bytes": dir_size(layout.system_root / "SoftwareDistribution" / "Download", budget, memo)}
     report["categories"] = [c for c in cats.values() if c["bytes"] > 0]
 
+    step(70)
     # Largest folders: each profile's top level, and AppData\Local's children
     budget = Budget(budget_s * 0.3)
     budgets.append(budget)
@@ -292,6 +302,7 @@ def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_mi
 
     report["suggestions"] = sorted(suggestions, key=lambda s: -s["bytes"])[:MAX_SUGGESTIONS]
     report["partial"] = any(b.hit for b in budgets)
+    step(100)
     return report
 
 

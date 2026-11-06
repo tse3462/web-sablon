@@ -18,6 +18,7 @@ REASONS = {"old_backup", "duplicate", "old_download"}
 SAFE_KEYS = {"temp", "recycle", "pip_cache", "npm_cache", "browser_cache"}
 SCHEMA = """
 create table if not exists disk_reports (device_id text primary key, at text not null, report text not null);
+create table if not exists disk_progress (device_id text primary key, request text not null, pct integer not null, at text not null);
 create table if not exists disk_history (device_id text not null, day text not null, free integer not null,
   total integer not null, primary key (device_id, day));
 """
@@ -74,6 +75,7 @@ class DiskStore:
         """Store the report; return the alerts it calls for: ("disk_low", free, total), ("disk_drop", lost, days)."""
         now = now or utcnow()
         rep = clean_report(raw)
+        self.store._x("delete from disk_progress where device_id=?", (device_id,))  # the scan is done
         self.store._x("insert into disk_reports (device_id, at, report) values (?,?,?) on conflict(device_id) do update set "
                       "at=excluded.at, report=excluded.report", (device_id, now.isoformat(), json.dumps(rep)))
         if not rep["drives"]:
@@ -93,6 +95,15 @@ class DiskStore:
         if drive["total"] and drive["free"] / drive["total"] < LOW_SHARE:
             alerts.append(("disk_low", drive["free"], drive["total"]))
         return alerts
+
+    def set_progress(self, device_id: str, request: str, pct: int) -> None:
+        self.store._x("insert into disk_progress (device_id, request, pct, at) values (?,?,?,?) on conflict(device_id) do update set "
+                      "request=excluded.request, pct=excluded.pct, at=excluded.at",
+                      (device_id, str(request)[:40], max(0, min(100, int(pct))), utcnow().isoformat()))
+
+    def progress(self, device_id: str) -> dict[str, Any] | None:
+        rows = self.store._q("select request, pct, at from disk_progress where device_id=?", (device_id,))
+        return dict(rows[0]) if rows else None
 
     def latest(self, device_id: str) -> dict[str, Any] | None:
         rows = self.store._q("select report from disk_reports where device_id=?", (device_id,))

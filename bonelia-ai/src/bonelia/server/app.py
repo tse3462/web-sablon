@@ -343,6 +343,17 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
     class DiskReportBody(BaseModel):
         report: dict[str, Any]
 
+    class DiskProgressBody(BaseModel):
+        request: str = Field(max_length=40)
+        pct: int = Field(ge=0, le=100)
+
+    @app.post("/v1/disk-progress")
+    async def disk_progress(auth: dict = Depends(device_auth)) -> dict[str, Any]:
+        """A scan the owner asked for is running: the panel shows how far it got."""
+        body = parse(DiskProgressBody, auth["body"])
+        disks.set_progress(auth["device"]["id"], body.request, body.pct)
+        return {"ok": True}
+
     @app.post("/v1/disk-report")
     async def disk_report(auth: dict = Depends(device_auth)) -> dict[str, Any]:
         """Daily disk report of an agent; alerts go to the owner's phone, a finished cleanup is cleared."""

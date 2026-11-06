@@ -36,8 +36,10 @@ class FakeDisk:
         self.cleaned: list[dict] = []
         self.rep = report()
 
-    def scan(self):
+    def scan(self, progress=None):
         self.scans += 1
+        if progress:
+            progress(10); progress(60)
         return dict(self.rep)
 
     def clean(self, req):
@@ -82,10 +84,23 @@ def test_report_reaches_panel_and_cleanup_runs_only_as_picked(tmp_path, env):  #
     acts = [a["action"] for a in store.audit_log(env["a"])]
     assert "disk.cleanup_requested" in acts
 
-    # "Scan now" in the panel: a fresh report on the next cycles, even within the day.
-    assert dash.post(f"/api/disk/{dev}/scan").status_code == 200
+    # "Scan now" in the panel: a fresh report on the next cycles, even within the day, with progress.
+    v = dash.post(f"/api/disk/{dev}/scan").json()
+    assert v["scan_pending"] is True and v["progress"] is None  # waiting for the PC to pick it up
+    seen = []
+    real = fd.scan
+
+    def watched(progress=None):
+        def spy(pct):
+            progress(pct)
+            seen.append(dash.get(f"/api/disk/{dev}").json()["progress"])
+        return real(progress=spy)
+    agent.disk_scan = watched
     agent.cycle(); agent.cycle()
     assert fd.scans >= 3
+    assert [p["pct"] for p in seen] == [10, 60]  # the panel saw the bar move while the PC was scanning
+    v = dash.get(f"/api/disk/{dev}").json()
+    assert v["scan_pending"] is False and v["progress"] is None  # done: the new report is there
 
 
 def test_no_cleanup_without_repair_consent(tmp_path, env):  # noqa: F811

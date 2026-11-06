@@ -124,3 +124,10 @@ def test_backups_are_found_even_when_measuring_big_folders_runs_out_of_time(tmp_
     rep = disk.scan(layout, budget_s=30, **LIMITS)
     assert rep["partial"] is True
     assert {s["reason"] for s in rep["suggestions"]} == {"old_backup", "duplicate", "old_download"}
+
+
+def test_scan_reports_its_progress_step_by_step(tmp_path):
+    """The panel shows a progress bar while a requested scan runs (user request 06.11.2026)."""
+    seen = []
+    disk.scan(pc(tmp_path), budget_s=30, progress=seen.append, **LIMITS)
+    assert seen == sorted(seen) and seen[0] < 50 <= seen[-2] and seen[-1] == 100

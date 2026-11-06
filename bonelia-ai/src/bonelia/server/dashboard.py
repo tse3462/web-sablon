@@ -249,10 +249,13 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         rep, pol = disks.latest(device_id), store.device_policy(device_id)
         tenant = store.tenant(dev["tenant_id"]) or {}
         pending = pol.get("disk_cleanup")
+        scan_pending = bool(pol.get("disk_scan")) and pol.get("disk_scan") != (rep or {}).get("scan_request")
+        prog = disks.progress(device_id)
         return {"device": {"id": device_id, "label": dev["label"], "customer": tenant.get("name", "")},
                 "report": rep, "history": disks.history(device_id),
                 "pending": {"safe": pending.get("safe", []), "files": len(pending.get("files", [])), "bytes": pending.get("bytes", 0)} if pending else None,
-                "scan_pending": bool(pol.get("disk_scan")) and pol.get("disk_scan") != (rep or {}).get("scan_request"),
+                "scan_pending": scan_pending,
+                "progress": {"pct": prog["pct"], "at": prog["at"]} if scan_pending and prog and prog["request"] == pol.get("disk_scan") else None,
                 "consent": int(tenant.get("max_auto_level") or 0) >= 1}
 
     @app.get("/api/disk/{device_id}")

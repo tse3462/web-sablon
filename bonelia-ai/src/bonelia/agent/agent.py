@@ -43,11 +43,11 @@ MAINTENANCE_INTERVAL_S = 24 * 3600
 MAINTENANCE_TOOLS: tuple[str, ...] = ("windows.clean_temp",)
 
 
-def _windows_disk_scan() -> dict | None:
+def _windows_disk_scan(progress=None) -> dict | None:
     if sys.platform != "win32":
         return None
     from ..collectors import disk
-    return disk.scan(disk.Layout.windows())
+    return disk.scan(disk.Layout.windows(), progress=progress)
 
 
 def _windows_disk_clean(request: dict) -> dict:
@@ -155,7 +155,15 @@ class Agent:
         pending = self.state.data.get("disk_cleanup_result")
         if not (due or pending or (want and want != self.state.data.get("disk_scan_seen"))):
             return
-        rep = self.disk_scan()
+        if want and want != self.state.data.get("disk_scan_seen"):
+            def progress(pct: int) -> None:  # the owner asked for this scan and watches its progress bar
+                try:
+                    self.client.disk_progress(want, pct)
+                except (ServerUnavailable, ServerError):
+                    pass
+            rep = self.disk_scan(progress=progress)
+        else:
+            rep = self.disk_scan()
         if not rep:
             return
         if pending:
