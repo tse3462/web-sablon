@@ -21,7 +21,7 @@ from importlib import resources
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .. import __version__
@@ -129,18 +129,6 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return resources.files("bonelia").joinpath("server/static/dashboard.html").read_text(encoding="utf-8")
-
-    # Tab and phone home-screen icon (BNL digital mark); no token needed, the host check above still applies.
-    _icons = {"/favicon.ico": "image/x-icon", "/apple-touch-icon.png": "image/png", "/icon.svg": "image/svg+xml"}
-
-    def _icon_route(path: str, media: str):
-        async def icon() -> Response:
-            data = resources.files("bonelia").joinpath("server/static/" + path.lstrip("/")).read_bytes()
-            return Response(data, media_type=media, headers={"cache-control": "public, max-age=86400"})
-        app.get(path)(icon)
-
-    for _path, _media in _icons.items():
-        _icon_route(_path, _media)
 
     @app.get("/api/overview")
     def overview() -> dict[str, Any]:

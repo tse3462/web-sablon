@@ -9,7 +9,6 @@
 <meta name="apple-mobile-web-app-title" content="BONELİA AI">
 <meta name="theme-color" content="#07090d">
 <title>BONELİA AI Kontrol Paneli</title>
-<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
 :root{--bg:#07090d;--panel:#121820;--panel2:#18202b;--ink:#eef2f7;--muted:#8b97a8;--line:#222b37;--brand:#3d8bff;
  --ok:#33c26f;--warn:#f0b429;--crit:#ff5a5f;--chip:#1c2430;--accent:var(--brand)}
@@ -32,7 +31,6 @@ button{font:inherit;color:inherit;cursor:pointer}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;position:relative;z-index:2}
 .topbar .title{font-weight:700;font-size:17px;letter-spacing:.2px;white-space:nowrap}
 .topbar .title span{color:var(--brand)}
-.topbar .title{display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden}.topbar .title .bnl-mark{flex:none}.topbar .title span[data-i]{margin-left:-2px}
 .iconbtn{position:relative;background:none;border:0;padding:6px;color:var(--ink);width:40px}
 .iconbtn svg{width:26px;height:26px}
 .badge{position:absolute;top:0;right:2px;background:var(--crit);color:#fff;border-radius:10px;font-size:11px;font-weight:700;min-width:18px;height:18px;line-height:18px;padding:0 5px}
@@ -179,7 +177,7 @@ ol{padding-left:20px}
 <header class="hero" id="hero">
   <div class="topbar">
     <button class="iconbtn" id="bell" aria-label="!"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="badge hidden" id="bellN"></span></button>
-    <div class="title"><svg class="bnl-mark" viewBox="0 0 96 96" width="24" height="24" aria-hidden="true"><path d="M30 21v54" stroke="#fff" stroke-width="11" stroke-linecap="round" fill="none"/><circle cx="51" cy="57.5" r="17.5" stroke="#fff" stroke-width="11" fill="none"/><circle cx="51" cy="57.5" r="6" fill="#35d07f"/></svg>BONELİA <span>AI</span> <span data-i="platform" style="color:inherit;font-weight:500"></span></div>
+    <div class="title">BONELİA <span>AI</span> <span data-i="platform" style="color:inherit;font-weight:500"></span></div>
     <div class="tools"><select id="lang"><option value="tr">TR</option><option value="de">DE</option></select><button class="sec" id="quit" data-i="quit" style="padding:5px 9px;font-size:13px"></button></div>
   </div>
   <div class="big">

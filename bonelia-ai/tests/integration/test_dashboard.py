@@ -291,16 +291,3 @@ def test_home_has_the_live_center_built_from_real_data(tmp_path):
     assert "prefers-reduced-motion" in html  # motion stops for people who turned it off
     for key in ("lv_title", "lv_repairs_kind", "lv_skills", "lv_activity"):
         assert html.count(key + ":") == 2  # Turkish and German text
-
-
-def test_panel_icons_for_tab_and_phone_home_screen(tmp_path):
-    """BNL digital mark (06.11.2026) as tab and iPhone home-screen icon; served without the token so the phone
-    can fetch it, but still only on the panel's own host."""
-    _, c, *_ = setup(tmp_path)
-    for path, kind in (("/favicon.ico", "image/x-icon"), ("/apple-touch-icon.png", "image/png"), ("/icon.svg", "image/svg+xml")):
-        r = c.get(path)
-        assert r.status_code == 200 and r.headers["content-type"].startswith(kind), path
-    assert c.get("/apple-touch-icon.png").content[1:4] == b"PNG"
-    assert c.get("/favicon.ico", headers={"host": "evil.example:9999"}).status_code == 403
-    html = c.get("/").text
-    assert '<link rel="apple-touch-icon" href="/apple-touch-icon.png">' in html and 'href="/icon.svg"' in html
