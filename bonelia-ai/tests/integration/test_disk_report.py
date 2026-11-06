@@ -23,7 +23,11 @@ def report(free=12 * GB, total=237 * GB):
     return {"at": int(time.time()), "partial": False, "drives": [{"name": "C:\\", "total": total, "free": free}],
             "categories": [{"key": "temp", "kind": "safe", "bytes": 3 * GB}, {"key": "recycle", "kind": "safe", "bytes": GB},
                            {"key": "ai_models", "kind": "info", "bytes": 21 * GB}],
-            "largest": [{"path": "C:\\Users\\anna\\Downloads", "bytes": 40 * GB}],
+            "largest": [{"id": "d" * 16, "path": "C:\\Users\\anna\\Downloads", "bytes": 40 * GB, "deletable": False, "note": "folder",
+                         "children": [{"id": "e" * 16, "path": "C:\\Users\\anna\\Downloads\\Alt", "bytes": 9 * GB, "deletable": True,
+                                       "note": "", "children": []}]},
+                        {"id": "f" * 16, "path": "C:\\Users\\anna\\AppData\\Local\\Docker", "bytes": 30 * GB, "deletable": False,
+                         "note": "docker", "children": []}],
             "suggestions": [
                 {"id": "a" * 16, "path": "C:\\Users\\anna\\Downloads\\shop-backup-2026-10-01.zip", "bytes": 3 * GB, "mtime": 1, "reason": "old_backup", "group": "shop backup"},
                 {"id": "b" * 16, "path": "C:\\Users\\anna\\Downloads\\film (1).mp4", "bytes": 2 * GB, "mtime": 2, "reason": "duplicate", "group": "abc"},
@@ -44,7 +48,7 @@ class FakeDisk:
 
     def clean(self, req):
         self.cleaned.append(req)
-        return {"id": req["id"], "safe": {k: GB for k in req.get("safe", [])}, "files": [{"path": f["path"], "status": "deleted"} for f in req["files"]],
+        return {"id": req["id"], "safe": {k: GB for k in req.get("safe", [])}, "files": [{"path": f["path"], "status": "deleted"} for f in req.get("files", [])],
                 "freed": 3 * GB + GB * len(req.get("safe", []))}
 
 
@@ -132,3 +136,23 @@ def test_alerts_low_space_and_a_big_drop(tmp_path):
     disks.accept("dev2", bad, now=t0)
     kept = disks.latest("dev2")
     assert "evil" not in kept and len(kept["suggestions"]) == 2
+
+
+def test_a_folder_is_deleted_only_if_the_pc_marked_it_deletable(tmp_path, env):  # noqa: F811
+    store = env["store"]
+    store.update_tenant(env["a"], max_auto_level=1)
+    dash = TestClient(create_dashboard_app(store, TOKEN, 9999), base_url="http://127.0.0.1:9999", headers=H)
+    s = usb(tmp_path, env, "LAPTOP2", env["a"], scopes=("diagnose", "repair:windows"))
+    dev = s.creds.device_id
+    pc, fd = FakePC(), FakeDisk()
+    agent = Agent(s.client, AgentState(tmp_path / "f.json"), executors=pc.executors(), scan=pc.scan, maintenance_tools=(),
+                  remote=lambda: None, disk_scan=fd.scan, disk_clean=fd.clean)
+    agent.cycle()
+    largest = dash.get(f"/api/disk/{dev}").json()["report"]["largest"]
+    assert largest[0]["children"][0]["deletable"] is True and largest[1]["note"] == "docker"
+    for bad in ("d" * 16, "f" * 16, "0" * 16):  # Downloads itself, Docker, unknown
+        assert dash.post(f"/api/disk/{dev}/clean", json={"folders": [bad]}).status_code == 422
+    r = dash.post(f"/api/disk/{dev}/clean", json={"folders": ["e" * 16]})
+    assert r.status_code == 200 and r.json()["pending"]["folders"] == 1 and r.json()["pending"]["bytes"] == 9 * GB
+    agent.cycle(); agent.cycle()
+    assert fd.cleaned[-1]["folders"] == [{"path": "C:\\Users\\anna\\Downloads\\Alt", "bytes": 9 * GB}]

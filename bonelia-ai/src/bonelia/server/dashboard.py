@@ -32,7 +32,7 @@ from .notify import TELEGRAM_KEY, TelegramAPI, build_notifier, extract_token
 from .repair import TOKEN_KEY as REPAIR_TOKEN_KEY, TOKEN_RE, valid_repo
 from .uptime import UptimeMonitor, check_settings, normalize_keyword
 from .vault_store import VaultStore
-from .disk_store import SAFE_KEYS, DiskStore
+from .disk_store import SAFE_KEYS, DiskStore, tree_nodes
 from ..security.vault import valid_box
 from .store import Store
 
@@ -144,6 +144,7 @@ class VaultReset(BaseModel):
 class DiskCleanBody(BaseModel):
     safe: list[str] = Field(default_factory=list, max_length=10)
     items: list[str] = Field(default_factory=list, max_length=400)
+    folders: list[str] = Field(default_factory=list, max_length=20)
 
 
 class TokenBody(BaseModel):
@@ -253,7 +254,8 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         prog = disks.progress(device_id)
         return {"device": {"id": device_id, "label": dev["label"], "customer": tenant.get("name", "")},
                 "report": rep, "history": disks.history(device_id),
-                "pending": {"safe": pending.get("safe", []), "files": len(pending.get("files", [])), "bytes": pending.get("bytes", 0)} if pending else None,
+                "pending": {"safe": pending.get("safe", []), "files": len(pending.get("files", [])), "folders": len(pending.get("folders", [])),
+                            "bytes": pending.get("bytes", 0)} if pending else None,
                 "scan_pending": scan_pending,
                 "progress": {"pct": prog["pct"], "at": prog["at"]} if scan_pending and prog and prog["request"] == pol.get("disk_scan") else None,
                 "consent": int(tenant.get("max_auto_level") or 0) >= 1}
@@ -280,13 +282,19 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
             raise HTTPException(409, "consent_needed")
         offered = {c["key"] for c in rep["categories"] if c["kind"] == "safe"} & SAFE_KEYS
         by_id = {s["id"]: s for s in rep["suggestions"]}
-        if not (body.safe or body.items) or not set(body.safe) <= offered or not set(body.items) <= set(by_id):
+        deletable = {n["id"]: n for n in tree_nodes(rep) if n.get("id") and n.get("deletable")}
+        if (not (body.safe or body.items or body.folders) or not set(body.safe) <= offered or not set(body.items) <= set(by_id)
+                or not set(body.folders) <= set(deletable)):
             raise HTTPException(422, "invalid_selection")
         files = [{k: by_id[i][k] for k in ("path", "bytes", "mtime")} for i in dict.fromkeys(body.items)]
-        total = sum(f["bytes"] for f in files) + sum(c["bytes"] for c in rep["categories"] if c["key"] in body.safe)
-        _merge_policy(device_id, disk_cleanup={"id": secrets.token_hex(8), "safe": list(dict.fromkeys(body.safe)), "files": files, "bytes": total})
+        folders = [{"path": deletable[i]["path"], "bytes": deletable[i]["bytes"]} for i in dict.fromkeys(body.folders)]
+        total = (sum(f["bytes"] for f in files) + sum(f["bytes"] for f in folders)
+                 + sum(c["bytes"] for c in rep["categories"] if c["key"] in body.safe))
+        _merge_policy(device_id, disk_cleanup={"id": secrets.token_hex(8), "safe": list(dict.fromkeys(body.safe)), "files": files,
+                                               "folders": folders, "bytes": total})
         dev = store.device(device_id)
-        store.audit("admin:dashboard", "disk.cleanup_requested", {"safe": body.safe, "files": len(files), "bytes": total},
+        store.audit("admin:dashboard", "disk.cleanup_requested", {"safe": body.safe, "files": len(files),
+                                                                  "folders": [f["path"] for f in folders], "bytes": total},
                     tenant_id=dev["tenant_id"], device_id=device_id)
         return _disk_view(device_id)
 

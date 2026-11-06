@@ -32,6 +32,23 @@ OLD_MIN = 100 * 1024 * 1024
 DUP_MIN = 50 * 1024 * 1024
 MAX_SUGGESTIONS = 300
 MIN_ITEM = 1024 * 1024  # smaller files free nothing worth a decision
+MIN_SHOW = 500 * 1024 * 1024  # folders/files below this are not listed in the open-up view (user request 06.11.2026)
+
+# What may be deleted from the open-up folder view, relative to a user profile (lower case), longest match wins:
+#   "root"   the folder itself and anything inside it
+#   "inside" anything inside, but not the folder itself (Downloads, Documents, ...)
+#   "system" never shown; "<note>" shown with its note, never deleted
+FOLDER_RULES: list[tuple[tuple[str, ...], str]] = [
+    (("downloads",), "inside"), (("desktop",), "inside"), (("documents",), "inside"),
+    (("videos",), "inside"), (("pictures",), "inside"), (("music",), "inside"),
+    ((".lmstudio", "models"), "root"), ((".cache", "huggingface"), "root"), ((".cache", "lm-studio"), "root"),
+    ((".codex",), "inside"),
+    ((".ollama",), "bonelia_model"),
+    (("appdata", "local", "docker"), "docker"),
+    (("appdata", "local", "microsoft"), "system"), (("appdata", "local", "packages"), "system"),
+    (("appdata", "roaming", "microsoft"), "system"), (("appdata", "locallow"), "system"),
+    (("appdata",), "app"),
+]
 # Folders of code projects and tools: their files are not the owner's backups or copies (seen 06.11.2026:
 # two identical Supabase migrations of a project in Downloads were offered as copies).
 PROJECT_DIRS = {".git", ".svn", ".hg", "node_modules", "migrations", "supabase", ".venv", "venv", "site-packages",
@@ -144,6 +161,78 @@ def dir_size(root: Path, budget: Budget, memo: dict[str, int] | None = None) -> 
     return total
 
 
+def classify(path: Path, layout: "Layout") -> tuple[bool, str]:
+    """(may be deleted from the folder view, note). Links are judged by where they are, never followed."""
+    ap = os.path.normcase(os.path.abspath(str(path)))
+    for prof in layout.profiles():
+        base = os.path.normcase(os.path.abspath(str(prof)))
+        if ap == base:
+            return False, "system"
+        if not ap.startswith(base + os.sep):
+            continue
+        rel = tuple(x.lower() for x in Path(ap[len(base) + 1:]).parts)
+        if any("bonelia" in x for x in rel):
+            return False, "bonelia"
+        for parts, mode in sorted(FOLDER_RULES, key=lambda r: -len(r[0])):
+            if rel[:len(parts)] != parts:
+                continue
+            if mode == "root":
+                return True, ""
+            if mode == "inside":
+                return (True, "") if len(rel) > len(parts) else (False, "folder")
+            return False, mode
+        return False, "other"
+    return False, "system"
+
+
+def _tree(path: Path, budget: Budget, memo: dict[str, int], depth: int, min_show: int, cache: dict[str, dict]) -> dict[str, Any]:
+    """Size of a folder in one walk, with its sub-folders (and big files) down to `depth` levels."""
+    key = str(path)
+    if key in cache and not budget.hit:
+        return cache[key]
+    size, kids = 0, []
+    try:
+        entries = list(os.scandir(path))
+    except OSError:
+        entries = []
+    for e in entries:
+        if budget.over():
+            break
+        try:
+            if e.is_symlink() or _is_link(Path(e.path)):
+                continue
+            if e.is_dir(follow_symlinks=False):
+                if depth > 0:
+                    sub = _tree(Path(e.path), budget, memo, depth - 1, min_show, cache)
+                    kids.append(sub)
+                    size += sub["bytes"]
+                else:
+                    size += dir_size(Path(e.path), budget, memo)
+            elif e.is_file(follow_symlinks=False):
+                sz = e.stat(follow_symlinks=False).st_size
+                size += sz
+                if depth > 0 and sz >= min_show:
+                    kids.append({"path": e.path, "bytes": sz, "children": []})
+        except OSError:
+            continue
+    node = {"path": key, "bytes": size, "children": kids}
+    if not budget.hit:
+        memo[key] = size
+        cache[key] = node
+    return node
+
+
+def _decorate(node: dict[str, Any], layout: "Layout", min_show: int) -> dict[str, Any] | None:
+    """Add id, deletable and note; drop system places and what is too small to matter."""
+    ok, note = classify(Path(node["path"]), layout)
+    if note == "system" or node["bytes"] < min_show:
+        return None
+    kids = [k for k in (_decorate(c, layout, min_show) for c in node.get("children") or []) if k]
+    kids.sort(key=lambda k: -k["bytes"])
+    return {"id": hashlib.sha256(f"{node['path']}|{node['bytes']}".encode()).hexdigest()[:16], "path": node["path"],
+            "bytes": node["bytes"], "deletable": ok, "note": note, "children": kids[:8]}
+
+
 # ---------------------------------------------------------------------------------------- backups
 _DATE = re.compile(r"\d{4}[-_.]?\d{2}[-_.]?\d{2}|\d{2}[-_.]\d{2}[-_.]\d{4}")
 _COPY = re.compile(r"\s*\(\d+\)$")
@@ -195,7 +284,8 @@ def _item(path: str, st: os.stat_result, reason: str, group: str) -> dict[str, A
 
 # ---------------------------------------------------------------------------------------- scan
 def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_min: int = DUP_MIN,
-         now: float | None = None, progress: Callable[[int], Any] | None = None, min_item: int = MIN_ITEM) -> dict[str, Any]:
+         now: float | None = None, progress: Callable[[int], Any] | None = None, min_item: int = MIN_ITEM,
+         min_show: int = MIN_SHOW) -> dict[str, Any]:
     # Each part gets its own share of the time, the users' own files first: measuring big folders such as
     # Docker or AppData must never use up the time before backups and copies are found (seen 06.11.2026).
     now = time.time() if now is None else now
@@ -206,6 +296,7 @@ def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_mi
     except OSError:
         pass
     memo: dict[str, int] = {}
+    trees: dict[str, dict] = {}
     budgets = []
 
     def step(pct: int) -> None:  # for the progress bar in the panel; never allowed to stop the scan
@@ -283,8 +374,17 @@ def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_mi
     budgets.append(budget)
     cats: dict[str, dict[str, Any]] = {}
     for key, kind, rels in PROFILE_PLACES:
-        parts = [{"path": str(p.joinpath(*rel)), "bytes": dir_size(p.joinpath(*rel), budget, memo)}
-                 for p in layout.profiles() for rel in rels]
+        parts = []
+        for p in layout.profiles():
+            for rel in rels:
+                place = p.joinpath(*rel)
+                if kind == "info" and place.is_dir():
+                    node = _tree(place, budget, memo, 2, min_show, trees)
+                    shown = _decorate(node, layout, min_show) or {"path": str(place), "bytes": node["bytes"], "deletable": False,
+                                                                  "note": "", "children": []}
+                    parts.append(shown)
+                else:
+                    parts.append({"path": str(place), "bytes": dir_size(place, budget, memo)})
         parts = sorted((x for x in parts if x["bytes"] > 0), key=lambda x: -x["bytes"])
         cats[key] = {"key": key, "kind": kind, "bytes": sum(x["bytes"] for x in parts), "parts": parts[:8]}
     cats["temp"]["bytes"] += dir_size(layout.system_root / "Temp", budget, memo)
@@ -307,9 +407,12 @@ def scan(layout: Layout, budget_s: float = 180.0, old_min: int = OLD_MIN, dup_mi
             for c in children:
                 if c.name == "AppData" and parent == prof:
                     continue
-                sizes.append({"path": str(c), "bytes": dir_size(c, budget, memo)})
-    report["largest"] = sorted((s for s in sizes if s["bytes"] > 0), key=lambda s: -s["bytes"])[:15]
-
+                if classify(c, layout)[1] == "system":
+                    continue  # Windows' own places are not shown at all
+                node = _decorate(_tree(c, budget, memo, 3, min_show, trees), layout, min_show)
+                if node:
+                    sizes.append(node)
+    report["largest"] = sorted(sizes, key=lambda s: -s["bytes"])[:15]
     report["suggestions"] = sorted(suggestions, key=lambda s: -s["bytes"])[:MAX_SUGGESTIONS]
     report["partial"] = any(b.hit for b in budgets)
     step(100)
@@ -345,9 +448,44 @@ def _empty(root: Path, older_than_s: float, budget: Budget) -> int:
     return freed
 
 
+def _remove(path: Path) -> tuple[int, bool]:
+    """Delete a file or a folder tree. Links inside are removed as links; what they point to is never touched."""
+    freed = 0
+    if path.is_file():
+        size = path.stat().st_size
+        os.remove(path)
+        return size, True
+    for top, dirs, files in os.walk(path, topdown=False, followlinks=False):
+        for name in files:
+            f = os.path.join(top, name)
+            try:
+                size = 0 if os.path.islink(f) else os.lstat(f).st_size
+                os.remove(f)
+                freed += size
+            except OSError:
+                pass  # in use: left alone
+        for name in dirs:
+            d = os.path.join(top, name)
+            try:
+                if _is_link(Path(d)):
+                    try:
+                        os.unlink(d)
+                    except OSError:
+                        os.rmdir(d)  # a Windows junction: removes the junction, not its target
+                else:
+                    os.rmdir(d)
+            except OSError:
+                pass
+    try:
+        os.rmdir(path)
+    except OSError:
+        pass
+    return freed, not path.exists()
+
+
 def clean(layout: Layout, request: dict[str, Any], budget_s: float = 600.0) -> dict[str, Any]:
     budget = Budget(budget_s)
-    result: dict[str, Any] = {"id": str(request.get("id") or ""), "safe": {}, "files": [], "freed": 0}
+    result: dict[str, Any] = {"id": str(request.get("id") or ""), "safe": {}, "files": [], "folders": [], "freed": 0}
     roots = layout.user_roots()
     for item in request.get("files") or []:
         path = Path(str(item.get("path") or ""))
@@ -367,6 +505,18 @@ def clean(layout: Layout, request: dict[str, Any], budget_s: float = 600.0) -> d
             except (OSError, ValueError, TypeError):
                 status = "error"
         result["files"].append({"path": str(path), "status": status})
+    for item in request.get("folders") or []:
+        path = Path(str(item.get("path") or ""))
+        ok, _note = classify(path, layout) if path.name else (False, "")
+        if not ok or _is_link(path):
+            status = "not_allowed"
+        elif not path.exists():
+            status = "missing"
+        else:
+            freed, complete = _remove(path)
+            result["freed"] += freed
+            status = "deleted" if complete else "partial"
+        result.setdefault("folders", []).append({"path": str(path), "status": status})
     safe_keys = {k for k, kind, _ in PROFILE_PLACES if kind == "safe"} | {"recycle"}
     for key in request.get("safe") or []:
         if key not in safe_keys:

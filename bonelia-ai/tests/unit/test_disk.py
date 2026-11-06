@@ -10,7 +10,7 @@ from pathlib import Path
 from bonelia.collectors import disk
 
 MB = 1024  # small scale for the test; the real thresholds are passed in the same unit
-LIMITS = {"old_min": 100 * MB, "dup_min": 50 * MB, "min_item": 1 * MB}
+LIMITS = {"old_min": 100 * MB, "dup_min": 50 * MB, "min_item": 1 * MB, "min_show": 500 * MB}
 DAY = 86400
 
 
@@ -151,3 +151,77 @@ def test_project_files_and_tiny_files_are_never_offered(tmp_path):
     assert "20261018160000_create_vault_snapshots.sql" not in names and "notiz.txt" not in names
     assert "pack.bin" not in names
     assert "veedelkorb-backup-2026-10-01.zip" in names  # real backups are still offered
+
+
+# --------------------------------------------------------------------- folders: look inside, delete one by one
+def big_pc(tmp_path):
+    layout = pc(tmp_path)
+    home = tmp_path / "Users" / "anna"
+    make(home / ".lmstudio" / "models" / "lmstudio-community" / "Qwen-14B" / "q.gguf", 900 * MB)
+    make(home / ".lmstudio" / "models" / "lmstudio-community" / "Llama-8B" / "l.gguf", 600 * MB)
+    make(home / ".lmstudio" / "models" / "tiny" / "t.gguf", 10 * MB)                     # under 500 MB: not shown
+    make(home / ".codex" / "sessions" / "2026" / "s.jsonl", 700 * MB)
+    make(home / ".codex" / "auth.json", 1 * MB)
+    make(home / "AppData" / "Local" / "Docker" / "wsl" / "disk" / "docker_data.vhdx", 1200 * MB)
+    make(home / "AppData" / "Local" / "Claude-Data" / "vm" / "rootfs.img", 800 * MB)
+    make(home / "AppData" / "Local" / "Microsoft" / "Edge" / "x.bin", 700 * MB)            # system: never shown
+    make(home / "Downloads" / "Projekte-Archiv" / "alt.iso", 650 * MB)
+    return layout
+
+
+def walk(items):
+    for it in items:
+        yield it
+        yield from walk(it.get("children") or [])
+
+
+def test_folders_open_up_hide_small_and_system_ones_and_say_what_may_go(tmp_path):
+    rep = disk.scan(big_pc(tmp_path), budget_s=30, **LIMITS)
+    by_name = {Path(i["path"]).name: i for i in walk(rep["largest"])}
+    assert "Microsoft" not in by_name and "Packages" not in by_name          # system folders are not shown
+    assert "tiny" not in by_name and all(i["bytes"] >= 500 * MB for i in by_name.values())
+    lm = by_name[".lmstudio"]
+    assert lm["deletable"] is False                                          # the app's own folder stays
+    assert by_name["models"]["deletable"] is True                            # its models may go, all or one by one
+    assert by_name["Qwen-14B"]["deletable"] is True and by_name["Qwen-14B"]["bytes"] >= 900 * MB
+    assert by_name["Docker"]["deletable"] is False and by_name["Docker"]["note"] == "docker"
+    assert by_name["Claude-Data"]["deletable"] is False and by_name["Claude-Data"]["note"] == "app"
+    assert by_name[".codex"]["deletable"] is False and by_name["sessions"]["deletable"] is True
+    assert by_name["Downloads"]["deletable"] is False and by_name["Projekte-Archiv"]["deletable"] is True
+    assert all(len(i["id"]) == 16 for i in by_name.values())
+    # The AI models category says where its size is, with the same open-up details.
+    ai = next(c for c in rep["categories"] if c["key"] == "ai_models")
+    assert any(Path(p["path"]).name == "models" and p["deletable"] for p in ai["parts"])
+
+
+def test_folder_cleanup_deletes_only_allowed_places_and_never_follows_links(tmp_path):
+    layout = big_pc(tmp_path)
+    home = tmp_path / "Users" / "anna"
+    qwen = home / ".lmstudio" / "models" / "lmstudio-community" / "Qwen-14B"
+    req = {"id": "f1", "folders": [{"path": str(qwen), "bytes": 900 * MB},
+                                   {"path": str(home / ".ollama"), "bytes": 40 * MB},
+                                   {"path": str(home / "AppData" / "Local" / "Docker"), "bytes": 1200 * MB},
+                                   {"path": str(home / "Downloads"), "bytes": 1},
+                                   {"path": str(tmp_path / "Windows"), "bytes": 1}]}
+    res = disk.clean(layout, req)
+    st = {Path(r["path"]).name: r["status"] for r in res["folders"]}
+    assert st == {"Qwen-14B": "deleted", ".ollama": "not_allowed", "Docker": "not_allowed", "Downloads": "not_allowed",
+                  "Windows": "not_allowed"}
+    assert not qwen.exists() and (home / ".lmstudio" / "models" / "lmstudio-community" / "Llama-8B").exists()
+    assert res["freed"] >= 900 * MB
+    assert (home / ".ollama" / "models" / "blobs" / "sha256-1").exists()
+
+
+def test_folder_cleanup_removes_a_link_but_not_what_it_points_to(tmp_path):
+    layout = big_pc(tmp_path)
+    home = tmp_path / "Users" / "anna"
+    keep = tmp_path / "elsewhere"
+    make(keep / "important.doc", 2 * MB)
+    target = home / "Downloads" / "Projekte-Archiv"
+    try:
+        os.symlink(keep, target / "link-to-elsewhere", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        return  # no symlinks allowed here (e.g. Windows without developer mode)
+    res = disk.clean(layout, {"id": "f2", "folders": [{"path": str(target), "bytes": 650 * MB}]})
+    assert res["folders"][0]["status"] == "deleted" and not target.exists()
+    assert (keep / "important.doc").exists()

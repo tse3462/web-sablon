@@ -32,6 +32,25 @@ def _str(v: Any, n: int) -> str | None:
     return v[:n] if isinstance(v, str) and v else None
 
 
+def _node(x: Any, depth: int) -> dict[str, Any] | None:
+    """A folder of the open-up view: path, size, whether the PC allows deleting it, why not, sub-folders."""
+    if not isinstance(x, dict) or not _str(x.get("path"), 500) or _int(x.get("bytes")) is None:
+        return None
+    nid = x.get("id") if isinstance(x.get("id"), str) and re.fullmatch(r"[0-9a-f]{16}", x["id"]) else None
+    kids = [k for k in (_node(c, depth - 1) for c in (x.get("children") or [])[:8]) if k] if depth > 0 else []
+    return {"id": nid, "path": x["path"][:500], "bytes": x["bytes"], "deletable": bool(nid) and x.get("deletable") is True,
+            "note": (x.get("note") if isinstance(x.get("note"), str) else "")[:20], "children": kids}
+
+
+def tree_nodes(rep: dict[str, Any]):
+    """Every folder node of a stored report (largest folders and the categories' parts)."""
+    stack = list(rep.get("largest") or []) + [p for c in rep.get("categories") or [] for p in c.get("parts") or []]
+    while stack:
+        n = stack.pop()
+        yield n
+        stack.extend(n.get("children") or [])
+
+
 def clean_report(raw: Any) -> dict[str, Any]:
     """Keep only the known fields, in bounded size: a report is data from a PC, not trusted input."""
     raw = raw if isinstance(raw, dict) else {}
@@ -42,12 +61,9 @@ def clean_report(raw: Any) -> dict[str, Any]:
             out["drives"].append({"name": d["name"][:40], "total": d["total"], "free": d["free"]})
     for c in (raw.get("categories") or [])[:20]:
         if isinstance(c, dict) and _str(c.get("key"), 40) and c.get("kind") in ("safe", "info") and _int(c.get("bytes")) is not None:
-            parts = [{"path": x["path"][:500], "bytes": x["bytes"]} for x in (c.get("parts") or [])[:8]
-                     if isinstance(x, dict) and _str(x.get("path"), 500) and _int(x.get("bytes")) is not None]
+            parts = [n for n in (_node(x, 3) for x in (c.get("parts") or [])[:8]) if n]
             out["categories"].append({"key": c["key"][:40], "kind": c["kind"], "bytes": c["bytes"], "parts": parts})
-    for f in (raw.get("largest") or [])[:20]:
-        if isinstance(f, dict) and _str(f.get("path"), 500) and _int(f.get("bytes")) is not None:
-            out["largest"].append({"path": f["path"][:500], "bytes": f["bytes"]})
+    out["largest"] = [n for n in (_node(f, 3) for f in (raw.get("largest") or [])[:20]) if n]
     for s in (raw.get("suggestions") or [])[:400]:
         if not isinstance(s, dict) or not (isinstance(s.get("id"), str) and re.fullmatch(r"[0-9a-f]{16}", s["id"])):
             continue
@@ -57,8 +73,10 @@ def clean_report(raw: Any) -> dict[str, Any]:
     res = raw.get("cleanup_result")
     if isinstance(res, dict) and _str(res.get("id"), 40):
         out["cleanup_result"] = {"id": res["id"][:40], "freed": _int(res.get("freed")) or 0,
-                                 "deleted": sum(1 for f in (res.get("files") or []) if isinstance(f, dict) and f.get("status") == "deleted"),
-                                 "skipped": sum(1 for f in (res.get("files") or []) if isinstance(f, dict) and f.get("status") != "deleted"),
+                                 "deleted": sum(1 for f in (res.get("files") or []) + (res.get("folders") or [])
+                                                if isinstance(f, dict) and f.get("status") == "deleted"),
+                                 "skipped": sum(1 for f in (res.get("files") or []) + (res.get("folders") or [])
+                                                if isinstance(f, dict) and f.get("status") != "deleted"),
                                  "error": _str(res.get("error"), 80)}
     if _str(raw.get("scan_request"), 40):
         out["scan_request"] = raw["scan_request"][:40]
