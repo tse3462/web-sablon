@@ -104,6 +104,8 @@ class AppBody(BaseModel):
     # AI repair: the program's GitHub repository ("owner/name") and, once, a key with "Actions: read and write"
     repair_repo: str | None = Field(default=None, max_length=201)
     repair_token: str | None = Field(default=None, max_length=300)
+    # The program's admin page: a tap on its card in "Programlar" opens it (user request 06.11.2026)
+    admin_url: str | None = Field(default=None, max_length=500)
 
 
 APPS_KEY = "apps"
@@ -471,6 +473,9 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         check_url = (body.check_url or "").strip() or None
         if check_url and not _URL.match(check_url):
             raise HTTPException(422, "invalid_url")
+        admin_url = (body.admin_url or "").strip() or None
+        if admin_url and not _URL.match(admin_url):
+            raise HTTPException(422, "invalid_url")
         repair_repo = (body.repair_repo or "").strip() or None
         if repair_repo and not valid_repo(repair_repo):
             raise HTTPException(422, "invalid_repo")
@@ -479,7 +484,7 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
             raise HTTPException(422, "invalid_repair_token")
         item = {"id": body.id or secrets.token_hex(6), "name": name, "url": url, "icon": (body.icon.strip() or "🔗")[:8],
                 "check_url": check_url, "keyword": normalize_keyword(body.keyword), "monitor": body.monitor,
-                "links": parse_links(body.links), "repair_repo": repair_repo}
+                "links": parse_links(body.links), "repair_repo": repair_repo, "admin_url": admin_url}
         apps = apps_list()
         idx = next((i for i, a in enumerate(apps) if a.get("id") == item["id"]), None)
         if idx is None:

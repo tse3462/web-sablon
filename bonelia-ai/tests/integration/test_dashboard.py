@@ -253,7 +253,8 @@ def test_my_apps_launcher_add_edit_move_delete(tmp_path):
     first = a[0]["id"]
     edited = c.post("/api/apps", json={"id": first, "name": "VK Admin", "url": "https://admin.veedelkorb.de/login", "icon": "🍦"}, headers=H).json()["apps"]
     assert edited[0] == {"id": first, "name": "VK Admin", "url": "https://admin.veedelkorb.de/login", "icon": "🍦",
-                         "check_url": None, "keyword": None, "monitor": True, "links": [], "repair_repo": None}  # monitored by default (06.11.2026)
+                         "check_url": None, "keyword": None, "monitor": True, "links": [], "repair_repo": None,
+                         "admin_url": None}  # monitored by default (06.11.2026)
     assert c.post("/api/apps", json={"id": "nope", "name": "x", "url": "https://x.de"}, headers=H).status_code == 404
     moved = c.post(f"/api/apps/{first}/move?step=1", json={}, headers=H).json()["apps"]
     assert [x["name"] for x in moved] == ["Kasa", "VK Admin"]
@@ -355,4 +356,23 @@ def test_rescue_switches_and_closing_a_program_from_the_panel(tmp_path):
     html = c.get("/").text
     assert "function rescueLine(" in html and 'id="rescueHung"' in html and 'id="rescueMem"' in html
     for key in ("rs_title", "rs_hung", "rs_mem", "rs_close", "rs_ev_hung", "rs_ev_memory"):
+        assert html.count(key + ":") == 2
+
+
+def test_programs_have_their_own_page_and_open_their_admin_address(tmp_path):
+    """User request 06.11.2026: the five home tiles repeated the bottom menu and went; the programs moved to their
+    own "Programlar" page, and a tap opens each program's admin address (the site itself when none is set)."""
+    store, c, *_ = setup(tmp_path)
+    r = c.post("/api/apps", json={"name": "VeedelKorb", "url": "https://veedelkorb.bnl-digital.de",
+                                  "admin_url": "https://veedelkorb.bnl-digital.de/admin"}, headers=H).json()["apps"]
+    assert r[0]["admin_url"] == "https://veedelkorb.bnl-digital.de/admin"
+    assert c.post("/api/apps", json={"name": "x", "url": "https://x.de", "admin_url": "javascript:alert(1)"}, headers=H).status_code == 422
+    html = c.get("/").text
+    assert 'id="tileStatus"' not in html and 'class="tiles"' not in html  # no repeat of the bottom menu
+    assert '<section id="p-apps"' in html and 'data-p="apps"' in html and 'id="apps"' in html
+    home = html[html.index('<section id="p-home"'):html.index('<section id="p-apps"')]
+    assert 'id="apps"' not in home and 'id="live"' in home and 'id="homeList"' in home
+    assert "a.admin_url||a.url" in html and 'id="appAdmin"' in html
+    assert "repeat(8,1fr)" in html  # eight places in the phone's bottom menu
+    for key in ("n_apps", "app_admin", "nv_devices"):
         assert html.count(key + ":") == 2
