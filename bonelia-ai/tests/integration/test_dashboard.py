@@ -296,6 +296,17 @@ def test_home_has_the_live_center_built_from_real_data(tmp_path):
         assert html.count(key + ":") == 2  # Turkish and German text
 
 
+def test_live_center_puts_the_ai_network_on_top_and_programs_as_a_green_network_below(tmp_path):
+    """User request 06.11.2026: the AI-with-computers picture first, the own programs right under it, drawn in
+    the same network style around the AI but keeping their green colours; the status rows stay underneath."""
+    _, c, *_ = setup(tmp_path)
+    html = c.get("/").text
+    assert "grid.append(net,prog,side,act,res,sk)" in html
+    assert "function lvAppNet(" in html and 'prog.append(lvAppNet(UP||[]),list)' in html
+    assert ".lv-g{" in html  # green variant of the network picture
+    assert html.count("lv_apps_net:") == 2
+
+
 def test_devices_offer_rustdesk_connect_without_any_password(tmp_path):
     store, c, t, usb, agent = setup(tmp_path)
     store.set_device_status(agent, {"cycles": 1, "remote": {"installed": True, "rustdesk_id": "123456789", "service": "running"}})
