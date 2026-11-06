@@ -27,3 +27,11 @@ def test_stop_script_asks_for_admin_when_the_server_runs_elevated():
     could not end it, so pip could not replace the program ('Der Prozess kann nicht auf die Datei zugreifen')."""
     stop = (WIN / "BONELIA-Server-Durdur.bat").read_text(encoding="ascii")
     assert "net session" in stop and "-Verb RunAs -Wait" in stop and ":alive" in stop
+
+
+def test_usb_preparation_downloads_only_checked_installers_and_saves_the_key():
+    bat = (WIN / "BONELIA-USB-Hazirla.bat").read_text(encoding="ascii")
+    assert "#==PS==" in bat and "Get-AuthenticodeSignature" in bat and "-notmatch 'Tailscale'" in bat
+    assert "Get-FileHash" in bat and "sha256:" in bat  # RustDesk checked against GitHub's published SHA-256
+    assert "https://login.tailscale.com/admin/settings/keys" in bat and "tskey-auth-" in bat
+    assert "config\\tailscale-authkey.txt" in bat

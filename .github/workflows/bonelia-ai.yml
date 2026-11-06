@@ -94,6 +94,25 @@ jobs:
           cmd /c deployment\windows\BONELIA-Ajanlari-Guncelle.bat "$env:RUNNER_TEMP\usb\yok.exe"
           if ($LASTEXITCODE -eq 0) { throw "missing agent file must fail" }
           $global:LASTEXITCODE = 0   # that failure was expected; do not let it end the step as failed
+      - name: USB preparation script (real downloads, signature and SHA-256 checks)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $u = "$env:RUNNER_TEMP\usbprep\BONELIA-AI-Portable"
+          New-Item -ItemType Directory -Force $u | Out-Null
+          Set-Content "$u\Bu-Bilgisayara-Kur.bat" "stand-in"
+          $env:BONELIA_USB = $u; $env:BONELIA_TS_KEY = "tskey-auth-kTEST123-abcDEF"; $env:CI = "1"
+          cmd /c deployment\windows\BONELIA-USB-Hazirla.bat
+          if ($LASTEXITCODE -ne 0) { throw "USB preparation failed" }
+          $ts = Get-ChildItem "$u\tailscale\*.msi"; $rd = Get-ChildItem "$u\rustdesk\*.msi"
+          if (-not $ts) { throw "no Tailscale MSI" }; if (-not $rd) { throw "no RustDesk MSI" }
+          $ts.Name; $rd.Name; (Get-AuthenticodeSignature $ts.FullName).SignerCertificate.Subject
+          if ([IO.File]::ReadAllText("$u\config\tailscale-authkey.txt") -ne "tskey-auth-kTEST123-abcDEF") { throw "key file wrong" }
+          # A second run keeps what is there and does not download again.
+          $env:BONELIA_TS_KEY = ""
+          cmd /c deployment\windows\BONELIA-USB-Hazirla.bat
+          if ($LASTEXITCODE -ne 0) { throw "second run failed" }
 
   windows:
     # Real Windows verification: event log access, controlled error via eventcreate,
