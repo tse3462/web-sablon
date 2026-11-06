@@ -137,5 +137,7 @@ class VaultStore:
             "rustdesk_id=excluded.rustdesk_id, box=excluded.box, rotate_done=excluded.rotate_done, updated_at=excluded.updated_at",
             (secrets.token_hex(8), "rustdesk", device_id, dev.get("label") or "", "", rustdesk_id, json.dumps(sealed["box"]),
              rotate, now, now))
+        # RustDesk keeps only the password set last: an older entry of another agent for the same ID is now wrong.
+        self.store._x("delete from vault_entries where kind='rustdesk' and rustdesk_id=? and device_id<>?", (rustdesk_id, device_id))
         self.store.audit("device", "vault.rustdesk_password_set", {"rustdesk_id": rustdesk_id}, device_id=device_id)
         return True

@@ -162,3 +162,21 @@ def test_password_set_by_an_older_agent_is_set_again_with_the_check(tmp_path, en
     assert len(calls) == 1
     [e] = entries(dash, "rustdesk")
     assert vault.open_box(vault.unlock(meta, MASTER), e["box"])["password"] == calls[0]
+
+
+def test_one_entry_per_rustdesk_id_the_newest_password_wins(tmp_path, env):  # noqa: F811
+    """Two agents on one PC (e.g. USB install plus the owner's own agent) report the same RustDesk ID.
+    RustDesk holds the password set last, so the vault must show exactly that one."""
+    store = env["store"]
+    dash = panel(store)
+    meta = vault.create(MASTER)
+    dash.post("/api/vault/setup", json={"meta": meta})
+    first = usb(tmp_path, env, "LAPTOP-USB", env["a"], scopes=("diagnose", "repair:windows"))
+    second = usb(tmp_path, env, "LAPTOP-OWN", env["a"], scopes=("diagnose", "repair:windows"))
+    fp = vault.fingerprint(meta["pub"])
+    for s, pw in ((first, "Erstes1234Passwort"), (second, "Zweites5678Passwort")):
+        reply = s.client.heartbeat({"cycles": 1, "remote": {**RD, "vault": {"box": vault.seal(meta["pub"], {"password": pw}), "for": fp}}})
+        assert reply["vault_saved"] is True
+    [e] = entries(dash, "rustdesk")
+    assert e["title"] == "LAPTOP-OWN" and vault.open_box(vault.unlock(meta, MASTER), e["box"])["password"] == "Zweites5678Passwort"
+    assert e["updated_at"]
