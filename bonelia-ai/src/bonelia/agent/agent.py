@@ -29,6 +29,7 @@ from ..contracts import Triage
 from ..monitor.client import ServerClient, ServerError, ServerUnavailable
 from ..monitor.repair_local import repair as run_repair
 from ..monitor.scan import run_scan
+from ..collectors.remote import rustdesk_info
 
 log = logging.getLogger("bonelia.agent")
 DENIED_RETRY_S = 6 * 3600
@@ -68,10 +69,23 @@ class AgentState:
 class Agent:
     def __init__(self, client: ServerClient, state: AgentState, lang: str = "tr", executors=None,
                  scan: Callable[..., Any] = run_scan, own_exe: Path | None = None, self_update: bool = False,
-                 maintenance_interval_s: int = MAINTENANCE_INTERVAL_S, maintenance_tools: tuple[str, ...] = MAINTENANCE_TOOLS):
+                 maintenance_interval_s: int = MAINTENANCE_INTERVAL_S, maintenance_tools: tuple[str, ...] = MAINTENANCE_TOOLS,
+                 remote: Callable[[], dict | None] | None = None):
         self.client, self.state, self.lang, self.executors, self.scan = client, state, lang, executors, scan
         self.own_exe, self.self_update = own_exe, self_update
         self.maintenance_interval_s, self.maintenance_tools = maintenance_interval_s, maintenance_tools
+        self.remote = remote if remote is not None else rustdesk_info  # RustDesk ID for "connect" in the panel
+        self._remote_cache: tuple[float, dict | None] | None = None
+
+    def remote_info(self) -> dict | None:
+        """RustDesk state, read at most every 15 minutes (it starts a program)."""
+        now = time.monotonic()
+        if self._remote_cache is None or now - self._remote_cache[0] > 900:
+            try:
+                self._remote_cache = (now, self.remote())
+            except Exception:  # remote access is a convenience; it must never stop monitoring
+                self._remote_cache = (now, None)
+        return self._remote_cache[1]
 
     def cycle(self) -> dict[str, Any]:
         summary: dict[str, Any] = {"new_findings": 0, "sent": False, "repairs": [], "offline": False}
@@ -166,9 +180,13 @@ class Agent:
                 except (ServerUnavailable, ServerError, ValueError, OSError) as exc:
                     summary["update"] = f"error:{type(exc).__name__}"
             try:  # "alive" signal for the control panel, with a short summary of this cycle
-                resp = self.client.heartbeat({"cycles": self.state.data["cycles"], "new_findings": summary["new_findings"],
-                                              "repairs": [f"{r.get('tool_id')}:{r.get('outcome')}" for r in summary["repairs"]],
-                                              "important_open": sum(1 for e in res.events if e.triage == Triage.important)})
+                status = {"cycles": self.state.data["cycles"], "new_findings": summary["new_findings"],
+                          "repairs": [f"{r.get('tool_id')}:{r.get('outcome')}" for r in summary["repairs"]],
+                          "important_open": sum(1 for e in res.events if e.triage == Triage.important)}
+                remote = self.remote_info()
+                if remote:
+                    status["remote"] = remote
+                resp = self.client.heartbeat(status)
                 if isinstance(resp, dict) and isinstance(resp.get("policy"), dict) and resp["policy"] != self.state.data.get("policy"):
                     self.state.data["policy"] = resp["policy"]  # used from the next cycle on
                     self.state.save()

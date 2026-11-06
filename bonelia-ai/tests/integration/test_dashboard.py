@@ -294,3 +294,13 @@ def test_home_has_the_live_center_built_from_real_data(tmp_path):
     assert ".hero .big{display:none}" in html and 'el("span","lv-st-text",HERO.h)' in html
     for key in ("lv_title", "lv_repairs_kind", "lv_skills", "lv_activity"):
         assert html.count(key + ":") == 2  # Turkish and German text
+
+
+def test_devices_offer_rustdesk_connect_without_any_password(tmp_path):
+    store, c, t, usb, agent = setup(tmp_path)
+    store.set_device_status(agent, {"cycles": 1, "remote": {"installed": True, "rustdesk_id": "123456789", "service": "running"}})
+    devs = {d["id"]: d for d in c.get("/api/overview", headers=H).json()["devices"]}
+    assert devs[agent]["last_status"]["remote"]["rustdesk_id"] == "123456789"
+    html = c.get("/").text
+    assert 'href="rustdesk://${esc(r.rustdesk_id)}"' in html and "function remoteLine(d)" in html
+    assert "password" not in html.split("function remoteLine(d)")[1].split("// ---------- live center")[0]

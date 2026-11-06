@@ -7,6 +7,7 @@ home server. The network API only serves enrolled, signed devices.
 
 from __future__ import annotations
 
+import re
 import asyncio
 import contextlib
 import json
@@ -342,7 +343,15 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         The reply carries this device's settings from the panel (e.g. backup folders), so a change
         reaches the agent on its next cycle without any extra connection."""
         hb = parse(Heartbeat, auth["body"])
-        store.set_device_status(auth["device"]["id"], redact_value(hb.status))
+        # The RustDesk ID gets its own checked field; the general clean-up would hide it as a number.
+        remote = hb.status.pop("remote", None)
+        status = redact_value(hb.status)
+        if isinstance(remote, dict):
+            rid = str(remote.get("rustdesk_id") or "").replace(" ", "")
+            status["remote"] = {"installed": remote.get("installed") is True,
+                                "rustdesk_id": rid if re.fullmatch(r"\d{8,12}", rid) else None,
+                                "service": remote.get("service") if remote.get("service") in ("running", "stopped", "missing") else "unknown"}
+        store.set_device_status(auth["device"]["id"], status)
         return {"ok": True, "policy": store.device_policy(auth["device"]["id"])}
 
     @app.post("/v1/analyze")

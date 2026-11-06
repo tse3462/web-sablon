@@ -348,3 +348,17 @@ def test_rate_limited_cleanup_is_retried_in_an_hour_not_tomorrow(tmp_path, env):
     assert mnt[0]["outcome"] == "denied" and "rate_limited" in mnt[0]["reasons"] and "clean_temp" not in pc.calls
     wait = state.data["last_maintenance"] + 24 * 3600 - time.time()
     assert 3500 < wait <= 3600  # next attempt in about an hour
+
+
+def test_rustdesk_id_reaches_the_panel_and_nothing_else_slips_through(tmp_path, env):  # noqa: F811
+    """The ID gets its own checked field: the general clean-up would otherwise hide it as [number]."""
+    s = usb(tmp_path, env, "AGENT-RD", env["a"], scopes=("diagnose", "repair:windows"))
+    pc = FakePC()
+    agent = Agent(s.client, AgentState(tmp_path / "rd.json"), executors=pc.executors(), scan=pc.scan,
+                  remote=lambda: {"installed": True, "rustdesk_id": "123456789", "service": "running"})
+    agent.cycle()
+    status = json.loads(env["store"].device(s.creds.device_id)["last_status"])
+    assert status["remote"] == {"installed": True, "rustdesk_id": "123456789", "service": "running"}
+    s.client.heartbeat({"cycles": 2, "remote": {"installed": True, "rustdesk_id": "123; rm -rf /", "service": "<b>x</b>"}})
+    status = json.loads(env["store"].device(s.creds.device_id)["last_status"])
+    assert status["remote"] == {"installed": True, "rustdesk_id": None, "service": "unknown"}
