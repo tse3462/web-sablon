@@ -35,3 +35,19 @@ def test_usb_preparation_downloads_only_checked_installers_and_saves_the_key():
     assert "Get-FileHash" in bat and "sha256:" in bat  # RustDesk checked against GitHub's published SHA-256
     assert "https://login.tailscale.com/admin/settings/keys" in bat and "tskey-auth-" in bat
     assert "config\\tailscale-authkey.txt" in bat
+
+
+def test_backup_and_one_click_reinstall_scripts():
+    """06.11.2026: before a format one double-click copies what is not on GitHub; after it, one double-click on the
+    stick brings everything back (checked backup, same Tailscale identity, same server key, own agent re-registered)."""
+    bk = (WIN / "BONELIA-Yedekle.bat").read_text(encoding="ascii")
+    assert "#==PS==" in bk and "bonelia.server.backup" in bk and "tailscale/server-state.conf=" in bk
+    assert "agent_device_id=" in bk and "BONELIA-Format-Sonrasi-Kur.bat" in bk and "net session" in bk
+    rs = (WIN / "BONELIA-Format-Sonrasi-Kur.bat").read_text(encoding="ascii")
+    assert "#==PS==" in rs and "Get-FileHash -Algorithm SHA256" in rs and "Yedek bozuk" in rs
+    for pkg in ("Git.Git", "Python.Python.3.14", "Tailscale.Tailscale", "RustDesk.RustDesk", "Ollama.Ollama"):
+        assert f"'{pkg}'" in rs
+    assert "server-state.conf" in rs and "replace-agent" in rs and "agent-install --code" in rs
+    assert "BONELIA-Kur-Otomatik.bat" in rs and "BONELIA-Ajan-Onar.bat" in rs and ".onceki-" in rs
+    # the data is put back BEFORE the server starts, so it never makes a new key of its own
+    assert rs.index("RestoreData\n$cfg") < rs.index("BONELIA-Kur-Otomatik.bat")

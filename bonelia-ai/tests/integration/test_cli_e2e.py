@@ -144,3 +144,22 @@ def test_dashboard_refuses_unsafe_bind(tmp_path):
             env, check=False, timeout=30)
     assert p.returncode == 2 and ("Tailscale" in p.stdout or "Tailscale" in p.stderr)
 
+
+
+def test_replace_agent_after_a_reinstall_of_the_server_pc(tmp_path):
+    """06.11.2026: after a format the owner's PC lost its agent key (Windows-protected); its old entry is revoked and a
+    one-time code for a new agent of the same customer and name is made, used by the one-click reinstall."""
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    srv = ["-m", "bonelia.server.cli", "--data-dir", str(tmp_path / "d")]
+    tenant = run([*srv, "tenant-add", "BONELIA"], env).stdout.strip()
+    from bonelia.server.store import Store
+
+    store = Store(tmp_path / "d" / "bonelia.db")
+    usb = store.redeem_enrollment(store.create_enrollment_code(tenant, ["diagnose", "install:agent"]), "USB", "pk0")["device_id"]
+    old = store.create_agent_device(tenant, "BONELIA-PC", "pk1", usb)["device_id"]
+    out = json.loads(run([*srv, "replace-agent", old], env).stdout)
+    assert out["label"] == "BONELIA-PC" and out["tenant_id"] == tenant and out["code"]
+    assert store.device(old)["status"] == "revoked"
+    new = store.redeem_enrollment(out["code"], out["label"], "pk2")
+    assert new["tenant_id"] == tenant and set(new["scopes"]) == {"agent", "repair:windows"}
+    assert run([*srv, "replace-agent", "dev_unknown"], env, check=False).returncode == 1

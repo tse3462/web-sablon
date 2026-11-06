@@ -114,7 +114,12 @@ def _agent_command(args) -> int:
             state = json.loads(inst.state_path().read_text(encoding="utf-8")).get("last_cycle", {})
         except (OSError, ValueError):
             pass
-        print(json.dumps({"installed": inst.task_installed(), "credentials": inst.cred_path().is_file(),
+        device_id = None
+        try:  # the backup notes it, so a reinstall can replace exactly this PC's entry
+            device_id = inst.load_credentials().device_id
+        except Exception:
+            pass
+        print(json.dumps({"installed": inst.task_installed(), "credentials": inst.cred_path().is_file(), "device_id": device_id,
                           "dir": str(inst.agent_dir()), "last_cycle": state}, indent=2, ensure_ascii=False))
         return 0
     if args.cmd == "agent-uninstall":

@@ -61,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     ds.add_argument("--add", default="")
     ds.add_argument("--remove", default="")
 
+    ra = sub.add_parser("replace-agent", help="after a reinstall of a PC: revoke its old agent, print a one-time code for the new one")
+    ra.add_argument("device_id")
     r = sub.add_parser("revoke", help="revoke a device immediately (lost USB)")
     r.add_argument("device_id")
 
@@ -165,6 +167,14 @@ def main(argv: list[str] | None = None) -> int:
         code = store.create_enrollment_code(args.tenant_id, [s.strip() for s in args.scopes.split(",") if s.strip()],
                                             args.ttl_minutes)
         print(code)
+    elif args.cmd == "replace-agent":
+        dev = store.device(args.device_id)
+        if dev is None:
+            print("unknown device", file=sys.stderr)
+            return 1
+        store.revoke_device(dev["id"], actor="admin:reinstall")
+        code = store.create_enrollment_code(dev["tenant_id"], list(store.AGENT_SCOPES), 30)
+        print(json.dumps({"code": code, "label": dev["label"], "tenant_id": dev["tenant_id"]}))
     elif args.cmd == "devices":
         print(json.dumps(store.devices(args.tenant), indent=2, ensure_ascii=False))
     elif args.cmd == "allow-repairs":

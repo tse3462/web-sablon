@@ -94,6 +94,28 @@ jobs:
           cmd /c deployment\windows\BONELIA-Ajanlari-Guncelle.bat "$env:RUNNER_TEMP\usb\yok.exe"
           if ($LASTEXITCODE -eq 0) { throw "missing agent file must fail" }
           $global:LASTEXITCODE = 0   # that failure was expected; do not let it end the step as failed
+      - name: Backup before a format and the one-click restore afterwards
+        shell: pwsh
+        run: |
+          $d = "$env:RUNNER_TEMP\srv"; New-Item -ItemType Directory -Force $d | Out-Null
+          python -c "import sys; from bonelia.server.store import Store; Store(sys.argv[1]).create_tenant('BONELIA')" "$d\bonelia.db"
+          Set-Content "$d\server_ed25519.key" "KEY-ORIGINAL"; Set-Content "$d\dashboard.token" "tok"
+          Set-Content "$env:RUNNER_TEMP\srv.toml" ("[server]`ndata_dir = `"" + ($d -replace '\\', '/') + "`"`n")
+          $env:CI = "1"; $env:BONELIA_PY = (Get-Command python).Source; $env:BONELIA_CONFIG = "$env:RUNNER_TEMP\srv.toml"
+          $usb = "$env:RUNNER_TEMP\usb2\BONELIA-Yedek"; $env:BONELIA_BACKUP_DEST = $usb
+          cmd /c deployment\windows\BONELIA-Yedekle.bat
+          if ($LASTEXITCODE -ne 0) { throw "backup failed" }
+          if (-not (Test-Path "$usb\BONELIA-Format-Sonrasi-Kur.bat")) { throw "restore script not put next to the backup" }
+          $env:BONELIA_ONLY_DATA = "1"; $env:BONELIA_DATA_DIR = "$env:RUNNER_TEMP\restored"
+          cmd /c "$usb\BONELIA-Format-Sonrasi-Kur.bat"
+          if ($LASTEXITCODE -ne 0) { throw "restore failed" }
+          if ((Get-Content "$env:RUNNER_TEMP\restored\server_ed25519.key") -ne "KEY-ORIGINAL") { throw "server key not restored" }
+          if (-not (Test-Path "$env:RUNNER_TEMP\restored\bonelia.db")) { throw "database not restored" }
+          $b = Get-ChildItem -Directory $usb -Filter 'sunucu-*' | Select-Object -First 1
+          Set-Content "$($b.FullName)\data\dashboard.token" "changed"
+          cmd /c "$usb\BONELIA-Format-Sonrasi-Kur.bat"
+          if ($LASTEXITCODE -eq 0) { throw "a damaged backup must be refused" }
+          $global:LASTEXITCODE = 0   # that failure was expected
       - name: USB preparation script (real downloads, signature and SHA-256 checks)
         shell: pwsh
         env:
