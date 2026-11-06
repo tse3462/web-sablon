@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="de" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      /* Brand tokens — taken from web-sablon/style.css */
+      :root {
+        --color-primary: #5c3317;
+        --color-secondary: #f5f0e8;
+        --color-accent: #c9a227;
+        --color-text: #2b2b2b;
+        --color-muted: #7a7a7a;
+        /* Segoe UI is not available to the renderer; Inter is the closest installed humanist sans */
+        --font-main: "Segoe UI", "Inter", Arial, sans-serif;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #000;
+      }
+      body { font-family: var(--font-main); }
+
+      #a-roll {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform-origin: 50% 45%;
+      }
+
+      /* Legibility shade: static, no transition */
+      #shade {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(to bottom, rgba(0,0,0,0.45) 0px, rgba(0,0,0,0) 360px),
+          linear-gradient(to top, rgba(0,0,0,0.55) 0px, rgba(0,0,0,0.25) 620px, rgba(0,0,0,0) 1000px);
+      }
+
+      /* Opening wordmark, styled like .logo */
+      #logo {
+        position: absolute;
+        top: 140px;
+        left: 0;
+        width: 1080px;
+        text-align: center;
+        color: #fff;
+        font-size: 66px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-shadow: 0 3px 18px rgba(0,0,0,0.45);
+      }
+      #logo .rule {
+        display: block;
+        width: 110px;
+        height: 6px;
+        margin: 14px auto 0;
+        border-radius: 3px;
+        background: var(--color-accent);
+        transform-origin: 50% 50%;
+      }
+
+      /* Captions */
+      .cap {
+        position: absolute;
+        left: 70px;
+        width: 940px;
+        top: 1120px;
+        text-align: center;
+        color: #fff;
+        font-size: 94px;
+        font-weight: 800;
+        line-height: 1.16;
+        letter-spacing: -0.5px;
+        text-shadow: 0 4px 22px rgba(0,0,0,0.5);
+      }
+      .cap .w { display: inline-block; margin: 0 0.12em; }
+      .cap .hl {
+        position: relative;
+        display: inline-block;
+        margin: 0 0.12em;
+        padding: 0 0.16em;
+        text-shadow: none;
+        isolation: isolate;
+      }
+      .cap .hl .bar {
+        position: absolute;
+        left: 0; right: 0;
+        top: 0.08em; bottom: 0.02em;
+        border-radius: 14px;
+        background: var(--color-accent);
+        transform-origin: 0% 50%;
+        z-index: -1;
+      }
+      .cap .hl .t { display: inline-block; }
+
+      /* End card: bottom sheet in brand cream */
+      #sheet {
+        position: absolute;
+        left: 0;
+        top: 1270px;
+        width: 1080px;
+        height: 650px;
+        background: var(--color-secondary);
+        border-radius: 44px 44px 0 0;
+        box-shadow: 0 -10px 40px rgba(0,0,0,0.35);
+        text-align: center;
+        padding-top: 64px;
+      }
+      #sheet .brand {
+        color: var(--color-primary);
+        font-size: 84px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        line-height: 1;
+      }
+      #sheet .rule {
+        width: 120px;
+        height: 6px;
+        margin: 22px auto 26px;
+        border-radius: 3px;
+        background: var(--color-accent);
+      }
+      #sheet .addr {
+        color: var(--color-text);
+        font-size: 50px;
+        font-weight: 600;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+      }
+      #sheet .addr svg { width: 44px; height: 52px; display: block; }
+      #sheet .addr .city { color: var(--color-muted); font-weight: 500; }
+      #sheet .btn {
+        display: inline-block;
+        margin-top: 48px;
+        background: var(--color-primary);
+        color: #fff;
+        padding: 30px 84px;
+        border-radius: 16px;
+        font-size: 48px;
+        font-weight: 600;
+        line-height: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="15.04"
+      data-width="1080"
+      data-height="1920"
+    >
+      <video
+        id="a-roll"
+        class="clip"
+        src="src.mp4"
+        playsinline
+        data-start="0"
+        data-duration="15.04"
+        data-track-index="0"
+        data-has-audio="true"
+        data-fade-out="0.6"
+      ></video>
+
+      <div id="shade" class="clip" data-start="0" data-duration="15.04" data-track-index="1"></div>
+
+      <!-- S1 0–3.0: salon -->
+      <div id="logo" class="clip" data-start="0" data-duration="3.0" data-track-index="2">
+        Bonelia<span class="rule"></span>
+      </div>
+      <div id="c1" class="cap clip" data-start="0" data-duration="3.0" data-track-index="3">
+        <span class="w">Dein</span><span class="w">Abend</span><span class="w">in</span><span class="w">der</span><br />
+        <span class="hl"><span class="bar"></span><span class="t">Keupstraße</span></span>
+      </div>
+
+      <!-- S2 3.0–4.8: service -->
+      <div id="c2" class="cap clip" data-start="3.0" data-duration="1.85" data-track-index="3">
+        <span class="hl"><span class="bar"></span><span class="t">Frisch</span></span><br />
+        <span class="w">vom</span><span class="w">Grill</span>
+      </div>
+
+      <!-- S3 4.8–8.0: platter at the table -->
+      <div id="c3" class="cap clip" data-start="4.8" data-duration="3.2" data-track-index="3">
+        <span class="w">Qualität,</span><span class="w">die</span><span class="w">man</span><br />
+        <span class="hl"><span class="bar"></span><span class="t">schmeckt</span></span>
+      </div>
+
+      <!-- S4 8.2–12.0: live music (music section B) -->
+      <div id="c4" class="cap clip" data-start="8.1" data-duration="3.9" data-track-index="3">
+        <span class="hl"><span class="bar"></span><span class="t">Live-Musik</span></span><br />
+        <span class="w">&amp;</span><span class="w">gute</span><span class="w">Laune</span>
+      </div>
+
+      <!-- S5 12.0–15.04: end card (also covers the burned-in address in the source) -->
+      <div id="sheet" class="clip" data-start="11.9" data-duration="3.14" data-track-index="4">
+        <div class="brand">Bonelia</div>
+        <div class="rule"></div>
+        <div class="addr">
+          <svg viewBox="0 0 24 28" aria-hidden="true">
+            <path fill="#5c3317" d="M12 0C5.4 0 0 5.2 0 11.7 0 20.2 12 28 12 28s12-7.8 12-16.3C24 5.2 18.6 0 12 0z"/>
+            <circle cx="12" cy="11.5" r="4.4" fill="#c9a227"/>
+          </svg>
+          <span>Keupstr. 25 <span class="city">· Köln</span></span>
+        </div>
+        <div class="btn">Jetzt reservieren</div>
+      </div>
+    </div>
+
+    <script>
+      // Music: 115 BPM. Downbeats 1.975 4.065 6.145 8.225 10.315 12.405 14.485; beats every ~0.52 s.
+      const tl = gsap.timeline({ paused: true });
+      const BROWN = "#5c3317";
+
+      // Slow push-in over the whole film to keep the upscaled crop alive (no added transitions).
+      tl.fromTo("#a-roll", { scale: 1 }, { scale: 1.06, duration: 15.04, ease: "none" }, 0);
+
+      // Words enter, key word is hit on a beat (gold bar wipes in, word turns brown and pops), then exit.
+      function caption(id, tIn, tHit, tOut) {
+        const words = id + " .w";
+        const hl = id + " .hl";
+        tl.from(words, { y: 60, opacity: 0, duration: 0.45, stagger: 0.08, ease: "power3.out" }, tIn);
+        tl.from(hl, { y: 60, opacity: 0, duration: 0.45, ease: "power3.out" }, tIn + 0.12);
+        tl.fromTo(hl + " .bar", { scaleX: 0 }, { scaleX: 1, duration: 0.26, ease: "power2.out" }, tHit);
+        tl.to(hl + " .t", { color: BROWN, duration: 0.12, ease: "none" }, tHit + 0.06);
+        tl.fromTo(hl, { scale: 1 }, { scale: 1.12, duration: 0.13, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, tHit);
+        tl.to(id, { y: -30, opacity: 0, duration: 0.28, ease: "power2.in" }, tOut);
+      }
+
+      // Opening wordmark
+      tl.from("#logo", { y: -30, opacity: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+      tl.from("#logo .rule", { scaleX: 0, duration: 0.4, ease: "power2.out" }, 0.45);
+      tl.to("#logo", { opacity: 0, duration: 0.3, ease: "power2.in" }, 2.65);
+
+      caption("#c1", 0.35, 1.975, 2.68);
+      caption("#c2", 3.12, 3.535, 4.52);
+      caption("#c3", 4.85, 6.145, 7.68);
+
+      // S4 — section B drop: strongest emphasis
+      tl.from("#c4 .hl", { scale: 1.7, opacity: 0, duration: 0.42, ease: "back.out(2)" }, 8.15);
+      tl.fromTo("#c4 .hl .bar", { scaleX: 0 }, { scaleX: 1, duration: 0.24, ease: "power2.out" }, 8.225);
+      tl.to("#c4 .hl .t", { color: BROWN, duration: 0.12, ease: "none" }, 8.28);
+      tl.from("#c4 .w", { y: 60, opacity: 0, duration: 0.45, stagger: 0.09, ease: "power3.out" }, 8.6);
+      tl.fromTo("#c4 .hl", { scale: 1 }, { scale: 1.08, duration: 0.13, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, 10.315);
+      tl.to("#c4", { y: -30, opacity: 0, duration: 0.28, ease: "power2.in" }, 11.55);
+
+      // S5 — end card
+      tl.from("#sheet", { y: 680, duration: 0.5, ease: "power3.out" }, 11.9);
+      tl.from(["#sheet .brand", "#sheet .rule", "#sheet .addr"], { y: 30, opacity: 0, duration: 0.4, stagger: 0.08, ease: "power3.out" }, 12.05);
+      tl.from("#sheet .addr svg", { y: -26, duration: 0.45, ease: "bounce.out" }, 12.15);
+      tl.from("#sheet .btn", { scale: 0.6, opacity: 0, duration: 0.42, ease: "back.out(2.2)" }, 12.405);
+      tl.fromTo("#sheet .btn", { scale: 1 }, { scale: 1.06, duration: 0.14, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, 13.445);
+      tl.fromTo("#sheet .btn", { scale: 1 }, { scale: 1.06, duration: 0.14, ease: "power2.out", yoyo: true, repeat: 1, immediateRender: false }, 14.485);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
