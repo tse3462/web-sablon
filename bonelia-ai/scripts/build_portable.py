@@ -40,6 +40,8 @@ TR — Kullanım
   2. BoneliaAI.exe dosyasını işletmenin izniyle çift tıklayarak açın (siyah pencere açılmaz; "Kapat" ile kapanır).
   3. Tarayıcıda yerel BONELİA AI ekranı açılır (yalnızca bu bilgisayar, 127.0.0.1).
   4. İlk kullanımda cihaz kaydı: BoneliaAI-Konsol.exe enroll --server <adres> --code <kod> --label "USB 01"
+  5. Kalıcı kurulum: Bu-Bilgisayara-Kur.bat — Tailscale ve RustDesk (klasörlerine kurulum dosyası koyduysanız) ve
+     BONELİA AI ajanı birlikte kurulur. RustDesk şifresi: config\rustdesk-password.txt (rustdesk klasöründeki nota bakın).
   Bu sürüm salt okunurdur; hiçbir ticari kayıt değiştirilmez.
 
 DE — Verwendung
@@ -47,6 +49,8 @@ DE — Verwendung
   2. BoneliaAI.exe mit Erlaubnis des Betriebs per Doppelklick öffnen (kein schwarzes Fenster; "Schließen" beendet).
   3. Im Browser öffnet sich die lokale BONELİA-AI-Oberfläche (nur dieser Rechner, 127.0.0.1).
   4. Erstregistrierung: BoneliaAI-Konsol.exe enroll --server <Adresse> --code <Code> --label "USB 01"
+  5. Dauerhafte Installation: Bu-Bilgisayara-Kur.bat — installiert Tailscale und RustDesk (wenn der Installer im
+     jeweiligen Ordner liegt) zusammen mit dem BONELİA-AI-Agenten. RustDesk-Passwort: config\rustdesk-password.txt.
   Diese Version arbeitet nur lesend; es werden keine Geschäftsdaten verändert.
 """
 
@@ -64,13 +68,38 @@ set "TS=%ProgramFiles%\Tailscale\tailscale.exe"
 if exist "%TS%" goto ts_join
 for %%f in ("%~dp0tailscale\*.msi") do msiexec /i "%%~f" /quiet /norestart TS_UNATTENDEDMODE=always
 :ts_join
-if not exist "%TS%" goto agent
-if not exist "%~dp0config\tailscale-authkey.txt" goto agent
+if not exist "%TS%" goto rustdesk
+if not exist "%~dp0config\tailscale-authkey.txt" goto rustdesk
 set /p TSKEY=<"%~dp0config\tailscale-authkey.txt"
 "%TS%" up --authkey=%TSKEY% --unattended >nul 2>&1
 
+:rustdesk
+rem 2) RustDesk remote access: only if not installed yet and the installer was put on the USB (folder "rustdesk")
+set "RD=%ProgramFiles%\RustDesk\rustdesk.exe"
+if exist "%RD%" goto rd_setup
+for %%f in ("%~dp0rustdesk\*.msi") do msiexec /i "%%~f" /qn /norestart
+if exist "%RD%" goto rd_setup
+for %%f in ("%~dp0rustdesk\*.exe") do start "" "%%~f" --silent-install
+rem the .exe installs in the background: wait up to 90 seconds
+for /l %%i in (1,1,45) do if not exist "%RD%" timeout /t 2 /nobreak >nul
+:rd_setup
+if not exist "%RD%" goto agent
+rem own RustDesk server (optional): config\rustdesk-config.txt holds the configuration string
+set "RDCFG="
+if exist "%~dp0config\rustdesk-config.txt" set /p RDCFG=<"%~dp0config\rustdesk-config.txt"
+if defined RDCFG "%RD%" --config "%RDCFG%" >nul 2>&1
+rem permanent password from config\rustdesk-password.txt; it stays on the USB and in RustDesk, never on the server
+set "RDPW="
+if exist "%~dp0config\rustdesk-password.txt" set /p RDPW=<"%~dp0config\rustdesk-password.txt"
+if defined RDPW "%RD%" --password "%RDPW%" >nul 2>&1
+set "RDPW="
+timeout /t 3 /nobreak >nul
+set "RDID="
+rem "call" keeps the quotes around the path (for /f strips a leading quote otherwise)
+for /f "delims=" %%i in ('call "%RD%" --get-id 2^>nul') do set "RDID=%%i"
+
 :agent
-rem 2) BONELIA AI agent (silent with the install key; the USB password is asked only the very first time)
+rem 3) BONELIA AI agent (silent with the install key; the USB password is asked only the very first time)
 "%~dp0BoneliaAI-Konsol.exe" agent-install --yes --label "%COMPUTERNAME%"
 if errorlevel 1 (
   echo.
@@ -78,7 +107,9 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-powershell -NoProfile -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationFramework; [void][System.Windows.MessageBox]::Show('BONELIA AI kuruldu ve arka planda calisiyor. USB cikarilabilir.' + [Environment]::NewLine + 'BONELIA AI ist installiert und laeuft im Hintergrund.', 'BONELIA AI')"
+set "RDMSG="
+if defined RDID set "RDMSG= RustDesk ID: %RDID%"
+powershell -NoProfile -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationFramework; [void][System.Windows.MessageBox]::Show('BONELIA AI kuruldu ve arka planda calisiyor. USB cikarilabilir.' + [Environment]::NewLine + 'BONELIA AI ist installiert und laeuft im Hintergrund.' + [Environment]::NewLine + '%RDMSG%', 'BONELIA AI')"
 exit /b 0
 """
 
@@ -96,6 +127,15 @@ net session >nul 2>&1 || (powershell -NoProfile -WindowStyle Hidden -Command "St
 cd /d "%~dp0"
 "%~dp0BoneliaAI-Konsol.exe" recovery
 """
+
+RUSTDESK_NOTE = (
+    "RustDesk (uzaktan baglanti / Fernzugriff)\n"
+    "1) Windows kurulum dosyasini (x86_64 .msi veya .exe) bu klasore koyun: https://github.com/rustdesk/rustdesk/releases\n"
+    "   Windows-Installer (x86_64 .msi oder .exe) in diesen Ordner legen.\n"
+    "2) Kalici sifre / festes Passwort: config\\rustdesk-password.txt (tek satir; sadece harf ve rakam).\n"
+    "   Sifre sadece USB'de ve RustDesk'te kalir, sunucuya gonderilmez. USB'yi guvenli saklayin.\n"
+    "3) Kendi RustDesk sunucunuz varsa (istege bagli): config\\rustdesk-config.txt\n"
+    "Bu-Bilgisayara-Kur.bat RustDesk'i sessiz kurar (zaten kuruluysa atlar) ve sifreyi ayarlar.\n")
 
 BAT_FILES = {"Bu-Bilgisayara-Kur.bat": _INSTALL_BAT, "Bu-Bilgisayardan-Kaldir.bat": _UNINSTALL_BAT,
              "Bu-Bilgisayari-Kurtar.bat": _RECOVER_BAT}
@@ -147,6 +187,8 @@ def main() -> int:
     (pkg / "tailscale" / "BURAYA-TAILSCALE-MSI-KOYUN.txt").write_text(
         "Tailscale Windows MSI kurulum dosyasini bu klasore koyun (https://pkgs.tailscale.com/stable/#windows).\n"
         "Auth key: config\\tailscale-authkey.txt (yeniden kullanilabilir, etiketli anahtar).\n", encoding="utf-8")
+    (pkg / "rustdesk").mkdir()
+    (pkg / "rustdesk" / "BURAYA-RUSTDESK-KURULUMU-KOYUN.txt").write_text(RUSTDESK_NOTE, encoding="utf-8")
     files = {str(p.relative_to(pkg)).replace("\\", "/"): sha256(p) for p in sorted(pkg.rglob("*")) if p.is_file()}
     manifest = {"product": "BONELİA AI Portable Monitor", "version": __version__, "built_at": datetime.now(timezone.utc).isoformat(),
                 "build_platform": f"{platform.system()} {platform.release()} {platform.machine()}", "python": platform.python_version(),
