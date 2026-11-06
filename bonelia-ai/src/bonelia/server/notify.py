@@ -160,6 +160,9 @@ _T = {
     "denied": {"tr": "🔒 {customer} · {device}: onarım için izin gerekli", "de": "🔒 {customer} · {device}: Freigabe nötig"},
     "offline": {"tr": "📴 {customer} · {device}: 30 dakikadır sinyal yok", "de": "📴 {customer} · {device}: seit 30 Min. kein Signal"},
     "test": {"tr": "BONELİA AI test bildirimi", "de": "BONELİA AI Testbenachrichtigung"},
+    "uptime_down": {"tr": "🔴 {name} çalışmıyor", "de": "🔴 {name} ist nicht erreichbar"},
+    "uptime_up": {"tr": "🟢 {name} yeniden çalışıyor", "de": "🟢 {name} ist wieder erreichbar"},
+    "ssl_expiring": {"tr": "🔐 {name}: SSL sertifikası {days} gün içinde bitiyor", "de": "🔐 {name}: SSL-Zertifikat läuft in {days} Tagen ab"},
 }
 
 
@@ -231,6 +234,24 @@ class Notifier:
                                                                     device=d["label"]), d["last_seen_at"][:16]):
                 out.append(d["id"])
         return out
+
+    # ------------------------------------------------------------- own programs (uptime monitor)
+    _REASONS = {"tr": {"timeout": "yanıt yok (zaman aşımı)", "connection": "bağlantı kurulamadı", "ssl": "SSL hatası",
+                       "keyword_missing": "beklenen yanıt yok (örn. veritabanı)"},
+                "de": {"timeout": "keine Antwort (Zeitüberschreitung)", "connection": "keine Verbindung", "ssl": "SSL-Fehler",
+                       "keyword_missing": "erwartete Antwort fehlt (z. B. Datenbank)"}}
+
+    def uptime_down(self, app_id: str, name: str, reason: str) -> bool:
+        text = self._REASONS[self.lang].get(reason, reason.replace("http_", "HTTP "))
+        return self._send(f"uptime_down|{app_id}", timedelta(minutes=5), self._title("uptime_down", name=name), text)
+
+    def uptime_up(self, app_id: str, name: str, minutes: int) -> bool:
+        self.store.clear_notification(f"uptime_down|{app_id}")
+        body = f"{minutes} dk sonra" if self.lang == "tr" else f"nach {minutes} Min."
+        return self._send(f"uptime_up|{app_id}", timedelta(0), self._title("uptime_up", name=name), body)
+
+    def ssl_expiring(self, app_id: str, name: str, days: int) -> bool:
+        return self._send(f"ssl|{app_id}", timedelta(hours=23), self._title("ssl_expiring", name=name, days=days), "")
 
     def test(self) -> bool:
         sent = False

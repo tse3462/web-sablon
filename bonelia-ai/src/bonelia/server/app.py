@@ -45,6 +45,7 @@ from ..security.redact import redact_text, redact_value
 from ..security.untrusted import fence, make_boundary
 from .config import ServerConfig
 from .notify import Notifier, build_notifier
+from .uptime import UptimeMonitor
 from .store import Store
 
 log = logging.getLogger("bonelia.server")
@@ -146,11 +147,19 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
                 await asyncio.sleep(300)
                 await run_in_threadpool(safe_notify, notifier.check_offline)
 
+        async def uptime_watch():  # own programs from "My apps", once a minute
+            monitor = UptimeMonitor(store, notifier)
+            while True:
+                await asyncio.sleep(60)
+                await run_in_threadpool(safe_notify, monitor.run_once)
+
         task = asyncio.create_task(offline_watch())
+        uptime_task = asyncio.create_task(uptime_watch())
         try:
             yield
         finally:
             task.cancel()
+            uptime_task.cancel()
 
     app = FastAPI(title="BONELİA AI Server", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)

@@ -171,6 +171,8 @@ ol{padding-left:20px}
 .lv-sw.lv-off .lv-st::after{left:0;right:auto}.lv-sw.lv-off b{color:#ff8a7a}.lv-sw b{text-align:right;font-size:11px}
 .lv-quiet .lv-fill,.lv-quiet .lv-dbar,.lv-quiet .lv-cell,.lv-quiet .lv-dp{animation:none}.lv-quiet .lv-cell.lv-on{animation:lvcell 2s ease-in-out infinite}
 .lv-status{display:flex;align-items:center;gap:12px;margin-top:6px;background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit}.lv-status.tap{cursor:pointer}.lv-orb{position:relative;width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;color:#fff;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--sc) 80%,#fff),var(--sc));box-shadow:0 0 18px color-mix(in srgb,var(--sc) 70%,transparent)}.lv-orb::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--sc) 60%,transparent);animation:pulse 3.2s ease-out infinite}.lv-orb svg{width:18px;height:18px}.lv-st-text{font-size:clamp(24px,7vw,34px);font-weight:900;line-height:1.05;letter-spacing:-.5px;color:#fff;text-shadow:0 0 22px color-mix(in srgb,var(--sc) 55%,transparent)}.lv-sub{margin-top:6px;color:#c8d3e3;font-size:13px}.s-ok{--sc:var(--ok)}.s-warn{--sc:var(--warn)}.s-crit{--sc:var(--crit)}.s-idle{--sc:var(--brand)}
+.lv-prog-b{grid-column:1/-1}.lv-apps{display:grid;gap:8px}.lv-app{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,2fr) 64px;gap:10px;align-items:center;font-size:12px}.lv-app .lv-an{display:flex;align-items:center;gap:7px;min-width:0;font-family:inherit}.lv-app .lv-an b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-weight:600}.lv-app small{display:block;color:var(--ld);font-size:10.5px;font-family:ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lv-app.down small{color:#ff8a7a}.lv-ubars{display:grid;grid-template-columns:repeat(30,1fr);gap:2px;height:22px}.lv-ubars i{border-radius:2px;background:#22324d}.lv-ubars i.up{background:#33c26f;box-shadow:0 0 5px #33c26f66}.lv-ubars i.down{background:#ff5a5f;box-shadow:0 0 6px #ff5a5f99}.lv-up{text-align:right;font-family:ui-monospace,Menlo,monospace;color:#fff;font-weight:700}.lv-up small{text-align:right}.lv-dot{width:9px;height:9px;border-radius:50%;flex:none;background:#55657f}.lv-dot.up{background:#33c26f;box-shadow:0 0 8px #33c26f;animation:lvnode 2.4s ease-in-out infinite}.lv-dot.down{background:#ff5a5f;box-shadow:0 0 10px #ff5a5f;animation:lvblink 1s steps(2,start) infinite}.lv-now{white-space:nowrap;background:#13233d;border:1px solid var(--ll);color:#cfe3ff;border-radius:8px;padding:5px 10px;font-size:11px;letter-spacing:.06em;font-family:ui-monospace,Menlo,monospace}.app-up{position:absolute;top:9px;right:9px;width:10px;height:10px;border-radius:50%;background:#55657f}.app-up.up{background:var(--ok);box-shadow:0 0 8px var(--ok)}.app-up.down{background:var(--crit);box-shadow:0 0 10px var(--crit)}.app.app-down{border-color:var(--crit)}
+@media (max-width:820px){.lv-app{grid-template-columns:minmax(0,1fr) 58px;row-gap:4px}.lv-app>div:first-child{grid-column:1/-1}.lv-app .lv-ubars{grid-column:1}}
 @media (prefers-reduced-motion:reduce){.live *,.live *::before,.live *::after{animation:none!important}.lv-scan{display:none}}
 </style>
 </head>
@@ -251,13 +253,17 @@ ol{padding-left:20px}
     <label class="f" data-i="app_name"></label><input id="appName" type="text" maxlength="40" autocomplete="off">
     <label class="f" data-i="app_url"></label><input id="appUrl" type="url" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://…">
     <label class="f" data-i="app_icon"></label><div class="icons" id="iconPick"></div>
+    <label class="f" style="display:flex;gap:8px;align-items:center;margin:4px 0 8px"><input id="appMon" type="checkbox" checked> <span data-i="up_monitor"></span></label>
+    <label class="f" data-i="up_check_url"></label><input id="appCheck" type="url" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://…/health">
+    <label class="f" data-i="up_keyword"></label><input id="appKey" type="text" maxlength="200" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder='"database":"ok"'>
+    <p class="hint" style="margin-top:0" data-i="up_help"></p>
     <div class="sheet-actions"><button class="sec" id="appCancel" data-i="cancel"></button><button class="btn" id="appSave" data-i="tg_save"></button></div>
     <div id="appMsg" class="small bad" style="margin-top:10px"></div>
   </div>
 </div>
 
 <script>
-const T={tr:{lv_title:"Yapay zekâ destek ajanı · 7/24",lv_kick:"CANLI MERKEZ · YAPAY ZEKÂ DESTEK AJANI 7/24",lv_pcs:"BİLGİSAYAR",lv_customers:"MÜŞTERİ",lv_net:"AĞ | BİLGİSAYARLAR",lv_last:"SON İŞLEM",lv_none_yet:"Henüz işlem yok",lv_repairs_kind:"ONARIM TÜRLERİ | 7 GÜN",lv_tele:"ANLIK DURUM",lv_online:"Çevrimiçi",lv_imp:"Önemli sorun 24 sa",lv_rep7:"Onarım 7 gün",lv_tg:"Telegram",lv_grid:"BİLGİSAYARLAR",lv_activity:"ONARIM AKIŞI | 7 GÜN",lv_result:"SONUÇ",lv_skills:"AJAN YETENEKLERİ | DURUM",lv_s_watch:"7/24 izleme",lv_s_repair:"Otomatik onarım",lv_s_ai:"Yapay zekâ analizi",lv_s_backup:"Yedek kontrolü",lv_s_tg:"Telefon bildirimi",lv_level:"seviye",lv_ready:"HAZIR",lv_repairs_lbl:"ONARIM",lv_ok:"Onarıldı",lv_unv:"Doğrulanamadı",lv_fail:"Başarısız",lv_deny:"İzin yok",lv_empty_kind:"Son 7 günde onarım yok",panel:"Kontrol Paneli",platform:"Platformu",n_home:"Ana sayfa",n_devices:"Bilgisayarlar",n_findings:"Sorunlar",n_repairs:"Onarımlar",n_customers:"Müşteriler",n_settings:"Ayarlar",quit:"Kapat",
+const T={tr:{up_monitor:"Çalışıyor mu sürekli izle (dakikada bir)",up_check_url:"Kontrol adresi (isteğe bağlı)",up_keyword:"Yanıtta olması gereken metin (isteğe bağlı)",up_help:"Veritabanını da izlemek için programın sağlık adresini ve beklenen metni yaz. Örnek: https://reservierung.bnl-digital.de/health ve \"database\":\"ok\". Boş bırakırsan yukarıdaki adres kontrol edilir.",h_app_down1:"{name}<br>ÇALIŞMIYOR",h_app_down:"{n} PROGRAM<br>ÇALIŞMIYOR",s_app_down:"Çalışmayan: {names} — Telegram'a da haber verildi",lv_prog:"PROGRAMLARIM | ÇALIŞMA DURUMU",up_now:"Şimdi kontrol et",up_since:"{t} saatinden beri",up_none:"Uygulamalarım'a program ekle; dakikada bir kontrol edilir.",up_r_timeout:"yanıt yok",up_r_connection:"bağlantı yok",up_r_ssl:"SSL hatası",up_r_keyword_missing:"beklenen yanıt yok (veritabanı?)",up_ssl:"SSL {d} gün",up_paused:"izlenmiyor",up_wait:"ilk kontrol bekleniyor",lv_title:"Yapay zekâ destek ajanı · 7/24",lv_kick:"CANLI MERKEZ · YAPAY ZEKÂ DESTEK AJANI 7/24",lv_pcs:"BİLGİSAYAR",lv_customers:"MÜŞTERİ",lv_net:"AĞ | BİLGİSAYARLAR",lv_last:"SON İŞLEM",lv_none_yet:"Henüz işlem yok",lv_repairs_kind:"ONARIM TÜRLERİ | 7 GÜN",lv_tele:"ANLIK DURUM",lv_online:"Çevrimiçi",lv_imp:"Önemli sorun 24 sa",lv_rep7:"Onarım 7 gün",lv_tg:"Telegram",lv_grid:"BİLGİSAYARLAR",lv_activity:"ONARIM AKIŞI | 7 GÜN",lv_result:"SONUÇ",lv_skills:"AJAN YETENEKLERİ | DURUM",lv_s_watch:"7/24 izleme",lv_s_repair:"Otomatik onarım",lv_s_ai:"Yapay zekâ analizi",lv_s_backup:"Yedek kontrolü",lv_s_tg:"Telefon bildirimi",lv_level:"seviye",lv_ready:"HAZIR",lv_repairs_lbl:"ONARIM",lv_ok:"Onarıldı",lv_unv:"Doğrulanamadı",lv_fail:"Başarısız",lv_deny:"İzin yok",lv_empty_kind:"Son 7 günde onarım yok",panel:"Kontrol Paneli",platform:"Platform",n_home:"Ana sayfa",n_devices:"Bilgisayarlar",n_findings:"Sorunlar",n_repairs:"Onarımlar",n_customers:"Müşteriler",n_settings:"Ayarlar",quit:"Kapat",
 h_ok:"HER ŞEY<br>TAMAM",h_issue1:"1 ÖNEMLİ<br>SORUN",h_issue:"{n} ÖNEMLİ<br>SORUN",h_off:"{n} BİLGİSAYAR<br>SESSİZ",h_empty:"HENÜZ<br>BİLGİSAYAR YOK",
 s_ok:"{on} / {all} bilgisayar çevrimiçi · son 24 saatte önemli sorun yok",s_issue:"Son 24 saatte {n} önemli sorun — görmek için dokun",
 s_off:"{n} bilgisayar 15 dakikadır sinyal vermiyor",s_empty:"İlk bilgisayarı USB ile kur",updated:"Bilgisayarlardan güncellendi {t}",
@@ -290,7 +296,7 @@ err_invalid_path:"Geçersiz klasör. Örnek: D:\\Kasa\\Yedek , E:\\ veya \\\\NAS
 backup:"Yedek",backup_none:"yedek klasörü tanımlı değil",days:"gün",
 backup_q:"Bu bilgisayarın yedeklerinin yazıldığı klasör (birden fazlaysa ; ile ayır). Örnek: D:\\Kasa\\Yedek veya E:\\ — boş bırakırsan klasör kontrolü kapanır.",
 backup_days_q:"Son yedek kaç günden eski olursa uyarayım? (1-60)"},
-de:{lv_title:"KI-Support-Agent · 24/7",lv_kick:"LIVE-ZENTRALE · KI-SUPPORT-AGENT 24/7",lv_pcs:"PCS",lv_customers:"KUNDEN",lv_net:"NETZ | COMPUTER",lv_last:"LETZTE AKTION",lv_none_yet:"Noch keine Aktion",lv_repairs_kind:"REPARATUREN NACH ART | 7 TAGE",lv_tele:"TELEMETRIE",lv_online:"Online",lv_imp:"Wichtige Probleme 24 h",lv_rep7:"Reparaturen 7 Tage",lv_tg:"Telegram",lv_grid:"COMPUTER",lv_activity:"REPARATUR-STROM | 7 TAGE",lv_result:"ERGEBNIS",lv_skills:"AGENT-FÄHIGKEITEN | STATUS",lv_s_watch:"Überwachung 24/7",lv_s_repair:"Automatische Reparatur",lv_s_ai:"KI-Analyse",lv_s_backup:"Sicherungsprüfung",lv_s_tg:"Handy-Benachrichtigung",lv_level:"Stufe",lv_ready:"BEREIT",lv_repairs_lbl:"REPARATUREN",lv_ok:"Repariert",lv_unv:"Nicht bestätigt",lv_fail:"Fehlgeschlagen",lv_deny:"Nicht erlaubt",lv_empty_kind:"Keine Reparatur in 7 Tagen",panel:"Kontrollzentrum",platform:"Plattform",n_home:"Start",n_devices:"Computer",n_findings:"Probleme",n_repairs:"Reparaturen",n_customers:"Kunden",n_settings:"Einstellungen",quit:"Schließen",
+de:{up_monitor:"Erreichbarkeit überwachen (jede Minute)",up_check_url:"Prüfadresse (optional)",up_keyword:"Text, der in der Antwort stehen muss (optional)",up_help:"Um auch die Datenbank zu überwachen, die Health-Adresse des Programms und den erwarteten Text eintragen. Beispiel: https://reservierung.bnl-digital.de/health und \"database\":\"ok\". Leer = obige Adresse wird geprüft.",h_app_down1:"{name}<br>NICHT ERREICHBAR",h_app_down:"{n} PROGRAMME<br>NICHT ERREICHBAR",s_app_down:"Ausgefallen: {names} — Telegram wurde benachrichtigt",lv_prog:"MEINE PROGRAMME | ERREICHBARKEIT",up_now:"Jetzt prüfen",up_since:"seit {t}",up_none:"Programme unter Meine Anwendungen hinzufügen; sie werden jede Minute geprüft.",up_r_timeout:"keine Antwort",up_r_connection:"keine Verbindung",up_r_ssl:"SSL-Fehler",up_r_keyword_missing:"erwartete Antwort fehlt (Datenbank?)",up_ssl:"SSL {d} Tage",up_paused:"nicht überwacht",up_wait:"erste Prüfung steht aus",lv_title:"KI-Support-Agent · 24/7",lv_kick:"LIVE-ZENTRALE · KI-SUPPORT-AGENT 24/7",lv_pcs:"PCS",lv_customers:"KUNDEN",lv_net:"NETZ | COMPUTER",lv_last:"LETZTE AKTION",lv_none_yet:"Noch keine Aktion",lv_repairs_kind:"REPARATUREN NACH ART | 7 TAGE",lv_tele:"TELEMETRIE",lv_online:"Online",lv_imp:"Wichtige Probleme 24 h",lv_rep7:"Reparaturen 7 Tage",lv_tg:"Telegram",lv_grid:"COMPUTER",lv_activity:"REPARATUR-STROM | 7 TAGE",lv_result:"ERGEBNIS",lv_skills:"AGENT-FÄHIGKEITEN | STATUS",lv_s_watch:"Überwachung 24/7",lv_s_repair:"Automatische Reparatur",lv_s_ai:"KI-Analyse",lv_s_backup:"Sicherungsprüfung",lv_s_tg:"Handy-Benachrichtigung",lv_level:"Stufe",lv_ready:"BEREIT",lv_repairs_lbl:"REPARATUREN",lv_ok:"Repariert",lv_unv:"Nicht bestätigt",lv_fail:"Fehlgeschlagen",lv_deny:"Nicht erlaubt",lv_empty_kind:"Keine Reparatur in 7 Tagen",panel:"Kontrollzentrum",platform:"Plattform",n_home:"Start",n_devices:"Computer",n_findings:"Probleme",n_repairs:"Reparaturen",n_customers:"Kunden",n_settings:"Einstellungen",quit:"Schließen",
 h_ok:"ALLES IN<br>ORDNUNG",h_issue1:"1 WICHTIGES<br>PROBLEM",h_issue:"{n} WICHTIGE<br>PROBLEME",h_off:"{n} PC OHNE<br>SIGNAL",h_empty:"NOCH<br>KEIN PC",
 s_ok:"{on} / {all} PCs online · keine wichtigen Probleme in 24 h",s_issue:"{n} wichtige Probleme in 24 h — antippen zum Ansehen",
 s_off:"{n} PC(s) seit 15 Minuten ohne Signal",s_empty:"Ersten PC per USB einrichten",updated:"Von den PCs aktualisiert {t}",
@@ -361,18 +367,22 @@ function renderHero(o){
  const ag=o.devices.filter(d=>d.kind==="agent"&&d.status==="active"),on=ag.filter(d=>d.online).length,off=ag.length-on;
  const imp=o.tenants.reduce((a,x)=>a+x.important_24h,0);
  let cls,h,sub,core,st;
- if(!ag.length){cls="idle";h=t("h_empty");sub=t("s_empty");core=SVG_EMPTY;st=t("st_empty")}
+ // Order: an own program that is down, no PC yet, a silent PC, an important problem, all fine.
+ const appsDown=(UP||[]).filter(x=>x.status==="down");
+ if(appsDown.length){cls="crit";h=appsDown.length===1?t("h_app_down1").replace("{name}",esc(appsDown[0].name)):t("h_app_down").replace("{n}",appsDown.length);
+  sub=t("s_app_down").replace("{names}",appsDown.map(x=>x.name).join(", "));core=SVG_OFF;st=h.replace(/<br>/g," ")}
+ else if(!ag.length){cls="idle";h=t("h_empty");sub=t("s_empty");core=SVG_EMPTY;st=t("st_empty")}
  else if(off){cls="crit";h=t("h_off").replace("{n}",off);sub=t("s_off").replace("{n}",off);core=SVG_OFF;st=t("st_off").replace("{n}",off)}
  else if(imp){cls="warn";h=imp===1?t("h_issue1"):t("h_issue").replace("{n}",imp);sub=t("s_issue").replace("{n}",imp);core=SVG_WARN;st=t("st_issue").replace("{n}",imp)}
  else{cls="ok";h=t("h_ok");sub=t("s_ok").replace("{on}",on).replace("{all}",ag.length);core=SVG_OK;st=t("st_ok")}
  $("#hero").classList.remove("s-ok","s-warn","s-crit","s-idle");$("#hero").classList.add("s-"+cls);
- HERO_GO=cls==="crit"?"devices":cls==="warn"?"findings":cls==="idle"?null:null;$(".big").classList.toggle("tap",!!HERO_GO);$("#headline").innerHTML=h;$("#subline").textContent=sub;$("#core").innerHTML=core;
+ HERO_GO=appsDown.length?"apps":cls==="crit"?"devices":cls==="warn"?"findings":cls==="idle"?null:null;$(".big").classList.toggle("tap",!!HERO_GO);$("#headline").innerHTML=h;$("#subline").textContent=sub;$("#core").innerHTML=core;
  const last=ag.map(d=>toDate(d.last_seen_at)).filter(Boolean).sort((a,b)=>b-a)[0];
  $("#updated").textContent=last?t("updated").replace("{t}",last.toLocaleString(loc(),{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})):"\u00a0";
  $("#tStatus").textContent=st;$("#kImp").textContent=imp;
  $("#tileStatus").className="tile wide "+(cls==="idle"?"":"s-"+cls);
  $("#kOnline").innerHTML=`${on}<small>/ ${ag.length}</small>`;$("#tileDev").className="tile "+(ag.length&&!off?"s-ok":off?"s-crit":"");
- $("#bellN").textContent=imp;$("#bellN").classList.toggle("hidden",!imp);
+ const bell=imp+appsDown.length;$("#bellN").textContent=bell;$("#bellN").classList.toggle("hidden",!bell);
  HERO={cls,h:h.replace(/<br>/g," "),sub,core,updated:$("#updated").textContent.trim()};
 }
 
@@ -413,7 +423,7 @@ function renderLive(o,f,r){
  const host=$("#live"),ag=o.devices.filter(d=>d.kind==="agent"&&d.status==="active"),on=ag.filter(d=>d.online).length;
  const imp=o.tenants.reduce((a,x)=>a+x.important_24h,0),ex=r.repairs.filter(x=>x.action==="tool.executed"),den=r.repairs.filter(x=>x.action==="tool.denied");
  const status=!ag.length?"–":on<ag.length?"OFFLINE":"ONLINE";host.replaceChildren();host.classList.toggle("lv-quiet",LV_SHOWN);
- const head=el("div","lv-head"),ti=el("div","");const stb=el("button","lv-status s-"+HERO.cls+(HERO_GO?" tap":""));stb.type="button";const orb=el("span","lv-orb");orb.innerHTML=HERO.core;stb.append(orb,el("span","lv-st-text",HERO.h));stb.onclick=()=>{if(HERO_GO)show(HERO_GO)};ti.append(el("div","lv-kick",t("lv_kick")),stb,el("div","lv-sub",[HERO.sub,HERO.updated].filter(x=>x&&x!=="\u00a0").join(" · ")));
+ const head=el("div","lv-head"),ti=el("div","");const stb=el("button","lv-status s-"+HERO.cls+(HERO_GO?" tap":""));stb.type="button";const orb=el("span","lv-orb");orb.innerHTML=HERO.core;stb.append(orb,el("span","lv-st-text",HERO.h));stb.onclick=()=>{if(HERO_GO==="apps"){$("#lvProg")?.scrollIntoView({behavior:"smooth",block:"start"})}else if(HERO_GO)show(HERO_GO)};ti.append(el("div","lv-kick",t("lv_kick")),stb,el("div","lv-sub",[HERO.sub,HERO.updated].filter(x=>x&&x!=="\u00a0").join(" · ")));
  const meta=el("div","lv-meta");meta.append(el("span","lv-badge","LIVE"),document.createTextNode([t("lv_pcs")+" "+ag.length,t("lv_customers")+" "+o.tenants.length,"STATUS "+status].join(" | ")));head.append(ti,meta);
  const grid=el("div","lv-grid"),net=lvBlock(t("lv_net"),on+" / "+ag.length);net.classList.add("lv-net-b");net.append(el("span","lv-scan"),lvNet(ag));
  const last=[...r.repairs].sort((a,b)=>(toDate(b.at)||0)-(toDate(a.at)||0))[0],term=el("div","lv-term");
@@ -425,6 +435,20 @@ function renderLive(o,f,r){
   const dd=el("dd",c,String(v));dl.append(el("dt","",k),dd);if(typeof v==="number")lvCount(dd,v)}tb.append(dl);
  const cb=lvBlock(t("lv_grid"),on+" / "+ag.length),cells=el("div","lv-cells");ag.forEach((d,i)=>{const c=el("span","lv-cell "+(d.online?"lv-on":"lv-off"));c.title=d.label;c.style.animationDelay=(i*.03).toFixed(2)+"s";cells.append(c)});cb.append(cells);
  side.append(kb,tb,cb);
+
+ // own programs: status bars like UptimeRobot (checks of the last 30 minutes), uptime 24 h, answer time
+ const prog=lvBlock(t("lv_prog"));prog.classList.add("lv-prog-b");prog.id="lvProg";
+ const nowBtn=el("button","lv-now",t("up_now"));nowBtn.type="button";nowBtn.onclick=async()=>{nowBtn.disabled=true;try{UP=(await api("/api/uptime/check",{})).apps;renderLive();renderApps()}catch(e){}nowBtn.disabled=false};
+ prog.querySelector(".lv-bh").append(nowBtn);
+ const list=el("div","lv-apps");
+ for(const u of UP||[]){const row=el("div","lv-app "+u.status),nm=el("div","");const an=el("div","lv-an");an.append(el("span","lv-dot "+u.status),el("b","",u.name));
+  const why=u.status==="down"?[t("up_since").replace("{t}",(toDate(u.down_since)||new Date()).toLocaleTimeString(loc(),{hour:"2-digit",minute:"2-digit"})),u.reason?(t("up_r_"+u.reason)!=="up_r_"+u.reason?t("up_r_"+u.reason):String(u.reason).replace("http_","HTTP ")):""].filter(Boolean).join(" · ")
+   :u.status==="paused"?t("up_paused"):u.status==="unknown"?t("up_wait"):[u.avg_ms_24h!=null?u.avg_ms_24h+" ms":"",u.ssl_days!=null?t("up_ssl").replace("{d}",u.ssl_days):""].filter(Boolean).join(" · ");
+  nm.append(an,el("small","",why));const bars=el("div","lv-ubars");for(const b of u.bars||[])bars.append(el("i",b));
+  const pc=el("div","lv-up",u.uptime_24h!=null?(u.uptime_24h>=99.95?"100":u.uptime_24h.toFixed(1))+" %":"–");pc.append(el("small","","24 h"));
+  row.append(nm,bars,pc);list.append(row)}
+ if(!(UP||[]).length)list.append(el("div","lv-meta",t("up_none")));
+ prog.append(list);
  const act=lvBlock(t("lv_activity"),r.repairs.length);act.classList.add("lv-wide");const days=el("div","lv-days"),now=new Date();
  const bucket=[...Array(7)].map((_,i)=>{const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-6+i);return{d,n:0}});
  r.repairs.forEach(x=>{const d=toDate(x.at);if(!d)return;const day=new Date(d);day.setHours(0,0,0,0);const b=bucket.find(y=>y.d.getTime()===day.getTime());if(b)b.n++});
@@ -435,11 +459,13 @@ function renderLive(o,f,r){
  const sk=lvBlock(t("lv_skills")),ul=el("ul","lv-sws"),lvl=Math.max(0,...o.tenants.map(x=>x.repair_level||0)),ai=(f.findings||[]).some(x=>x.diagnosis),bk=ag.some(d=>d.backup);
  for(const[n,st]of[[t("lv_s_watch"),on?"ON":"OFF"],[t("lv_s_repair")+(lvl?" · "+t("lv_level")+" "+lvl:""),lvl?"ON":"OFF"],[t("lv_s_ai"),ai?"ON":t("lv_ready")],[t("lv_s_backup"),bk?"ON":"OFF"],[t("lv_s_tg"),tg?"ON":"OFF"]]){
   const li=el("li","lv-sw "+(st==="ON"?"lv-on":st==="OFF"?"lv-off":""));li.append(el("span","",n),el("span","lv-st"),el("b","",st));ul.append(li)}sk.append(ul);
- grid.append(net,side,act,res,sk);host.append(head,grid);LV_SHOWN=true}
+ grid.append(prog,net,side,act,res,sk);host.append(head,grid);LV_SHOWN=true}
 
+let UP=[];
 async function load(){
+ try{UP=(await api("/api/uptime")).apps}catch(e){UP=[]}
  const o=await api("/api/overview"),f=await api("/api/findings?hours="+$("#hoursF").value+"&all="+$("#allF").checked),r=await api("/api/repairs?hours=168");
- renderHero(o);renderLive(o,f,r);
+ renderHero(o);renderLive(o,f,r);renderApps();
  $("#kCust").textContent=o.tenants.length;$("#kRep").textContent=r.repairs.filter(x=>x.action==="tool.executed").length;
  const imp=f.findings.filter(x=>x.triage==="important").slice(0,8);
  $("#homeList").innerHTML=imp.map(x=>`<div class="item"><div class="ih"><span class="tri important">!</span><b>${esc(x.title)}</b></div><div class="meta">${esc(fmt(x.at))} · ${esc(x.customer)} · ${esc(x.device)}</div></div>`).join("")||`<div class="item small">${t("none")}</div>`;
@@ -468,8 +494,8 @@ let APPS=[],EDIT=false,EDIT_ID=null,ICON="🔗";
 const host=u=>{try{return new URL(u).host}catch(e){return u}};
 function renderApps(){
  $("#apps").classList.toggle("editing",EDIT);
- $("#apps").innerHTML=APPS.map(a=>`<a class="app" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer"><div class="ic">${esc(a.icon||"🔗")}</div><div class="an">${esc(a.name)}</div><div class="ah">${esc(host(a.url))}</div>
-  <div class="ed"><button data-mv="${esc(a.id)}" data-st="-1" aria-label="◀">◀</button><button data-ed="${esc(a.id)}" aria-label="✎">✎</button><button data-rm="${esc(a.id)}" aria-label="✕">✕</button><button data-mv="${esc(a.id)}" data-st="1" aria-label="▶">▶</button></div></a>`).join("")
+ $("#apps").innerHTML=APPS.map(a=>{const u=(UP||[]).find(x=>x.id===a.id);return `<a class="app${u&&u.status==="down"?" app-down":""}" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${u&&u.status!=="paused"?`<span class="app-up ${esc(u.status)}" title="${esc(u.uptime_24h??"–")} %"></span>`:""}<div class="ic">${esc(a.icon||"🔗")}</div><div class="an">${esc(a.name)}</div><div class="ah">${esc(host(a.url))}</div>
+  <div class="ed"><button data-mv="${esc(a.id)}" data-st="-1" aria-label="◀">◀</button><button data-ed="${esc(a.id)}" aria-label="✎">✎</button><button data-rm="${esc(a.id)}" aria-label="✕">✕</button><button data-mv="${esc(a.id)}" data-st="1" aria-label="▶">▶</button></div></a>`}).join("")
   +`<button class="app add" id="appAdd"><div class="ic">＋</div><div class="an">${t("add")}</div></button>`;
  $("#appAdd").onclick=()=>openSheet(null);
  $$("[data-ed]").forEach(b=>b.onclick=e=>{e.preventDefault();openSheet(APPS.find(a=>a.id===b.dataset.ed))});
@@ -479,12 +505,14 @@ function renderApps(){
 async function appsLoad(){try{APPS=(await api("/api/apps")).apps;renderApps()}catch(e){}}
 function openSheet(a){EDIT_ID=a?a.id:null;ICON=a?a.icon:"🔗";$("#sheetTitle").textContent=t(a?"app_edit":"app_add");
  $("#appName").value=a?a.name:"";$("#appUrl").value=a?a.url:"https://";$("#appMsg").textContent="";
+ $("#appMon").checked=a?a.monitor!==false:true;$("#appCheck").value=a&&a.check_url?a.check_url:"";$("#appKey").value=a&&a.keyword?a.keyword:"";
  $("#iconPick").innerHTML=ICONS.map(i=>`<button type="button" class="${i===ICON?"sel":""}" data-ic="${i}">${i}</button>`).join("");
  $$("[data-ic]").forEach(b=>b.onclick=()=>{ICON=b.dataset.ic;$$("[data-ic]").forEach(x=>x.classList.toggle("sel",x===b))});
  $("#sheet").classList.remove("hidden");setTimeout(()=>$("#appName").focus(),50)}
 $("#appCancel").onclick=()=>$("#sheet").classList.add("hidden");
 $("#sheet").onclick=e=>{if(e.target.id==="sheet")$("#sheet").classList.add("hidden")};
-$("#appSave").onclick=async()=>{const body={name:$("#appName").value.trim(),url:$("#appUrl").value.trim(),icon:ICON};if(EDIT_ID)body.id=EDIT_ID;
+$("#appSave").onclick=async()=>{const body={name:$("#appName").value.trim(),url:$("#appUrl").value.trim(),icon:ICON,
+  monitor:$("#appMon").checked,check_url:$("#appCheck").value.trim()||null,keyword:$("#appKey").value.trim()||null};if(EDIT_ID)body.id=EDIT_ID;
  try{APPS=(await api("/api/apps",body)).apps;$("#sheet").classList.add("hidden");renderApps()}catch(e){$("#appMsg").textContent=errT(e.message)}};
 $("#appsEdit").onclick=()=>{EDIT=!EDIT;$("#appsEdit").textContent=t(EDIT?"done":"edit");renderApps()};
 

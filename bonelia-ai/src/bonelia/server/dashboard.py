@@ -27,7 +27,8 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..contracts import Diagnosis, DiagnosticEvent, RiskLevel, utcnow
 from ..repair.builtin_tools import SAFE_AUTO_TOOLS
-from .notify import TELEGRAM_KEY, TelegramAPI, extract_token
+from .notify import TELEGRAM_KEY, TelegramAPI, build_notifier, extract_token
+from .uptime import UptimeMonitor
 from .store import Store
 
 ONLINE_MINUTES = 15  # agents report every 5 minutes
@@ -87,6 +88,11 @@ class AppBody(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     url: str = Field(min_length=8, max_length=500)
     icon: str = Field(default="🔗", max_length=8)
+    # Uptime monitor: a separate check address (e.g. https://…/health) and a text the answer must contain
+    # (e.g. "database":"ok", so the program's database is checked too). Monitoring is on by default.
+    check_url: str | None = Field(default=None, max_length=500)
+    keyword: str | None = Field(default=None, max_length=200)
+    monitor: bool = True
 
 
 APPS_KEY = "apps"
@@ -255,7 +261,11 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
             raise HTTPException(422, "invalid_url")
         if not name:
             raise HTTPException(422, "invalid_name")
-        item = {"id": body.id or secrets.token_hex(6), "name": name, "url": url, "icon": (body.icon.strip() or "🔗")[:8]}
+        check_url = (body.check_url or "").strip() or None
+        if check_url and not _URL.match(check_url):
+            raise HTTPException(422, "invalid_url")
+        item = {"id": body.id or secrets.token_hex(6), "name": name, "url": url, "icon": (body.icon.strip() or "🔗")[:8],
+                "check_url": check_url, "keyword": (body.keyword or "").strip() or None, "monitor": body.monitor}
         apps = apps_list()
         idx = next((i for i, a in enumerate(apps) if a.get("id") == item["id"]), None)
         if idx is None:
@@ -269,6 +279,18 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         store.set_setting(APPS_KEY, apps)
         store.audit("admin:dashboard", "settings.app_saved", {"name": name, "url": url})
         return {"apps": apps}
+
+    # ---------------------------------------------------------------- uptime of the own programs
+    uptime = UptimeMonitor(store, build_notifier(store, {}))
+
+    @app.get("/api/uptime")
+    def uptime_get() -> dict[str, Any]:
+        return {"apps": uptime.summary()}
+
+    @app.post("/api/uptime/check")
+    def uptime_check_now() -> dict[str, Any]:
+        uptime.run_once()  # same checks the server runs every minute; messages are de-duplicated
+        return {"apps": uptime.summary()}
 
     @app.post("/api/apps/{app_id}/delete")
     def apps_delete(app_id: str) -> dict[str, Any]:
