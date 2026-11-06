@@ -112,3 +112,26 @@ def test_program_down_message_carries_intervention_links_and_internet_back(tmp_p
     assert "→ Supabase: https://supabase.com/dashboard/project/abc" in body  # one tap from Telegram
     assert n.internet_back(12)
     assert "12 dk" in ch.sent[-1][1] and "📶" in ch.sent[-1][0]
+
+
+def test_ai_repair_messages_say_what_happened_and_who_decides(tmp_path):
+    ch = FakeChannel()
+    n = Notifier(Store(tmp_path / "db"), [ch])
+    assert n.uptime_down("res", "Reservierung", "http_503", [], True)
+    assert "🤖" in ch.sent[-1][1]  # the owner knows the AI is already looking
+    fixed = {"status": "fixed", "cause": "code", "summary": "Son değişiklik geri alındı.", "branch": "claude/auto-repair-77",
+             "run_url": "https://github.com/o/res/actions/runs/77"}
+    assert n.repair_result("res", "Reservierung", "r1", fixed)
+    title, body = ch.sent[-1]
+    assert "Reservierung" in title and "Son değişiklik geri alındı." in body
+    assert "claude/auto-repair-77" in body and "canlıya al" in body and "runs/77" in body
+    assert not n.repair_result("res", "Reservierung", "r1", fixed)  # one message per AI run
+    n.repair_result("res", "Reservierung", "r2", {"status": "no_fix", "cause": "external", "summary": "Supabase arızalı."})
+    assert "bizim kodda değil" in ch.sent[-1][1]
+    n.repair_result("res", "Reservierung", "r3", {"status": "fix_failed_tests", "cause": "code", "summary": "x", "branch": "claude/auto-repair-9"})
+    assert "testler geçmedi" in ch.sent[-1][1] and "canlıya al" not in ch.sent[-1][1]
+    for status in ("healthy_again", "no_key", "timeout", "run_failed", "fix_not_saved", "weird"):
+        assert n.repair_result("res", "Reservierung", "s-" + status, {"status": status, "summary": "s"})
+    de = Notifier(Store(tmp_path / "db2"), [ch], lang="de")
+    de.repair_result("res", "Reservierung", "d1", fixed)
+    assert "KI" in ch.sent[-1][0] and "live" in ch.sent[-1][1].lower()

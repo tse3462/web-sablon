@@ -20,7 +20,7 @@ class Sent:
     def __init__(self):
         self.messages: list[tuple[str, str]] = []
 
-    def uptime_down(self, app_id, name, reason, links=None):
+    def uptime_down(self, app_id, name, reason, links=None, repair=False):
         self.messages.append(("down", f"{name}: {reason}"))
         self.links = links
 

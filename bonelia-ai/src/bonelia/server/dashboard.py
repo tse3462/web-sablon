@@ -29,6 +29,7 @@ from .. import __version__
 from ..contracts import Diagnosis, DiagnosticEvent, RiskLevel, utcnow
 from ..repair.builtin_tools import SAFE_AUTO_TOOLS
 from .notify import TELEGRAM_KEY, TelegramAPI, build_notifier, extract_token
+from .repair import TOKEN_KEY as REPAIR_TOKEN_KEY, TOKEN_RE, valid_repo
 from .uptime import UptimeMonitor, check_settings, normalize_keyword
 from .store import Store
 
@@ -96,6 +97,9 @@ class AppBody(BaseModel):
     monitor: bool = True
     # Intervention links, one per line: "Supabase https://…" (label, then the address)
     links: str | list[dict[str, str]] | None = Field(default=None)
+    # AI repair: the program's GitHub repository ("owner/name") and, once, a key with "Actions: read and write"
+    repair_repo: str | None = Field(default=None, max_length=201)
+    repair_token: str | None = Field(default=None, max_length=300)
 
 
 APPS_KEY = "apps"
@@ -128,7 +132,7 @@ _WIN_PATH = re.compile(r"^(?:[A-Za-z]:\\|\\\\[^\\/:*?\"<>|]+\\[^\\/:*?\"<>|]+)[^
 
 
 def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[str] | None = None,
-                         telegram_api: TelegramAPI | None = None) -> FastAPI:
+                         telegram_api: TelegramAPI | None = None, http_transport: Any = None) -> FastAPI:
     tg = telegram_api or TelegramAPI()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
@@ -283,9 +287,15 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         check_url = (body.check_url or "").strip() or None
         if check_url and not _URL.match(check_url):
             raise HTTPException(422, "invalid_url")
+        repair_repo = (body.repair_repo or "").strip() or None
+        if repair_repo and not valid_repo(repair_repo):
+            raise HTTPException(422, "invalid_repo")
+        repair_token = (body.repair_token or "").strip()
+        if repair_token and not TOKEN_RE.match(repair_token):
+            raise HTTPException(422, "invalid_repair_token")
         item = {"id": body.id or secrets.token_hex(6), "name": name, "url": url, "icon": (body.icon.strip() or "🔗")[:8],
                 "check_url": check_url, "keyword": normalize_keyword(body.keyword), "monitor": body.monitor,
-                "links": parse_links(body.links)}
+                "links": parse_links(body.links), "repair_repo": repair_repo}
         apps = apps_list()
         idx = next((i for i, a in enumerate(apps) if a.get("id") == item["id"]), None)
         if idx is None:
@@ -300,15 +310,27 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
             if changed:  # the old minutes measured another address or text: start fresh
                 uptime.reset(item["id"])
         store.set_setting(APPS_KEY, apps)
-        store.audit("admin:dashboard", "settings.app_saved", {"name": name, "url": url})
+        if repair_token:  # kept on this PC only, never shown again; empty field = keep the stored key
+            store.set_setting(REPAIR_TOKEN_KEY, repair_token)
+        store.audit("admin:dashboard", "settings.app_saved", {"name": name, "url": url, "repair_repo": repair_repo})
         return {"apps": apps}
 
     # ---------------------------------------------------------------- uptime of the own programs
-    uptime = UptimeMonitor(store, build_notifier(store, {}))
+    uptime = UptimeMonitor(store, build_notifier(store, {}), transport=http_transport)
 
     @app.get("/api/uptime")
     def uptime_get() -> dict[str, Any]:
-        return {"apps": uptime.summary()}
+        return {"apps": uptime.summary(), "repair_ready": uptime.repair.ready()}
+
+    @app.post("/api/uptime/{app_id}/repair")
+    def uptime_repair(app_id: str) -> dict[str, Any]:
+        """"Let the AI look" button: starts the program's GitHub job; the result comes by Telegram."""
+        outcome = uptime.start_repair_by_hand(app_id)
+        if outcome != "started":
+            code = {"unknown_app": 404, "too_soon": 429, "refused": 502}.get(outcome, 409)
+            raise HTTPException(code, "repair_" + outcome)
+        store.audit("admin:dashboard", "uptime.repair_started", {"app_id": app_id})
+        return {"started": True, "apps": uptime.summary()}
 
     @app.post("/api/uptime/check")
     def uptime_check_now() -> dict[str, Any]:

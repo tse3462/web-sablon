@@ -253,7 +253,7 @@ def test_my_apps_launcher_add_edit_move_delete(tmp_path):
     first = a[0]["id"]
     edited = c.post("/api/apps", json={"id": first, "name": "VK Admin", "url": "https://admin.veedelkorb.de/login", "icon": "🍦"}, headers=H).json()["apps"]
     assert edited[0] == {"id": first, "name": "VK Admin", "url": "https://admin.veedelkorb.de/login", "icon": "🍦",
-                         "check_url": None, "keyword": None, "monitor": True, "links": []}  # monitored by default (06.11.2026)
+                         "check_url": None, "keyword": None, "monitor": True, "links": [], "repair_repo": None}  # monitored by default (06.11.2026)
     assert c.post("/api/apps", json={"id": "nope", "name": "x", "url": "https://x.de"}, headers=H).status_code == 404
     moved = c.post(f"/api/apps/{first}/move?step=1", json={}, headers=H).json()["apps"]
     assert [x["name"] for x in moved] == ["Kasa", "VK Admin"]

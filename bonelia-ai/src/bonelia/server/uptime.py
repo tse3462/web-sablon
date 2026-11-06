@@ -15,6 +15,7 @@ intervention links (Supabase, Cloudflare, GitHub …) that appear in the panel a
 
 from __future__ import annotations
 
+import secrets
 import socket
 import ssl
 import threading
@@ -27,6 +28,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from ..contracts import utcnow
+from .repair import GitHubRepair
 
 APPS_KEY = "apps"
 STATE_KEY = "uptime_state"
@@ -40,6 +42,9 @@ BARS = 30
 # home internet is out (then nothing is counted against the programs and no false alarm goes out).
 PROBES = ("https://www.google.com/generate_204", "https://1.1.1.1/", "https://www.cloudflare.com/cdn-cgi/trace")
 LOCAL_OFFLINE = "local_offline"
+REPAIR_EVERY = timedelta(hours=1)        # at most one AI run per program and hour (each run costs money)
+REPAIR_BY_HAND_EVERY = timedelta(minutes=10)
+REPAIR_GIVE_UP = timedelta(minutes=90)
 
 SCHEMA = """
 create table if not exists uptime_checks (
@@ -58,7 +63,8 @@ class CheckResult:
 
 
 class UptimeNotifier(Protocol):
-    def uptime_down(self, app_id: str, name: str, reason: str, links: list[dict] | None = None) -> Any: ...
+    def uptime_down(self, app_id: str, name: str, reason: str, links: list[dict] | None = None, repair: bool = False) -> Any: ...
+    def repair_result(self, app_id: str, name: str, request_id: str, report: dict) -> Any: ...
     def uptime_up(self, app_id: str, name: str, minutes: int) -> Any: ...
     def internet_back(self, minutes: int) -> Any: ...
     def ssl_expiring(self, app_id: str, name: str, days: int) -> Any: ...
@@ -124,12 +130,16 @@ def _parse(s: str) -> datetime:
 
 
 class UptimeMonitor:
+    # One lock for every monitor in the process: the server loop and the panel's "check now" share the stored state.
+    _RUN_LOCK = threading.Lock()
+
     def __init__(self, store, notifier: UptimeNotifier | None, transport: httpx.BaseTransport | None = None,
                  clock: Callable[[], datetime] = utcnow, ssl_days: Callable[[str], int | None] = certificate_days_left,
-                 probes: tuple[str, ...] = PROBES):
+                 probes: tuple[str, ...] = PROBES, repair: GitHubRepair | None = None):
         self.store, self.notifier, self.transport, self.clock, self.ssl_days = store, notifier, transport, clock, ssl_days
         self.probes = probes
-        self._lock = threading.Lock()
+        self.repair = repair or GitHubRepair(store, transport=transport)
+        self._lock = UptimeMonitor._RUN_LOCK
         with store._lock:
             store._db.executescript(SCHEMA)
 
@@ -202,10 +212,65 @@ class UptimeMonitor:
                         st["down_since"] = _iso(now)
                     st["reason"] = res.error
                     if st["fails"] >= FAILURES_BEFORE_ALERT and not st.get("alerted"):
-                        self._notify("uptime_down", a["id"], a["name"], res.error or "down", a.get("links") or [])
+                        started = self._start_repair(a, st, now, res.error or "down", REPAIR_EVERY)
+                        self._notify("uptime_down", a["id"], a["name"], res.error or "down", a.get("links") or [], started)
                         st["alerted"] = True
                 self._check_certificate(a, url, st, now)
+            self._poll_repairs(apps, state, now)
             self._save(state, apps, now)
+
+    # ------------------------------------------------------------------ AI repair (GitHub job)
+    def _start_repair(self, a: dict[str, Any], st: dict[str, Any], now: datetime, reason: str, every: timedelta) -> bool:
+        repo = a.get("repair_repo")
+        if not repo or not self.repair.ready():
+            return False
+        if st.get("repair_at") and now - _parse(st["repair_at"]) < every:
+            return False
+        rid = secrets.token_hex(8)
+        try:
+            ok = self.repair.dispatch(repo, rid, reason)
+        except Exception:
+            ok = False
+        if ok:
+            st.update(repair_at=_iso(now), repair_rid=rid, repair_repo=repo)
+        return ok
+
+    def _poll_repairs(self, apps: list[dict[str, Any]], state: dict[str, Any], now: datetime) -> None:
+        for a in apps:
+            st = state.get(a["id"]) or {}
+            rid = st.get("repair_rid")
+            if not rid:
+                continue
+            try:
+                report = self.repair.result(st.get("repair_repo") or a.get("repair_repo"), rid)
+            except Exception:
+                report = None  # GitHub not reachable: try again next minute
+            if report is None and now - _parse(st["repair_at"]) > REPAIR_GIVE_UP:
+                report = {"status": "timeout", "cause": None, "summary": "", "branch": None, "run_url": None}
+            if report is None:
+                continue
+            self._notify("repair_result", a["id"], a.get("name", ""), rid, report)
+            st["repair_last"] = {"at": _iso(now), **{k: report.get(k) for k in ("status", "cause", "summary", "branch", "run_url")}}
+            st.pop("repair_rid", None)
+
+    def start_repair_by_hand(self, app_id: str) -> str:
+        """The panel's "let the AI look" button: "started", "unknown_app", "no_repo", "no_token", "too_soon" or "refused"."""
+        with self._lock:
+            app = next((a for a in self.apps() if a.get("id") == app_id), None)
+            if app is None:
+                return "unknown_app"
+            if not app.get("repair_repo"):
+                return "no_repo"
+            if not self.repair.ready():
+                return "no_token"
+            state, now = self._state(), self.clock()
+            st = state.setdefault(app_id, {"fails": 0, "alerted": False})
+            if st.get("repair_rid") or (st.get("repair_at") and now - _parse(st["repair_at"]) < REPAIR_BY_HAND_EVERY):
+                return "too_soon"
+            if not self._start_repair(app, st, now, "manual", REPAIR_BY_HAND_EVERY):
+                return "refused"
+            self.store.set_setting(STATE_KEY, state)
+            return "started"
 
     def reset(self, app_id: str) -> None:
         """Forget a program's history, e.g. after its check address was corrected (old results measured something else)."""
@@ -266,6 +331,9 @@ class UptimeMonitor:
                 "uptime_24h": pct(day), "uptime_7d": pct(week), "uptime_30d": pct(rows),
                 "checks_24h": len(day), "checks_30d": len(rows), "ssl_days": st.get("ssl_days"),
                 "bars": ["none"] * (BARS - len(bars)) + bars, "incidents": self._incidents(rows)[:10],
+                "repair_repo": a.get("repair_repo") or None,
+                "repair": ({"state": "running", "at": st.get("repair_at")} if st.get("repair_rid")
+                           else {"state": "done", **st["repair_last"]} if st.get("repair_last") else None),
             })
         return out
 

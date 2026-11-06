@@ -162,6 +162,7 @@ _T = {
     "test": {"tr": "BONELİA AI test bildirimi", "de": "BONELİA AI Testbenachrichtigung"},
     "uptime_down": {"tr": "🔴 {name} çalışmıyor", "de": "🔴 {name} ist nicht erreichbar"},
     "uptime_up": {"tr": "🟢 {name} yeniden çalışıyor", "de": "🟢 {name} ist wieder erreichbar"},
+    "repair_result": {"tr": "🤖 {name}: yapay zekâ incelemesi", "de": "🤖 {name}: KI-Prüfung"},
     "internet_back": {"tr": "📶 Ev interneti geri geldi", "de": "📶 Internet zu Hause wieder da"},
     "ssl_expiring": {"tr": "🔐 {name}: SSL sertifikası {days} gün içinde bitiyor", "de": "🔐 {name}: SSL-Zertifikat läuft in {days} Tagen ab"},
 }
@@ -242,11 +243,49 @@ class Notifier:
                 "de": {"timeout": "keine Antwort (Zeitüberschreitung)", "connection": "keine Verbindung", "ssl": "SSL-Fehler",
                        "keyword_missing": "erwartete Antwort fehlt (z. B. Datenbank)"}}
 
-    def uptime_down(self, app_id: str, name: str, reason: str, links: list[dict] | None = None) -> bool:
+    def uptime_down(self, app_id: str, name: str, reason: str, links: list[dict] | None = None, repair: bool = False) -> bool:
         text = self._REASONS[self.lang].get(reason, reason.replace("http_", "HTTP "))
         # intervention links from the panel (Supabase, Cloudflare, GitHub …): one tap from the message
         text += "".join(f"\n→ {l.get('label', '')}: {l.get('url', '')}" for l in (links or [])[:6])
+        if repair:
+            text += ("\n\n🤖 Yapay zekâ sebebi araştırıyor; sonuç birkaç dakika içinde burada." if self.lang == "tr"
+                     else "\n\n🤖 Die KI sucht die Ursache; das Ergebnis kommt in wenigen Minuten hierher.")
         return self._send(f"uptime_down|{app_id}", timedelta(minutes=5), self._title("uptime_down", name=name), text)
+
+    _REPAIR = {
+        "tr": {"fixed": "✅ Düzeltme hazır, testler geçti: {branch}\nHenüz canlıda değil. Canlıya almak için Claude'a yaz: \"{branch} canlıya al\"",
+               "fix_failed_tests": "⚠️ Düzeltme denendi ama testler geçmedi ({branch}). Bu mesajı Claude'a ilet.",
+               "fix_not_saved": "⚠️ Düzeltme kaydedilemedi. Bu mesajı Claude'a ilet.",
+               "no_fix_external": "Sorun bizim kodda değil; kod değiştirilmedi.",
+               "no_fix": "Kod değiştirilmedi.",
+               "healthy_again": "Site kendiliğinden düzeldi; yapay zekâ çalıştırılmadı.",
+               "no_key": "GitHub'da ANTHROPIC_API_KEY eksik; inceleme yapılamadı.",
+               "timeout": "90 dakikada sonuç gelmedi. GitHub'daki Auto repair işine bak.",
+               "run_failed": "Onarım işi hata verdi. Bu mesajı Claude'a ilet.",
+               "other": "İnceleme bitti.", "details": "Ayrıntı"},
+        "de": {"fixed": "✅ Korrektur fertig, Tests bestanden: {branch}\nNoch nicht live. Zum Live-Schalten Claude schreiben: \"{branch} live schalten\"",
+               "fix_failed_tests": "⚠️ Korrektur versucht, aber Tests nicht bestanden ({branch}). Nachricht an Claude weitergeben.",
+               "fix_not_saved": "⚠️ Korrektur konnte nicht gespeichert werden. Nachricht an Claude weitergeben.",
+               "no_fix_external": "Das Problem liegt nicht in unserem Code; nichts geändert.",
+               "no_fix": "Code nicht geändert.",
+               "healthy_again": "Die Seite lief wieder von selbst; die KI wurde nicht gestartet.",
+               "no_key": "ANTHROPIC_API_KEY fehlt bei GitHub; keine Prüfung.",
+               "timeout": "Nach 90 Minuten kein Ergebnis. Den Auto-repair-Lauf bei GitHub ansehen.",
+               "run_failed": "Der Reparatur-Lauf ist fehlgeschlagen. Nachricht an Claude weitergeben.",
+               "other": "Prüfung beendet.", "details": "Details"},
+    }
+
+    def repair_result(self, app_id: str, name: str, request_id: str, report: dict) -> bool:
+        """The AI's finding for one outage; the decision to go live always stays with the owner."""
+        T = self._REPAIR[self.lang]
+        status = str(report.get("status") or "")
+        key = "no_fix_external" if status == "no_fix" and report.get("cause") == "external" else status
+        line = T.get(key, T["other"]).format(branch=report.get("branch") or "?")
+        summary = str(report.get("summary") or "").strip()[:600]
+        body = (summary + "\n\n" if summary and status not in ("healthy_again", "no_key", "timeout") else "") + line
+        if report.get("run_url"):
+            body += f"\n{T['details']}: {report['run_url']}"
+        return self._send(f"repair_result|{app_id}|{request_id}", timedelta(days=30), self._title("repair_result", name=name), body)
 
     def internet_back(self, minutes: int) -> bool:
         body = (f"Evdeki internet {minutes} dk kesikti; bu sürede programlar kontrol edilemedi." if self.lang == "tr"
