@@ -209,7 +209,23 @@ class Notifier:
         return self._send(f"finding|{tenant_id}|{ev.fingerprint}", timedelta(hours=6),
                           self._title("finding", customer=customer, device=device), body)
 
+    _RESCUE = {  # automatic rescue (06.11.2026): plain words instead of a tool id and a process number
+        "tr": {"windows.restart_hung_app": ("Donan program yeniden açıldı: {n}", "Donan program kapatılamadı: {n}"),
+               "windows.close_program": ("Bellek boşaltıldı: {n} kapatılıp yeniden açıldı", "{n} kapanmadı — büyük ihtimalle kaydedilmemiş iş var, program açık bırakıldı"),
+               "closed": "Bellek boşaltıldı: {n} kapatıldı"},
+        "de": {"windows.restart_hung_app": ("Hängendes Programm neu gestartet: {n}", "Hängendes Programm ließ sich nicht beenden: {n}"),
+               "windows.close_program": ("Speicher freigegeben: {n} geschlossen und neu geöffnet", "{n} wurde nicht geschlossen — vermutlich ungespeicherte Arbeit, Programm bleibt offen"),
+               "closed": "Speicher freigegeben: {n} geschlossen"},
+    }
+
     def repair(self, customer: str, device: str, tenant_id: str, tool_id: str, params: dict, outcome: str) -> bool:
+        if tool_id in self._RESCUE["tr"]:
+            T, n = self._RESCUE[self.lang], str(params.get("name") or "?")
+            ok = outcome in ("executed_verified", "executed_unverified")
+            text = (T["closed"] if ok and tool_id == "windows.close_program" and params.get("restart") is not True
+                    else T[tool_id][0 if ok else 1]).format(n=n)
+            return self._send(f"rescue|{tenant_id}|{device}|{tool_id}|{n.lower()}|{ok}", timedelta(hours=1),
+                              self._title("repaired" if ok else "repair_failed", customer=customer, device=device), text)
         what = f"{tool_id} {' '.join(str(v) for v in params.values())}".strip()
         if outcome == "executed_verified":
             return self._send(f"repaired|{tenant_id}|{device}|{what}", timedelta(hours=1),

@@ -334,3 +334,25 @@ def test_devices_offer_rustdesk_connect_without_any_password(tmp_path):
     html = c.get("/").text
     assert 'href="rustdesk://${esc(r.rustdesk_id)}"' in html and "function remoteLine(d)" in html
     assert "password" not in html.split("function remoteLine(d)")[1].split("// ---------- live center")[0]
+
+
+def test_rescue_switches_and_closing_a_program_from_the_panel(tmp_path):
+    """06.11.2026: two switches (frozen programs / full memory, both on by default) and a "close" button that only
+    accepts a program the PC itself reported among its biggest ones."""
+    store, c, t, usb, agent = setup(tmp_path)
+    assert c.get("/api/rescue", headers=H).json() == {"hung": True, "memory": True}
+    assert c.post("/api/rescue", headers=H, json={"hung": False, "memory": True}).json() == {"hung": False, "memory": True}
+    assert store.get_setting("rescue_settings") == {"hung": False, "memory": True}
+    store.set_device_status(agent, {"cycles": 4, "rescue": {"mem_pct": 95.0, "total_mb": 8000,
+                                                            "top": [{"pid": 11, "name": "chrome.exe", "mb": 5200}], "hung": [], "events": []}})
+    assert c.post(f"/api/devices/{agent}/close-program", headers=H, json={"pid": 12, "name": "chrome.exe", "restart": True}).status_code == 409
+    assert c.post(f"/api/devices/{agent}/close-program", headers=H, json={"pid": 11, "name": "Kasse.exe", "restart": True}).status_code == 409
+    r = c.post(f"/api/devices/{agent}/close-program", headers=H, json={"pid": 11, "name": "chrome.exe", "restart": True})
+    assert r.status_code == 200
+    req = store.device_policy(agent)["close_request"]
+    assert req["pid"] == 11 and req["name"] == "chrome.exe" and req["restart"] is True and len(req["id"]) >= 8
+    assert c.post("/api/devices/nope/close-program", headers=H, json={"pid": 11, "name": "chrome.exe"}).status_code == 404
+    html = c.get("/").text
+    assert "function rescueLine(" in html and 'id="rescueHung"' in html and 'id="rescueMem"' in html
+    for key in ("rs_title", "rs_hung", "rs_mem", "rs_close", "rs_ev_hung", "rs_ev_memory"):
+        assert html.count(key + ":") == 2

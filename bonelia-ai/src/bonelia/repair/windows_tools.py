@@ -247,3 +247,7 @@ EXECUTORS: dict[str, tuple[Callable[[dict[str, Any], bool], ExecResult], Callabl
     "windows.flush_dns": (flush_dns, verify_dns),
     "windows.clean_temp": (clean_temp, verify_clean),
 }
+
+from .program_tools import EXECUTORS as _PROGRAM_EXECUTORS  # noqa: E402  (rescue tools, 06.11.2026)
+
+EXECUTORS.update(_PROGRAM_EXECUTORS)

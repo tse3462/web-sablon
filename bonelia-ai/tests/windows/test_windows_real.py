@@ -244,3 +244,27 @@ def test_scan_includes_health_checks():
     assert res.collector_status["disk_health"].startswith("ok:"), res.collector_status
     assert res.collector_status["backup"].startswith("ok:"), res.collector_status
     assert any(e.rule_id == "backup.folder_missing" and e.triage.value == "important" for e in res.events)
+
+
+def test_program_probe_and_tools_work_on_real_windows():
+    """Rescue (06.11.2026): window states, session numbers, start / end a real program, and the agent's snapshot."""
+    import os
+    import time
+
+    from bonelia.collectors import programs
+
+    assert isinstance(programs.windows_hung_states(), dict)
+    assert programs.own_session_id() >= 0
+    ops = programs.WindowsOps()
+    snap = ops.snapshot()
+    assert snap is not None and 0 < snap["mem_pct"] <= 100 and snap["total_mb"] > 0
+    me = ops.info(os.getpid())
+    assert me is not None and me["name"].lower().startswith("python")
+    pid = ops.launch([sys.executable, "-c", "import time; time.sleep(60)"], None)
+    assert pid and ops.alive(pid)
+    ops.kill(pid)
+    for _ in range(20):
+        if not ops.alive(pid):
+            break
+        time.sleep(0.5)
+    assert not ops.alive(pid)

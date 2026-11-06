@@ -135,3 +135,20 @@ def test_ai_repair_messages_say_what_happened_and_who_decides(tmp_path):
     de = Notifier(Store(tmp_path / "db2"), [ch], lang="de")
     de.repair_result("res", "Reservierung", "d1", fixed)
     assert "KI" in ch.sent[-1][0] and "live" in ch.sent[-1][1].lower()
+
+
+def test_rescue_repairs_are_told_in_plain_words(tmp_path):
+    """06.11.2026: the owner reads "frozen program restarted: Kasse.exe", not a tool id and a process number."""
+    store = Store(tmp_path / "db")
+    ch = FakeChannel()
+    n = Notifier(store, [ch], lang="tr")
+    assert n.repair("Filiale", "KASSE-1", "t1", "windows.restart_hung_app", {"pid": 4242, "name": "Kasse.exe"}, "executed_verified")
+    assert n.repair("Filiale", "KASSE-1", "t1", "windows.close_program", {"pid": 77, "name": "chrome.exe", "restart": True},
+                    "executed_verified")
+    assert n.repair("Filiale", "KASSE-1", "t1", "windows.close_program", {"pid": 78, "name": "WINWORD.EXE", "restart": True}, "failed")
+    texts = [" ".join(m) for m in ch.sent]
+    assert "Donan program yeniden açıldı: Kasse.exe" in texts[0] and "4242" not in texts[0] and "windows." not in texts[0]
+    assert "Bellek boşaltıldı: chrome.exe kapatılıp yeniden açıldı" in texts[1]
+    assert "WINWORD.EXE" in texts[2] and "kaydedilmemiş" in texts[2]
+    # a new process number of the same program does not repeat the message within the hour
+    assert not n.repair("Filiale", "KASSE-1", "t1", "windows.restart_hung_app", {"pid": 5555, "name": "Kasse.exe"}, "executed_verified")

@@ -73,12 +73,51 @@ def _clean_temp_tool() -> ToolSpec:
                    "en": "Temporary files older than 7 days are deleted."})
 
 
-SAFE_AUTO_TOOLS = ("windows.start_service", "windows.flush_dns", "windows.clean_temp")
+# A program file name as Windows shows it in Task Manager (no folder, no command characters).
+PROGRAM_NAME = r"[A-Za-z0-9][A-Za-z0-9 _.()+-]{0,75}\.[Ee][Xx][Ee]"
+
+
+def _restart_hung_app_tool() -> ToolSpec:
+    return ToolSpec(
+        tool_id="windows.restart_hung_app",
+        description="End a program whose window has not answered for minutes and start it again (user request 06.11.2026)",
+        platforms=("windows",), risk_level=RiskLevel.SAFE_AUTO, required_scope="repair:windows", required_role="operator",
+        params={"pid": ParamSpec(int, min=1, max=2**32 - 1), "name": ParamSpec(str, pattern=PROGRAM_NAME)},
+        supports_dry_run=True, idempotent=True,
+        rollback="Not needed: the program is started again; work not saved before it froze is lost (it could not be saved anyway)",
+        timeout_s=60, max_runs_per_hour=6, verification="The restarted program is running a few seconds later",
+        side_effects="The frozen program closes and opens again; Windows programs and BONELIA itself are refused",
+        enabled=True, runs_on="client",
+        risk_text={"tr": "Dakikalardır yanıt vermeyen program kapatılıp yeniden açılır.",
+                   "de": "Ein seit Minuten hängendes Programm wird beendet und neu gestartet.",
+                   "en": "A program that has not responded for minutes is ended and started again."})
+
+
+def _close_program_tool() -> ToolSpec:
+    return ToolSpec(
+        tool_id="windows.close_program",
+        description="Ask a program to close like a click on its X (never forced) and optionally start it again -- frees memory",
+        platforms=("windows",), risk_level=RiskLevel.SAFE_AUTO, required_scope="repair:windows", required_role="operator",
+        params={"pid": ParamSpec(int, min=1, max=2**32 - 1), "name": ParamSpec(str, pattern=PROGRAM_NAME),
+                "restart": ParamSpec(bool, required=False)},
+        supports_dry_run=True, idempotent=True,
+        rollback="Open the program again; a program with unsaved work asks to save and stays open",
+        timeout_s=90, max_runs_per_hour=6, verification="The program has ended (and, if asked, runs again)",
+        side_effects="The program closes like a click on its X; Windows programs and BONELIA itself are refused",
+        enabled=True, runs_on="client",
+        risk_text={"tr": "Program, X'e basılmış gibi kapatılır; kaydedilmemiş iş varsa program sorar ve açık kalır.",
+                   "de": "Das Programm wird wie mit Klick auf X geschlossen; mit ungespeicherter Arbeit fragt es und bleibt offen.",
+                   "en": "The program is closed like a click on its X; with unsaved work it asks and stays open."})
+
+
+SAFE_AUTO_TOOLS = ("windows.start_service", "windows.flush_dns", "windows.clean_temp", "windows.restart_hung_app",
+                   "windows.close_program")
 
 
 def default_registry(enable: set[str] | None = None) -> ToolRegistry:
     reg = ToolRegistry()
-    for spec in (_snapshot_tool(), _start_service_tool(), _restart_service_tool(), _flush_dns_tool(), _clean_temp_tool()):
+    for spec in (_snapshot_tool(), _start_service_tool(), _restart_service_tool(), _flush_dns_tool(), _clean_temp_tool(),
+                 _restart_hung_app_tool(), _close_program_tool()):
         if enable and spec.tool_id in enable and spec.risk_level < RiskLevel.CRITICAL:
             spec.enabled = True
         reg.register(spec)

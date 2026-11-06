@@ -33,6 +33,7 @@ from .repair import TOKEN_KEY as REPAIR_TOKEN_KEY, TOKEN_RE, valid_repo
 from .uptime import UptimeMonitor, check_settings, normalize_keyword
 from .vault_store import VaultStore
 from .disk_store import SAFE_KEYS, DiskStore, tree_nodes
+from . import rescue_report
 from ..security.vault import valid_box
 from .store import Store
 
@@ -149,6 +150,17 @@ class DiskCleanBody(BaseModel):
     drive: str | None = Field(default=None, max_length=40)
 
 
+class RescueBody(BaseModel):
+    hung: bool = True
+    memory: bool = True
+
+
+class CloseProgramBody(BaseModel):
+    pid: int = Field(ge=1, lt=2**32)
+    name: str = Field(max_length=80)
+    restart: bool = False
+
+
 class TokenBody(BaseModel):
     token: str = Field(max_length=4000)  # may be the whole @BotFather message; the token is extracted
 
@@ -262,6 +274,30 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
                 "scan_pending": scan_pending,
                 "progress": {"pct": prog["pct"], "at": prog["at"]} if scan_pending and prog and prog["request"] == pol.get("disk_scan") else None,
                 "consent": int(tenant.get("max_auto_level") or 0) >= 1}
+
+    # ---------- automatic rescue (06.11.2026): two switches, and "close" for a program the PC reported
+    @app.get("/api/rescue")
+    def rescue_get() -> dict[str, bool]:
+        return rescue_report.settings(store)
+
+    @app.post("/api/rescue")
+    def rescue_set(body: RescueBody) -> dict[str, bool]:
+        store.set_setting(rescue_report.SETTINGS_KEY, {"hung": body.hung, "memory": body.memory})
+        store.audit("admin:dashboard", "settings.rescue", {"hung": body.hung, "memory": body.memory})
+        return rescue_report.settings(store)
+
+    @app.post("/api/devices/{device_id}/close-program")
+    def close_program(device_id: str, body: CloseProgramBody) -> dict[str, Any]:
+        dev = store.device(device_id)
+        if dev is None:
+            raise HTTPException(404, "unknown_device")
+        st = json.loads(dev["last_status"]) if dev.get("last_status") else {}
+        top = ((st.get("rescue") or {}).get("top") or []) if isinstance(st, dict) else []
+        if not any(x.get("pid") == body.pid and x.get("name") == body.name for x in top if isinstance(x, dict)):
+            raise HTTPException(409, "not_reported")  # only what the PC itself listed; it checks again before closing
+        req = {"id": secrets.token_hex(8), "pid": body.pid, "name": body.name, "restart": body.restart}
+        _merge_policy(device_id, close_request=req)
+        return {"requested": req}
 
     @app.get("/api/disk/{device_id}")
     def disk_get(device_id: str) -> dict[str, Any]:

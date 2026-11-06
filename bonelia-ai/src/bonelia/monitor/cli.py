@@ -267,6 +267,8 @@ def main(argv: list[str] | None = None) -> int:
     ai_.add_argument("--label", default=None)
     ai_.add_argument("--yes", action="store_true", help="the business has agreed (skips the question)")
     ai_.add_argument("--no-start", action="store_true")
+    sw = sub.add_parser("session-watch", help="(started by the agent) report frozen windows of the signed-in user")
+    sw.add_argument("--dir", required=True)
     sub.add_parser("agent-uninstall", help="remove the agent completely from this PC")
     sub.add_parser("agent-status")
     rc = sub.add_parser("recovery", help="open the guided Windows recovery screen on THIS PC (works offline)")
@@ -284,6 +286,10 @@ def main(argv: list[str] | None = None) -> int:
 
     utf8_console()
     args = p.parse_args(argv)
+
+    if args.cmd == "session-watch":  # runs in the user's session; needs no key and changes nothing
+        from ..collectors.programs import session_watch
+        return session_watch(Path(args.dir))
 
     if args.cmd == "enroll":
         home = PortableHome(Path(args.home) if args.home else None).ensure()

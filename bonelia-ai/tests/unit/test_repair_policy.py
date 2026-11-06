@@ -154,7 +154,8 @@ def test_approval_consumed_before_execution():
 def test_builtin_registry_defaults_are_safe():
     reg = default_registry()
     assert {t.tool_id for t in reg.all()} == {"generic.collect_snapshot", "windows.start_service", "windows.restart_service",
-                                              "windows.flush_dns", "windows.clean_temp"}
+                                              "windows.flush_dns", "windows.clean_temp", "windows.restart_hung_app",
+                                              "windows.close_program"}
     assert all(t.risk_level < RiskLevel.CRITICAL for t in reg.all())
     # Service tools run on the client and are inert until the customer allows repairs (tenant level 0 by default)
     for tid, level in (("windows.start_service", RiskLevel.SAFE_AUTO), ("windows.restart_service", RiskLevel.ADMIN_APPROVED)):
@@ -233,3 +234,20 @@ def test_generic_repairs_are_attached_by_rules_not_ai():
                              evidence=[Evidence(source="system_metrics", kind="metric", data={"mount": "D:\\"})])
     attach_generic_repairs([dns, disk_c, disk_d], snap)
     assert dns.repair_tool == "windows.flush_dns" and disk_c.repair_tool == "windows.clean_temp" and disk_d.repair_tool is None
+
+
+def test_program_rescue_tools_run_unattended_from_level_1_and_only_take_a_checked_program_name():
+    """User request 06.11.2026: a frozen program is restarted and a memory hog closed without the owner, once the
+    customer allowed level 1; the name must look like a program file, the number like a process id."""
+    from bonelia.repair.builtin_tools import SAFE_AUTO_TOOLS
+    reg = default_registry()
+    for tid, params in (("windows.restart_hung_app", {"pid": 4242, "name": "Kasse.exe"}),
+                        ("windows.close_program", {"pid": 4242, "name": "chrome.exe", "restart": True})):
+        t = reg.get(tid)
+        assert tid in SAFE_AUTO_TOOLS and t.runs_on == "client" and t.risk_level == RiskLevel.SAFE_AUTO
+        base = dict(device_scopes={"repair:windows"}, auto_tools=set(SAFE_AUTO_TOOLS))
+        assert evaluate(t, params, False, ctx(tenant_max_level=RiskLevel.SAFE_AUTO, **base)).reasons == ["auto_allowed"]
+        assert not evaluate(t, params, False, ctx(tenant_max_level=RiskLevel.READ_ONLY, **base)).allowed
+        for bad in ({**params, "name": "x.exe & shutdown"}, {**params, "name": "C:\\x\\a.exe"}, {**params, "name": "a.bat"},
+                    {**params, "pid": 0}, {**params, "pid": True}):
+            assert not evaluate(t, bad, False, ctx(tenant_max_level=RiskLevel.SAFE_AUTO, **base)).allowed

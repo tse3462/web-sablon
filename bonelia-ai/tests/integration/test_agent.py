@@ -370,3 +370,77 @@ def test_agent_retries_within_a_minute_while_the_server_is_unreachable():
     assert pause_after({"offline": True}, 300) == 60
     assert pause_after({"offline": False}, 300) == 300
     assert pause_after(None, 300) == 60  # a failed cycle is retried soon, too
+
+
+class FrozenPC:
+    """A PC where the till program hangs and the browser eats the memory (user request 06.11.2026)."""
+
+    def __init__(self):
+        self.t = 2_000_000.0
+        self.calls: list[str] = []
+        self.procs = [{"pid": 10, "name": "Kasse.exe", "mb": 400, "hung": True, "started": 1.0},
+                      {"pid": 11, "name": "chrome.exe", "mb": 5200, "hung": False, "started": 2.0}]
+        self.mem = 95.0
+
+    def probe(self):
+        return {"mem_pct": self.mem, "total_mb": 8000, "procs": [dict(p) for p in self.procs]}
+
+    def executors(self):
+        def restart(p, d):
+            self.calls.append(f"restart:{p['name']}")
+            self.procs[0]["hung"] = False
+            return ExecResult(True, {"before": "hung", "after": "restarted", "new_pid": 20})
+
+        def close(p, d):
+            self.calls.append(f"close:{p['name']}:{p.get('restart')}")
+            return ExecResult(True, {"before": "open", "after": "reopened" if p.get("restart") else "closed", "new_pid": 21})
+
+        return {"windows.restart_hung_app": (restart, lambda p, r: True), "windows.close_program": (close, lambda p, r: True)}
+
+
+def _empty_scan(**kw):
+    return ScanResult(system=SystemSnapshot(hostname_ref="ref_pc", os="Windows", os_version="11"), events=[])
+
+
+def test_agent_restarts_a_frozen_program_and_frees_memory_by_itself(tmp_path, env):  # noqa: F811
+    from bonelia.agent.rescue import HUNG_AFTER_S, MEM_HIGH_FOR_S
+
+    s = usb(tmp_path, env, "AGENT-RESCUE", env["a"], scopes=("diagnose", "repair:windows"))
+    env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=["windows.start_service"])  # older level-1 consent
+    pc = FrozenPC()
+    agent = Agent(s.client, AgentState(tmp_path / "r.json"), executors=pc.executors(), scan=_empty_scan, maintenance_tools=(),
+                  rescue_probe=pc.probe, rescue_clock=lambda: pc.t)
+    agent.rescue_tick()
+    pc.t += max(HUNG_AFTER_S, MEM_HIGH_FOR_S) + 1
+    agent.rescue_tick()
+    assert pc.calls == ["restart:Kasse.exe", "close:chrome.exe:True"]
+    runs = [a for a in env["store"].audit_log(env["a"]) if a["action"] == "tool.executed"]
+    assert {json.loads(a["detail"])["tool_id"] for a in runs} >= {"windows.restart_hung_app", "windows.close_program"}
+    agent.cycle()  # the heartbeat carries memory, biggest programs and what was done to the panel
+    st = json.loads(env["store"].device(s.creds.device_id)["last_status"])["rescue"]
+    assert st["mem_pct"] == 95.0 and st["top"][0] == {"pid": 11, "name": "chrome.exe", "mb": 5200}
+    assert [e["kind"] for e in st["events"]] == ["hung", "memory"] and st["events"][0]["outcome"] == "executed_verified"
+
+
+def test_rescue_settings_and_close_request_from_the_panel_reach_the_agent(tmp_path, env):  # noqa: F811
+    from bonelia.agent.rescue import HUNG_AFTER_S
+
+    s = usb(tmp_path, env, "AGENT-RESCUE2", env["a"], scopes=("diagnose", "repair:windows"))
+    env["store"].update_tenant(env["a"], max_auto_level=1, auto_tools=[])
+    env["store"].set_setting("rescue_settings", {"hung": False, "memory": True})
+    pc = FrozenPC()
+    pc.mem = 50.0
+    agent = Agent(s.client, AgentState(tmp_path / "r2.json"), executors=pc.executors(), scan=_empty_scan, maintenance_tools=(),
+                  rescue_probe=pc.probe, rescue_clock=lambda: pc.t)
+    agent.cycle()  # heartbeat reply: the owner switched "restart frozen programs" off
+    assert agent.state.data["rescue_settings"] == {"hung": False, "memory": True}
+    agent.rescue_tick()
+    pc.t += HUNG_AFTER_S + 1
+    agent.rescue_tick()
+    assert pc.calls == []
+    env["store"].set_device_policy(s.creds.device_id, {"close_request": {"id": "r1", "pid": 11, "name": "chrome.exe", "restart": False}})
+    agent.cycle()
+    agent.rescue_tick()
+    assert pc.calls == ["close:chrome.exe:False"]
+    agent.cycle()  # reported as done -> the server drops the request
+    assert "close_request" not in env["store"].device_policy(s.creds.device_id)

@@ -124,7 +124,8 @@ def test_allow_repairs_and_device_scopes_commands(tmp_path):
     tenant = run([*srv, "tenant-add", "Kunde"], env).stdout.strip()
     out = json.loads(run([*srv, "allow-repairs", tenant, "--level", "1"], env).stdout)
     assert out["repair_level"] == 1
-    assert out["one_click_tools"] == ["windows.start_service", "windows.flush_dns", "windows.clean_temp"]
+    assert out["one_click_tools"] == ["windows.start_service", "windows.flush_dns", "windows.clean_temp",
+                                      "windows.restart_hung_app", "windows.close_program"]
     assert json.loads(run([*srv, "tenants"], env).stdout)[0]["max_auto_level"] == 1
     from bonelia.server.store import Store
 

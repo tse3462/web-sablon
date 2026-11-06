@@ -49,6 +49,7 @@ from .notify import Notifier, build_notifier
 from .uptime import UptimeMonitor
 from .vault_store import VaultStore
 from .disk_store import DiskStore
+from . import rescue_report
 from ..collectors.remote import VAULT_ERRORS
 from .store import Store
 
@@ -381,7 +382,10 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         hb = parse(Heartbeat, auth["body"])
         # The RustDesk ID gets its own checked field; the general clean-up would hide it as a number.
         remote = hb.status.pop("remote", None)
+        rescue = hb.status.pop("rescue", None)  # memory and program names: checked field by field, not redacted
         status = redact_value(hb.status)
+        if isinstance(rescue, dict):
+            status["rescue"] = rescue_report.clean(rescue)
         if isinstance(remote, dict):
             rid = str(remote.get("rustdesk_id") or "").replace(" ", "")
             status["remote"] = {"installed": remote.get("installed") is True,
@@ -390,7 +394,12 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             if remote.get("vault_error") in VAULT_ERRORS:
                 status["remote"]["vault_error"] = remote["vault_error"]
         store.set_device_status(auth["device"]["id"], status)
-        reply: dict[str, Any] = {"ok": True, "policy": store.device_policy(auth["device"]["id"])}
+        pol = store.device_policy(auth["device"]["id"])
+        req = pol.get("close_request")
+        if isinstance(req, dict) and isinstance(rescue, dict) and status["rescue"].get("request_done") == req.get("id"):
+            pol.pop("close_request")  # the PC has handled the owner's "close" click
+            store.set_device_policy(auth["device"]["id"], pol, actor="device")
+        reply: dict[str, Any] = {"ok": True, "policy": pol, "rescue": rescue_report.settings(store)}
         # Password vault: the agent seals the RustDesk password it just set; only the owner's phone can open it.
         if isinstance(remote, dict) and "vault" in remote:
             reply["vault_saved"] = vaults.accept_from_agent(auth["device"]["id"], status["remote"]["rustdesk_id"], remote["vault"])

@@ -32,6 +32,7 @@ from ..monitor.repair_local import repair as run_repair
 from ..monitor.scan import run_scan
 from ..collectors.remote import VAULT_ERRORS, rustdesk_info, set_rustdesk_password
 from ..security.vault import fingerprint, random_password, seal
+from .rescue import Rescue
 
 log = logging.getLogger("bonelia.agent")
 DENIED_RETRY_S = 6 * 3600
@@ -53,6 +54,16 @@ def _windows_disk_scan(progress=None) -> dict | None:
 def _windows_disk_clean(request: dict, progress=None) -> dict:
     from ..collectors import disk
     return disk.clean(disk.Layout.windows(), request, progress=progress)
+
+
+def _windows_programs() -> dict | None:
+    if sys.platform != "win32":
+        return None
+    from ..collectors.programs import windows_ops
+    return windows_ops().snapshot()
+
+
+RESCUE_TICK_S = 20  # frozen programs and full memory are checked this often, between the 5-minute cycles
 
 
 def pause_after(summary: dict | None, interval_s: int) -> int:
@@ -94,7 +105,8 @@ class Agent:
                  maintenance_interval_s: int = MAINTENANCE_INTERVAL_S, maintenance_tools: tuple[str, ...] = MAINTENANCE_TOOLS,
                  remote: Callable[[], dict | None] | None = None,
                  set_remote_password: Callable[[str], bool | str] | None = None,
-                 disk_scan: Callable[[], dict | None] | None = None, disk_clean: Callable[[dict], dict] | None = None):
+                 disk_scan: Callable[[], dict | None] | None = None, disk_clean: Callable[[dict], dict] | None = None,
+                 rescue_probe: Callable[[], dict | None] | None = None, rescue_clock: Callable[[], float] = time.time):
         self.client, self.state, self.lang, self.executors, self.scan = client, state, lang, executors, scan
         self.own_exe, self.self_update = own_exe, self_update
         self.maintenance_interval_s, self.maintenance_tools = maintenance_interval_s, maintenance_tools
@@ -104,6 +116,24 @@ class Agent:
         # Disk report once a day (and on "scan now"); cleanup only as picked by the owner in the panel.
         self.disk_scan = disk_scan if disk_scan is not None else _windows_disk_scan
         self.disk_clean = disk_clean if disk_clean is not None else _windows_disk_clean
+        # Automatic rescue (06.11.2026): frozen programs restarted, full memory freed -- through the repair gate.
+        self.rescue = Rescue(self.state.data.setdefault("rescue", {}), probe=rescue_probe or _windows_programs,
+                             act=self._rescue_act, clock=rescue_clock)
+
+    def _rescue_act(self, tool_id: str, params: dict) -> dict:
+        try:
+            return run_repair(self.client, tool_id, params, False, self.executors)
+        except ServerUnavailable:
+            return {"outcome": "offline"}  # tried again on the next tick
+        except ServerError as exc:
+            return {"outcome": "failed", "reasons": [f"{exc.status}:{exc.detail}"]}
+
+    def rescue_tick(self) -> None:
+        """Every ~20 s: settings and a close request come from the panel with the heartbeat reply."""
+        req = (self.state.data.get("policy") or {}).get("close_request")
+        self.rescue.tick(self.state.data.get("rescue_settings") or {}, req if isinstance(req, dict) else None)
+        if self.rescue.changed:
+            self.state.save()
 
     def remote_info(self) -> dict | None:
         """RustDesk state, read at most every 15 minutes (it starts a program)."""
@@ -284,6 +314,8 @@ class Agent:
                 status = {"cycles": self.state.data["cycles"], "new_findings": summary["new_findings"],
                           "repairs": [f"{r.get('tool_id')}:{r.get('outcome')}" for r in summary["repairs"]],
                           "important_open": sum(1 for e in res.events if e.triage == Triage.important)}
+                if self.rescue.snap is not None or self.state.data["rescue"].get("events"):
+                    status["rescue"] = self.rescue.report()
                 remote = self.remote_info()
                 sealed, marker = self.vault_password(remote)
                 if remote:
@@ -294,6 +326,8 @@ class Agent:
                 if isinstance(resp, dict):
                     if marker and resp.get("vault_saved") is True:
                         self.state.data["rd_vaulted"] = marker
+                    if isinstance(resp.get("rescue"), dict):
+                        self.state.data["rescue_settings"] = {k: resp["rescue"].get(k) is not False for k in ("hung", "memory")}
                     vault_info = resp.get("vault") if isinstance(resp.get("vault"), dict) else None
                     if vault_info != self.state.data.get("vault"):
                         self.state.data["vault"] = vault_info
@@ -332,12 +366,19 @@ class Agent:
         ok, msg = apply(new)
         return {"update": "scheduled" if ok else "failed", "detail": msg[:200]}
 
-    def run_forever(self, interval_s: int = 300) -> None:
+    def run_forever(self, interval_s: int = 300, tick_s: int = RESCUE_TICK_S) -> None:
+        next_cycle = 0.0
         while True:
-            s = None
+            if time.monotonic() >= next_cycle:
+                s = None
+                try:
+                    s = self.cycle()
+                    log.info("cycle: %s", s)
+                except Exception as exc:  # the agent must never die on one bad cycle
+                    log.exception("cycle failed: %s", exc)
+                next_cycle = time.monotonic() + pause_after(s, interval_s)
             try:
-                s = self.cycle()
-                log.info("cycle: %s", s)
-            except Exception as exc:  # the agent must never die on one bad cycle
-                log.exception("cycle failed: %s", exc)
-            time.sleep(pause_after(s, interval_s))
+                self.rescue_tick()
+            except Exception as exc:
+                log.exception("rescue failed: %s", exc)
+            time.sleep(max(1.0, min(tick_s, next_cycle - time.monotonic())))
