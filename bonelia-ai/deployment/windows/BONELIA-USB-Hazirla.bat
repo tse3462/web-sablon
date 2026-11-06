@@ -12,6 +12,9 @@ endlocal & exit /b %RC%
 
 #==PS==
 $ErrorActionPreference = 'Stop'
+# Started from PowerShell 7 the module path points at its modules, which Windows PowerShell cannot load.
+$env:PSModulePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+Import-Module Microsoft.PowerShell.Security, Microsoft.PowerShell.Utility
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 function Say([string]$tr, [string]$de) { Write-Host $tr; if ($de) { Write-Host ('   ' + $de) -ForegroundColor DarkGray } }
