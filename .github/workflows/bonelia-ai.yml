@@ -93,6 +93,7 @@ jobs:
           if (-not $m.signature) { throw "agent update not signed" }
           cmd /c deployment\windows\BONELIA-Ajanlari-Guncelle.bat "$env:RUNNER_TEMP\usb\yok.exe"
           if ($LASTEXITCODE -eq 0) { throw "missing agent file must fail" }
+          $global:LASTEXITCODE = 0   # that failure was expected; do not let it end the step as failed
 
   windows:
     # Real Windows verification: event log access, controlled error via eventcreate,
