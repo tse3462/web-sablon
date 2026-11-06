@@ -83,6 +83,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "hidden autostart task not created" }
           schtasks /Delete /F /TN "BONELIA AI" | Out-Null
           cmd /c deployment\windows\BONELIA-Server-Durdur.bat
+          # Update every installed PC from home: publish the agent from the USB package (here: a stand-in file)
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\usb" | Out-Null
+          Set-Content "$env:RUNNER_TEMP\usb\BoneliaAI-Konsol.exe" "stand-in agent"
+          $env:CI = "1"
+          cmd /c deployment\windows\BONELIA-Ajanlari-Guncelle.bat "$env:RUNNER_TEMP\usb\BoneliaAI-Konsol.exe"
+          if ($LASTEXITCODE -ne 0) { throw "agent publish script failed" }
+          $m = Get-Content C:\BoneliaAI\server-data\agent_update\manifest.json | ConvertFrom-Json
+          if (-not $m.signature) { throw "agent update not signed" }
+          cmd /c deployment\windows\BONELIA-Ajanlari-Guncelle.bat "$env:RUNNER_TEMP\usb\yok.exe"
+          if ($LASTEXITCODE -eq 0) { throw "missing agent file must fail" }
 
   windows:
     # Real Windows verification: event log access, controlled error via eventcreate,
