@@ -20,3 +20,10 @@ def test_scripts_no_longer_start_the_unsigned_exe():
         assert "Scripts\\bonelia-server.exe" not in text, name
     stop = (WIN / "BONELIA-Server-Durdur.bat").read_text(encoding="ascii")
     assert "bonelia.server" in stop and "bonelia-server.exe" in stop  # stops new and old style
+
+
+def test_stop_script_asks_for_admin_when_the_server_runs_elevated():
+    """Seen 06.11.2026: BONELIA-Ajan-Onar starts the server with admin rights; the update's plain stop
+    could not end it, so pip could not replace the program ('Der Prozess kann nicht auf die Datei zugreifen')."""
+    stop = (WIN / "BONELIA-Server-Durdur.bat").read_text(encoding="ascii")
+    assert "net session" in stop and "-Verb RunAs -Wait" in stop and ":alive" in stop
