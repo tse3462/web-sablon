@@ -48,6 +48,7 @@ from .config import ServerConfig
 from .notify import Notifier, build_notifier
 from .uptime import UptimeMonitor
 from .vault_store import VaultStore
+from ..collectors.remote import VAULT_ERRORS
 from .store import Store
 
 log = logging.getLogger("bonelia.server")
@@ -354,6 +355,8 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             status["remote"] = {"installed": remote.get("installed") is True,
                                 "rustdesk_id": rid if re.fullmatch(r"\d{8,12}", rid) else None,
                                 "service": remote.get("service") if remote.get("service") in ("running", "stopped", "missing") else "unknown"}
+            if remote.get("vault_error") in VAULT_ERRORS:
+                status["remote"]["vault_error"] = remote["vault_error"]
         store.set_device_status(auth["device"]["id"], status)
         reply: dict[str, Any] = {"ok": True, "policy": store.device_policy(auth["device"]["id"])}
         # Password vault: the agent seals the RustDesk password it just set; only the owner's phone can open it.

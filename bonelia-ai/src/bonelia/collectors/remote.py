@@ -75,13 +75,30 @@ def rustdesk_info(exe_paths: list[Path] | None = None, config_paths: list[Path] 
     return {"installed": True, "rustdesk_id": rid, "service": service}
 
 
+VAULT_ERRORS = ("not_admin", "disabled", "rejected", "failed", "missing", "invalid", "not_windows")
+
+
 def set_rustdesk_password(password: str, exe_paths: list[Path] | None = None,
-                          run: Callable[[list[str]], tuple[int, str]] = _run, windows: bool | None = None) -> bool:
-    """Give RustDesk a new permanent password (the agent runs as SYSTEM, as RustDesk requires for this)."""
-    if not (sys.platform == "win32" if windows is None else windows) or not password.isalnum():
-        return False
+                          run: Callable[[list[str]], tuple[int, str]] = _run, windows: bool | None = None) -> str:
+    """Give RustDesk a new permanent password: "ok", or why not (one of VAULT_ERRORS).
+
+    RustDesk exits with 0 even when it refuses, so only its "Done!" counts (checked 06.11.2026 against
+    rustdesk src/core_main.rs). It needs administrator rights and its service running."""
+    if not (sys.platform == "win32" if windows is None else windows):
+        return "not_windows"
+    if not password.isalnum():
+        return "invalid"
     exe = next((p for p in (exe_paths if exe_paths is not None else _default_exe_paths()) if p.is_file()), None)
     if exe is None:
-        return False
-    code, _ = run([str(exe), "--password", password])
-    return code == 0
+        return "missing"
+    _, out = run([str(exe), "--password", password])
+    text = (out or "").lower()
+    if "done!" in text:
+        return "ok"
+    if "administrative privileges" in text:
+        return "not_admin"
+    if "disabled" in text:
+        return "disabled"
+    if "rejected" in text:
+        return "rejected"
+    return "failed"

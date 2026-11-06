@@ -188,7 +188,7 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
     @app.get("/api/vault")
     def vault_get() -> dict[str, Any]:
         meta = vaults.meta()
-        return {"meta": meta, "entries": vaults.entries() if meta else []}
+        return {"meta": meta, "entries": vaults.entries() if meta else [], "problems": vaults.problems() if meta else []}
 
     @app.post("/api/vault/setup")
     def vault_setup(body: VaultSetup) -> dict[str, Any]:

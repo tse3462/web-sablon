@@ -29,7 +29,7 @@ from ..contracts import Triage
 from ..monitor.client import ServerClient, ServerError, ServerUnavailable
 from ..monitor.repair_local import repair as run_repair
 from ..monitor.scan import run_scan
-from ..collectors.remote import rustdesk_info, set_rustdesk_password
+from ..collectors.remote import VAULT_ERRORS, rustdesk_info, set_rustdesk_password
 from ..security.vault import fingerprint, random_password, seal
 
 log = logging.getLogger("bonelia.agent")
@@ -72,7 +72,7 @@ class Agent:
                  scan: Callable[..., Any] = run_scan, own_exe: Path | None = None, self_update: bool = False,
                  maintenance_interval_s: int = MAINTENANCE_INTERVAL_S, maintenance_tools: tuple[str, ...] = MAINTENANCE_TOOLS,
                  remote: Callable[[], dict | None] | None = None,
-                 set_remote_password: Callable[[str], bool] | None = None):
+                 set_remote_password: Callable[[str], bool | str] | None = None):
         self.client, self.state, self.lang, self.executors, self.scan = client, state, lang, executors, scan
         self.own_exe, self.self_update = own_exe, self_update
         self.maintenance_interval_s, self.maintenance_tools = maintenance_interval_s, maintenance_tools
@@ -98,7 +98,8 @@ class Agent:
         pub = v.get("pub")
         if not pub or not remote or not remote.get("installed") or not remote.get("rustdesk_id"):
             return None, None
-        marker = f"{fingerprint(pub)}|{v.get('rotate') or ''}"
+        # "v2": passwords set by older agents were not checked against RustDesk's answer; set them again once.
+        marker = f"v2|{fingerprint(pub)}|{v.get('rotate') or ''}"
         if self.state.data.get("rd_vaulted") == marker:
             return None, None
         failed = self.state.data.get("rd_vault_failed_at", 0)
@@ -106,13 +107,16 @@ class Agent:
             return None, None
         password = random_password()
         try:
-            ok = self.set_remote_password(password)
+            result = self.set_remote_password(password)
         except Exception:
-            ok = False
+            result = "failed"
+        ok = result is True or result == "ok"
         if not ok:
             self.state.data["rd_vault_failed_at"] = time.time()
+            self.state.data["rd_vault_error"] = result if isinstance(result, str) and result in VAULT_ERRORS else "failed"
             return None, None
         self.state.data.pop("rd_vault_failed_at", None)
+        self.state.data.pop("rd_vault_error", None)
         sealed = {"box": seal(pub, {"password": password, "rustdesk_id": remote["rustdesk_id"]}),
                   "for": fingerprint(pub), "rotate": v.get("rotate")}
         return sealed, marker
@@ -216,7 +220,9 @@ class Agent:
                 remote = self.remote_info()
                 sealed, marker = self.vault_password(remote)
                 if remote:
-                    status["remote"] = {**remote, "vault": sealed} if sealed else remote
+                    status["remote"] = {**remote, "vault": sealed} if sealed else dict(remote)
+                    if self.state.data.get("rd_vault_error"):  # shown in the panel: why the vault has no password yet
+                        status["remote"]["vault_error"] = self.state.data["rd_vault_error"]
                 resp = self.client.heartbeat(status)
                 if isinstance(resp, dict):
                     if marker and resp.get("vault_saved") is True:

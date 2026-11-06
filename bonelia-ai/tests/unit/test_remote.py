@@ -1,6 +1,6 @@
 """RustDesk remote access: the agent reads the PC's RustDesk ID (user request 06.11.2026)."""
 
-from bonelia.collectors.remote import parse_rustdesk_id, rustdesk_info
+from bonelia.collectors.remote import parse_rustdesk_id, rustdesk_info, set_rustdesk_password
 
 
 def test_parse_id_from_command_output_and_config():
@@ -26,3 +26,25 @@ def test_rustdesk_info_uses_the_installed_program_then_the_config_file(tmp_path)
     assert rustdesk_info(exe_paths=[tmp_path / "none.exe"], config_paths=[], run=run, windows=True) == {
         "installed": False, "rustdesk_id": None, "service": "missing"}
     assert rustdesk_info(windows=False) is None
+
+
+def test_new_password_counts_only_when_rustdesk_says_done(tmp_path):
+    """Seen 06.11.2026: RustDesk exits with 0 even when it refuses; only "Done!" means the password changed."""
+    exe = tmp_path / "rustdesk.exe"; exe.write_bytes(b"x")
+
+    def with_output(text):
+        calls = []
+        result = set_rustdesk_password("Ab3dEf7hJk2mNp4q", exe_paths=[exe], windows=True,
+                                       run=lambda cmd: (calls.append(cmd), (0, text))[1])
+        return result, calls
+
+    result, calls = with_output("Done!\r\n")
+    assert result == "ok" and calls == [[str(exe), "--password", "Ab3dEf7hJk2mNp4q"]]
+    assert with_output("Installation and administrative privileges required!\n")[0] == "not_admin"
+    assert with_output("Settings are disabled!\n")[0] == "disabled"
+    assert with_output("Changing permanent password is disabled!\n")[0] == "disabled"
+    assert with_output("Changing permanent password was rejected by daemon\n")[0] == "rejected"
+    assert with_output("")[0] == "failed"
+    assert set_rustdesk_password("with space", exe_paths=[exe], windows=True, run=lambda c: (0, "Done!")) == "invalid"
+    assert set_rustdesk_password("Ab3dEf7hJk2mNp4q", exe_paths=[tmp_path / "nope.exe"], windows=True) == "missing"
+    assert set_rustdesk_password("Ab3dEf7hJk2mNp4q", windows=False) == "not_windows"

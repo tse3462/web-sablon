@@ -69,6 +69,20 @@ class VaultStore:
             out.append(e)
         return out
 
+    def problems(self) -> list[dict[str, Any]]:
+        """PCs whose agent could not give RustDesk a new password (reason as reported, e.g. "not_admin")."""
+        tenants = {t["id"]: t["name"] for t in self.store.tenants()}
+        out = []
+        for d in self.store.devices():
+            try:
+                remote = (json.loads(d.get("last_status") or "{}") or {}).get("remote") or {}
+            except (ValueError, AttributeError):
+                continue
+            if remote.get("vault_error"):
+                out.append({"device_id": d["id"], "title": d.get("label") or "", "customer": tenants.get(d.get("tenant_id"), ""),
+                            "rustdesk_id": remote.get("rustdesk_id"), "error": remote["vault_error"]})
+        return out
+
     def save_manual(self, entry_id: str | None, title: str, customer: str, box: dict[str, Any]) -> str | None:
         """Owner's own entries (router, Wi-Fi, POS login …), sealed on the phone. None when the id is unknown."""
         now = utcnow().isoformat()

@@ -112,7 +112,7 @@ def test_panel_setup_manual_entries_and_reset(tmp_path, env):  # noqa: F811
     # Forgotten master password: start over, everything in the vault is gone (it could not be read anyway).
     assert dash.post("/api/vault/reset", json={"confirm": "evet"}).status_code == 422
     assert dash.post("/api/vault/reset", json={"confirm": "SIL"}).status_code == 200
-    assert dash.get("/api/vault").json() == {"meta": None, "entries": []}
+    assert dash.get("/api/vault").json() == {"meta": None, "entries": [], "problems": []}
     acts = [a["action"] for a in store.audit_log(env["a"])] + [a["action"] for a in store.audit_log(None)]
     assert "vault.reset" in acts
 
@@ -120,3 +120,45 @@ def test_panel_setup_manual_entries_and_reset(tmp_path, env):  # noqa: F811
     assert no_token.get("/api/vault").status_code == 403
     js = no_token.get("/vault.js")
     assert js.status_code == 200 and "javascript" in js.headers["content-type"] and "BoneliaVault" in js.text
+
+
+def test_refused_password_change_is_shown_in_the_panel_and_never_stored(tmp_path, env):  # noqa: F811
+    store = env["store"]
+    dash = panel(store)
+    meta = vault.create(MASTER)
+    dash.post("/api/vault/setup", json={"meta": meta})
+    s = usb(tmp_path, env, "KASSE-NOADMIN", env["a"], scopes=("diagnose", "repair:windows"))
+    pc = FakePC()
+    agent = Agent(s.client, AgentState(tmp_path / "n.json"), executors=pc.executors(), scan=pc.scan, maintenance_tools=(),
+                  remote=lambda: RD, set_remote_password=lambda pw: "not_admin")
+    for _ in range(3):
+        agent.cycle()
+    v = dash.get("/api/vault").json()
+    assert v["entries"] == []
+    assert v["problems"] == [{"device_id": s.creds.device_id, "title": "KASSE-NOADMIN", "customer": "Kunde A",
+                              "rustdesk_id": "494159677", "error": "not_admin"}]
+    # Once RustDesk accepts, the problem disappears and the PC's entry appears.
+    agent.set_remote_password = lambda pw: "ok"
+    agent.state.data.pop("rd_vault_failed_at", None)
+    agent.cycle()
+    v = dash.get("/api/vault").json()
+    assert v["problems"] == [] and [e["title"] for e in v["entries"]] == ["KASSE-NOADMIN"]
+
+
+def test_password_set_by_an_older_agent_is_set_again_with_the_check(tmp_path, env):  # noqa: F811
+    """Older agents trusted RustDesk's exit code; after the update each PC sets a checked password once."""
+    store = env["store"]
+    dash = panel(store)
+    meta = vault.create(MASTER)
+    dash.post("/api/vault/setup", json={"meta": meta})
+    s = usb(tmp_path, env, "KASSE-OLD", env["a"], scopes=("diagnose", "repair:windows"))
+    pc, calls = FakePC(), []
+    st = AgentState(tmp_path / "o.json")
+    st.data["vault"] = {"pub": meta["pub"], "rotate": None}
+    st.data["rd_vaulted"] = f"{vault.fingerprint(meta['pub'])}|"  # marker written by the older agent
+    agent = Agent(s.client, st, executors=pc.executors(), scan=pc.scan, maintenance_tools=(),
+                  remote=lambda: RD, set_remote_password=lambda pw: calls.append(pw) or "ok")
+    agent.cycle(); agent.cycle()
+    assert len(calls) == 1
+    [e] = entries(dash, "rustdesk")
+    assert vault.open_box(vault.unlock(meta, MASTER), e["box"])["password"] == calls[0]
