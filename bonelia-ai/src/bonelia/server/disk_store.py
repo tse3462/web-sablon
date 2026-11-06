@@ -84,7 +84,7 @@ def clean_report(raw: Any) -> dict[str, Any]:
                                                         "label": (d.get("label") if isinstance(d.get("label"), str) else "")[:40]})
     res = raw.get("cleanup_result")
     if isinstance(res, dict) and _str(res.get("id"), 40):
-        out["cleanup_result"] = {"id": res["id"][:40], "freed": _int(res.get("freed")) or 0,
+        out["cleanup_result"] = {"id": res["id"][:40], "freed": _int(res.get("freed")) or 0, "held": res.get("held") is True,
                                  "deleted": sum(1 for f in (res.get("files") or []) + (res.get("folders") or []) + (res.get("moves") or [])
                                                 if isinstance(f, dict) and f.get("status") in ("deleted", "moved")),
                                  "skipped": sum(1 for f in (res.get("files") or []) + (res.get("folders") or []) + (res.get("moves") or [])

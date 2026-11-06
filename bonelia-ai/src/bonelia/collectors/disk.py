@@ -640,9 +640,13 @@ def _remove(path: Path) -> tuple[int, bool]:
 
 
 def clean(layout: Layout, request: dict[str, Any], budget_s: float = 7200.0,
-          progress: Callable[[int], Any] | None = None) -> dict[str, Any]:
+          progress: Callable[[int], Any] | None = None, held_min: int = 512 * 1024 * 1024) -> dict[str, Any]:
     budget = Budget(budget_s)
     result: dict[str, Any] = {"id": str(request.get("id") or ""), "safe": {}, "files": [], "folders": [], "moves": [], "freed": 0}
+    try:
+        free_before = shutil.disk_usage(layout.drive).free
+    except OSError:
+        free_before = None
     moves = request.get("moves") or []
     planned = sum(int(m.get("bytes") or 0) for m in moves) or 1
     done = [0]
@@ -714,6 +718,14 @@ def clean(layout: Layout, request: dict[str, Any], budget_s: float = 7200.0,
         freed = sum(_empty(d, 86400 if key == "temp" else 0, budget) for d in layout.safe_dirs(key))
         result["safe"][key] = freed
         result["freed"] += freed
+    # Windows frees a deleted file's space only when the last program holding it open lets go (e.g. LM Studio
+    # with a loaded model): say so instead of claiming the space is free.
+    try:
+        gain = shutil.disk_usage(layout.drive).free - free_before if free_before is not None else None
+    except OSError:
+        gain = None
+    result["free_gain"] = max(0, gain) if gain is not None else None
+    result["held"] = gain is not None and result["freed"] > held_min and gain < result["freed"] * 0.5
     if progress:
         try:
             progress(100)

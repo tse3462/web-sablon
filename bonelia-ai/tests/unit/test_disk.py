@@ -289,3 +289,14 @@ def test_move_keeps_the_original_when_space_is_short_or_a_copy_differs(tmp_path,
     res = disk.clean(layout, {"id": "m4", "moves": [{"path": str(llama), "bytes": 1, "drive": str(tmp_path / "elsewhere")},
                                                     {"path": str(home / ".ollama"), "bytes": 1, "drive": str(tmp_path / "D")}]})
     assert [m["status"] for m in res["moves"]] == ["not_allowed", "not_allowed"]
+
+
+def test_cleanup_tells_when_the_space_did_not_come_back(tmp_path, monkeypatch):
+    """Seen 06.11.2026: 17 GB of an LM Studio model deleted, free space unchanged, because a program still held
+    the file open (Windows frees the space only when the last handle closes). The result says so."""
+    layout = big_pc(tmp_path)
+    home = tmp_path / "Users" / "anna"
+    usage = disk.shutil.disk_usage(tmp_path)
+    monkeypatch.setattr(disk.shutil, "disk_usage", lambda p: usage)  # free space does not change
+    res = disk.clean(layout, {"id": "h1", "folders": [{"path": str(home / ".lmstudio" / "models"), "bytes": 1}]}, held_min=MB)
+    assert res["freed"] >= 1500 * MB and res["free_gain"] == 0 and res["held"] is True
