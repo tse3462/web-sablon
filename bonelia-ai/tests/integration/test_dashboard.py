@@ -307,6 +307,16 @@ def test_live_center_puts_the_ai_network_on_top_and_programs_as_a_green_network_
     assert html.count("lv_apps_net:") == 2
 
 
+def test_check_now_button_shows_it_is_working_and_when_it_finished(tmp_path):
+    """User request 06.11.2026: a tap on "check now" must be visible -- busy while checking, then the time of the
+    check (or an error), kept across the redraw of the live center."""
+    _, c, *_ = setup(tmp_path)
+    html = c.get("/").text
+    assert "REPAIR_READY=false,NOW_ST={};" in html and ".lv-now.busy" in html and ".lv-now.done" in html
+    for key in ("up_checking", "up_checked", "up_check_fail"):
+        assert html.count(key + ":") == 2
+
+
 def test_devices_offer_rustdesk_connect_without_any_password(tmp_path):
     store, c, t, usb, agent = setup(tmp_path)
     store.set_device_status(agent, {"cycles": 1, "remote": {"installed": True, "rustdesk_id": "123456789", "service": "running"}})
