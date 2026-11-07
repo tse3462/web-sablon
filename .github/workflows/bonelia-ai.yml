@@ -94,6 +94,19 @@ jobs:
           cmd /c deployment\windows\BONELIA-Ajanlari-Guncelle.bat "$env:RUNNER_TEMP\usb\yok.exe"
           if ($LASTEXITCODE -eq 0) { throw "missing agent file must fail" }
           $global:LASTEXITCODE = 0   # that failure was expected; do not let it end the step as failed
+      - name: Update script keeps BONELIA running when GitHub cannot be reached
+        shell: pwsh
+        run: |
+          $env:CI = "1"
+          $orig = git remote get-url origin
+          git remote set-url origin https://github.invalid/nothing.git
+          cmd /c deployment\windows\BONELIA-Server-Guncelle.bat
+          $rc = $LASTEXITCODE
+          git remote set-url origin $orig
+          if ($rc -ne 1) { throw "a failed update must end with exit 1 (got $rc)" }
+          if ((Invoke-RestMethod http://127.0.0.1:8742/v1/health).status -ne "ok") { throw "server not running after a failed update" }
+          cmd /c deployment\windows\BONELIA-Server-Durdur.bat
+          $global:LASTEXITCODE = 0
       - name: Backup before a format and the one-click restore afterwards
         shell: pwsh
         run: |

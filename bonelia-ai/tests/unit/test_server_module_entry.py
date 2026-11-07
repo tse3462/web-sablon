@@ -61,3 +61,15 @@ def test_backup_runs_by_itself_once_a_week_while_the_stick_is_plugged_in():
     assert "age_days" in bk and "-lt 7" in bk  # daily look, a new backup only when the newest is a week old
     vbs = (WIN / "gizli-calistir.vbs").read_text(encoding="ascii")
     assert "WScript.Arguments" in vbs and ", 0, True" in vbs  # no window at all
+
+
+def test_update_fetches_first_and_never_leaves_the_server_stopped():
+    """Seen 07.11.2026: 'git pull' failed (GitHub not reachable) after the server had already been stopped, so BONELIA
+    stayed off. Now the code is fetched first (3 tries), the server is only stopped after that, and on failure the
+    whole answer of git is shown with the likely reason and the server is (re)started."""
+    up = (WIN / "BONELIA-Server-Guncelle.bat").read_text(encoding="ascii")
+    assert up.index("git pull") < up.index("BONELIA-Server-Durdur.bat")
+    assert "if %TRY% geq 3 goto pullfailed" in up and 'type "%PULLOUT%"' in up
+    fail = up[up.index(":pullfailed"):up.index(":pulled\n")]
+    assert "Durdur" not in fail and "BONELIA-Server-Baslat.bat" in fail and "resolve host" in fail
+    assert "exit /b 1" in fail
