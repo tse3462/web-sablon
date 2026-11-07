@@ -5,10 +5,9 @@
 
 When a program with a GitHub repository goes down:
 
-1. first aid, at once and without asking:
-   - the database answers "unavailable" (HTTP 503)  -> ``db-bakim.yml``: the app's stuck sessions are ended;
-   - anything else (the code broke)                  -> ``geri-al.yml``: back to the version live before the
-     newest deployment (the job refuses when nothing was deployed lately or it already went back);
+1. first aid, at once and without asking: ``geri-al.yml`` goes back to the version live before the newest
+   deployment (the job refuses when nothing was deployed in the last 6 hours or it already went back); when it
+   refuses and /health says the database does not answer (HTTP 503), ``db-bakim.yml`` ends the app's stuck sessions;
 2. Claude looks for the cause (``auto-repair.yml``). After a rollback it fixes the faulty code on main, so the
    next deployment does not bring the error back;
 3. Claude's fix goes live without asking only inside narrow limits: all CI checks passed, at most 5 files and
@@ -225,18 +224,23 @@ class Autopilot:
             return bool(st.get("pilot"))
         p: dict[str, Any] = {"since": _iso(now), "reason": reason, "alerted": False, "log": []}
         st["pilot"] = p
-        if reason == "http_503":  # /health: the database does not answer -> first aid there, not a rollback
+        # A fresh deployment is the likeliest cause, also behind a 503 (seen 07.11.2026: a release made the Worker
+        # refuse its configuration). The rollback job refuses by itself when nothing was deployed in the last 6 hours;
+        # then a 503 gets database first aid, anything else goes to Claude.
+        self._log(p, now, "Site çalışmıyor; son yüklemeden önceki sürüme dönülüyor.")
+        if self._start_job(app, p, now, ROLLBACK, {}):
+            p["phase"] = "rollback"
+            return True
+        self._after_no_rollback(app, p, now, reason)
+        return True
+
+    def _after_no_rollback(self, app: dict[str, Any], p: dict[str, Any], now: datetime, reason: str) -> None:
+        if reason == "http_503":  # /health says the database does not answer
             self._log(p, now, "Veritabanı cevap vermiyor; takılmış bağlantılar kapatılıyor.")
             if self._start_job(app, p, now, FIRST_AID, {"action": "stuck"}):
                 p["phase"] = "first_aid"
-                return True
-        else:
-            self._log(p, now, "Site çalışmıyor; son yüklemeden önceki sürüme dönülüyor.")
-            if self._start_job(app, p, now, ROLLBACK, {}):
-                p["phase"] = "rollback"
-                return True
+                return
         self._to_repair(app, p, now, reason)
-        return True
 
     def _to_repair(self, app: dict[str, Any], p: dict[str, Any], now: datetime, reason: str) -> None:
         if self._start_job(app, p, now, REPAIR, {"reason": reason[:200]}):
@@ -288,7 +292,7 @@ class Autopilot:
             return
         why = {"no_recent_deploy": "son 6 saatte yükleme yok", "already_rolled_back": "zaten geri dönülmüş"}.get(str(rep.get("reason")), str(rep.get("reason") or rep.get("status")))
         self._log(p, now, f"Geri dönüş yapılmadı ({why}).")
-        self._to_repair(app, p, now, str(p.get("reason") or "down"))
+        self._after_no_rollback(app, p, now, str(p.get("reason") or "down"))
 
     def _after_first_aid(self, app, p, now, up, rep) -> None:
         n = int(rep.get("terminated") or 0) + int(rep.get("cancelled") or 0)

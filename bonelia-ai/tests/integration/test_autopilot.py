@@ -170,16 +170,33 @@ def test_a_fix_outside_the_limits_waits_for_the_owner(tmp_path):
         assert html.count(key + ":") == 2
 
 
-def test_database_down_gets_first_aid_not_a_rollback(tmp_path):
+def test_database_down_gets_first_aid_when_nothing_was_deployed(tmp_path):
     store, gh, sent, now, mon = setup(tmp_path)
     gh.site = (503, '{"status":"degraded","database":"unavailable"}')
+    gh.reports["geri-al.yml"] = {"status": "refused", "reason": "no_recent_deploy", "healthy": False}
     tick(mon, now, 2)
-    assert [(j["workflow"], j["inputs"].get("action")) for j in gh.jobs] == [("db-bakim.yml", "stuck")]
+    assert [j["workflow"] for j in gh.jobs] == ["geri-al.yml"]  # a fresh deployment is checked first, always
+    gh.finish("geri-al.yml")
+    tick(mon, now)
+    assert [(j["workflow"], j["inputs"].get("action")) for j in gh.jobs][1] == ("db-bakim.yml", "stuck")
     gh.finish("db-bakim.yml")
     gh.site = (200, '{"database":"ok"}')
     tick(mon, now, 2)
-    assert "pilot" not in state(store) and sent.calls == [] and len(gh.jobs) == 1  # solved: no AI run, no money spent
+    assert "pilot" not in state(store) and sent.calls == [] and len(gh.jobs) == 2  # solved: no AI run, no money spent
     assert "3 takılmış bağlantı" in store.get_setting(DIGEST_KEY)[0]["text"]
+
+
+def test_a_503_right_after_a_deployment_is_rolled_back(tmp_path):
+    """07.11.2026, seen live: a release made the Worker refuse its configuration and /health answered 503. That is not
+    the database: going back to the version before the deployment healed it within a minute."""
+    store, gh, sent, now, mon = setup(tmp_path)
+    gh.site = (503, '{"error":{"code":"SERVICE_UNAVAILABLE"}}')
+    tick(mon, now, 2)
+    assert [j["workflow"] for j in gh.jobs] == ["geri-al.yml"]
+    gh.finish("geri-al.yml")
+    gh.site = (200, '{"database":"ok"}')
+    tick(mon, now)
+    assert [j["workflow"] for j in gh.jobs] == ["geri-al.yml", "auto-repair.yml"]  # then Claude fixes main
 
 
 def test_what_it_cannot_solve_reaches_the_owner_at_once(tmp_path):
