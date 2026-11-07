@@ -240,6 +240,20 @@ class Notifier:
         return self._send(f"denied|{tenant_id}|{device}|{what}", timedelta(hours=24),
                           self._title("denied", customer=customer, device=device), f"{what} ({', '.join(reasons)})")
 
+    def db_health(self, name: str, rep: dict) -> bool:
+        """Weekly database check of an own program (07.11.2026)."""
+        st = rep.get("status")
+        head = {"ok": ("✅ Sağlıklı.", "✅ Gesund."), "info": ("ℹ️ Küçük notlar var.", "ℹ️ Kleine Hinweise."),
+                "warn": ("⚠️ Bakılması gereken noktalar var.", "⚠️ Es gibt Punkte zum Prüfen."),
+                "crit": ("🚨 ACİL bakılmalı.", "🚨 DRINGEND prüfen."),
+                "no_secret": ("Kontrol yapılamadı: GitHub'da DB_HEALTH_URL yok.", "Keine Prüfung: DB_HEALTH_URL fehlt auf GitHub."),
+                "failed": ("Kontrol tamamlanamadı (veritabanına bağlanılamadı?).", "Prüfung nicht abgeschlossen (keine Verbindung?).")}
+        first = head.get(st, head["failed"])[0 if self.lang == "tr" else 1]
+        detail = str(rep.get("summary") or "").strip() or "\n".join("• " + f["text"] for f in rep.get("findings") or [])
+        size = f" ({rep['db_mb']} MB)" if rep.get("db_mb") is not None else ""
+        title = ("🩺 " + name + (": veritabanı" if self.lang == "tr" else ": Datenbank")) + size
+        return self._send(f"dbhealth|{name}|{rep.get('run_id')}", timedelta(days=30), title, (first + "\n" + detail[:1200]).strip())
+
     def develop_result(self, target: str, req: dict) -> bool:
         """"Geliştir" (07.11.2026): what Claude did with the owner's wish."""
         rep = req.get("report") or {}

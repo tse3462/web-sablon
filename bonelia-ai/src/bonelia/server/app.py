@@ -168,6 +168,13 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
                 if any(r.get("state") == "running" for r in desk.requests()):
                     await run_in_threadpool(safe_notify, desk.poll)
 
+        async def db_health_watch():  # weekly database reports of the own programs, looked for every 30 minutes
+            from .db_health import DbHealthWatch
+            watch = DbHealthWatch(store, notifier=notifier)
+            while True:
+                await asyncio.sleep(1800)
+                await run_in_threadpool(safe_notify, watch.poll)
+
         async def uptime_watch():  # own programs from "My apps", once a minute
             monitor = UptimeMonitor(store, notifier)
             while True:
@@ -177,12 +184,14 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         task = asyncio.create_task(offline_watch())
         uptime_task = asyncio.create_task(uptime_watch())
         develop_task = asyncio.create_task(develop_watch())
+        dbh_task = asyncio.create_task(db_health_watch())
         try:
             yield
         finally:
             task.cancel()
             uptime_task.cancel()
             develop_task.cancel()
+            dbh_task.cancel()
 
     app = FastAPI(title="BONELİA AI Server", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)

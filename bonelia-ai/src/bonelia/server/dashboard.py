@@ -367,6 +367,23 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         return {"targets": [{k: t[k] for k in ("id", "name", "base", "live")} for t in d.targets()],
                 "ready": d.github.ready(), "requests": d.requests()}
 
+    # ---------- weekly database check of the own programs (07.11.2026)
+    @app.get("/api/dbhealth")
+    def dbhealth_get() -> dict[str, Any]:
+        from .db_health import DbHealthWatch
+        w = DbHealthWatch(store)
+        return {"programs": [{"id": a["id"], "name": a.get("name") or a["repair_repo"]} for a in w.programs()], "reports": w.reports()}
+
+    @app.post("/api/dbhealth/{app_id}/run")
+    def dbhealth_run(app_id: str) -> dict[str, Any]:
+        from .db_health import DbHealthWatch
+        r = DbHealthWatch(store).run_now(app_id)
+        if r == "unknown_app":
+            raise HTTPException(404, r)
+        if r != "started":
+            raise HTTPException(409, r)
+        return {"result": r}
+
     @app.get("/api/develop")
     def develop_get() -> dict[str, Any]:
         from .develop import DevelopDesk
