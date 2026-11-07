@@ -180,6 +180,11 @@ class SetupValue(BaseModel):
     value: str = Field(max_length=300)
 
 
+class SetupLink(BaseModel):
+    app_id: str = Field(max_length=40)
+    repo: str = Field(max_length=201)
+
+
 class SetupDbUrl(BaseModel):
     pooler: str = Field(max_length=400)
     password: str = Field(max_length=80)
@@ -384,6 +389,37 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         if app_ is None:
             raise HTTPException(404, "unknown_app")
         return g, app_
+
+    def setup_overview() -> dict[str, Any]:
+        from .setup_guide import suggest_repo
+        linked, unlinked = [], []
+        for a in apps_list():
+            if not isinstance(a, dict):
+                continue
+            if a.get("repair_repo") and valid_repo(str(a["repair_repo"])):
+                linked.append({"id": a["id"], "name": a.get("name"), "repo": a["repair_repo"]})
+            else:
+                unlinked.append({"id": a["id"], "name": a.get("name"), "suggest": suggest_repo(a)})
+        return {"linked": linked, "unlinked": unlinked}
+
+    @app.get("/api/setup")
+    def setup_get() -> dict[str, Any]:
+        return setup_overview()
+
+    @app.post("/api/setup/link")
+    def setup_link(body: SetupLink) -> dict[str, Any]:
+        """Step 0 of the guide: the program's GitHub repository, without leaving the guide."""
+        repo = body.repo.strip()
+        if not valid_repo(repo):
+            raise HTTPException(422, "invalid_repo")
+        apps = apps_list()
+        hit = next((a for a in apps if isinstance(a, dict) and a.get("id") == body.app_id), None)
+        if hit is None:
+            raise HTTPException(404, "unknown_app")
+        hit["repair_repo"] = repo
+        store.set_setting(APPS_KEY, apps)
+        store.audit("admin:dashboard", "setup.repo_linked", {"id": body.app_id, "repair_repo": repo})
+        return setup_overview()
 
     @app.get("/api/setup/{app_id}")
     def setup_status(app_id: str) -> dict[str, Any]:

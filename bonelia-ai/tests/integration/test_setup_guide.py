@@ -94,6 +94,25 @@ def test_guide_checks_steps_and_writes_the_secrets_itself(tmp_path, monkeypatch)
         assert html.count(key + ":") == 2
 
 
+def test_a_program_without_a_repository_is_linked_in_the_guide(tmp_path, monkeypatch):
+    """Owner's screenshot 07.11.2026: the guide was empty ("Seçenek Yok") because no program had a repository yet."""
+    gh = FakeGitHub()
+    store, c = panel(tmp_path, monkeypatch, gh)
+    store.set_setting(APPS_KEY, [{"id": "r1", "name": "Rezervasyon", "url": "https://reservierung.bnl-digital.de"},
+                                 {"id": "s1", "name": "Site", "url": "https://bnl-digital.de"}])
+    g = c.get("/api/setup").json()
+    assert g["linked"] == [] and [(u["id"], u["suggest"]) for u in g["unlinked"]] == [
+        ("r1", "tse3462/bonelia-ai-rezervation"), ("s1", None)]  # the known repository is offered, nothing is guessed
+    r = c.post("/api/setup/link", json={"app_id": "r1", "repo": "tse3462/bonelia-ai-rezervation"})
+    assert r.status_code == 200 and [p["id"] for p in r.json()["linked"]] == ["r1"]
+    assert store.get_setting(APPS_KEY)[0]["repair_repo"] == "tse3462/bonelia-ai-rezervation"
+    assert c.get("/api/setup/r1").json()["repo"] == "tse3462/bonelia-ai-rezervation"
+    assert c.post("/api/setup/link", json={"app_id": "s1", "repo": "not a repo"}).status_code == 422
+    assert c.post("/api/setup/link", json={"app_id": "nope", "repo": "a/b"}).status_code == 404
+    html = c.get("/").text
+    assert 'id="suLink"' in html and html.count("su_link:") == 2 and html.count("su_link_help:") == 2
+
+
 def test_missing_secret_permission_is_named(tmp_path, monkeypatch):
     gh = FakeGitHub(secrets_ok=False)
     store, c = panel(tmp_path, monkeypatch, gh)

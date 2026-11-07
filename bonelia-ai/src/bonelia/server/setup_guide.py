@@ -25,6 +25,13 @@ REF_RE = re.compile(r"^[a-z]{20}$")
 POOLER_RE = re.compile(r"^postgres(?:ql)?://postgres\.([a-z]{20})(?::[^@\s]*)?@([a-z0-9.-]+\.pooler\.supabase\.com):(5432|6543)/postgres(?:\?\S*)?$")
 PASSWORD_RE = re.compile(r"^[A-Za-z0-9]{24,64}$")
 TRANSPORT: httpx.BaseTransport | None = None  # tests replace the network
+# Repositories that already carry the maintenance jobs; the guide offers them when a program's name or address fits.
+KNOWN_REPOS = ((("rezerv", "reservierung"), "tse3462/bonelia-ai-rezervation"),)
+
+
+def suggest_repo(app: dict[str, Any]) -> str | None:
+    text = f"{app.get('name') or ''} {app.get('url') or ''} {app.get('admin_url') or ''}".lower()
+    return next((repo for words, repo in KNOWN_REPOS if any(w in text for w in words)), None)
 
 
 def supabase_ref(text: str) -> str | None:
