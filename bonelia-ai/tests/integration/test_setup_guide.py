@@ -90,7 +90,11 @@ def test_guide_checks_steps_and_writes_the_secrets_itself(tmp_path, monkeypatch)
     assert c.get("/api/setup/nope").status_code == 404
     html = c.get("/").text
     assert 'id="setupBox"' in html and "function setupLoad(" in html and "crypto.getRandomValues" in html
-    for key in ("su_title", "su_token", "su_jobs", "su_sql", "su_pooler", "su_claude", "su_try", "su_perm_help"):
+    # 07.11.2026: Safari reloaded the tab while the owner was in Supabase, the password was lost and a second one went
+    # to GitHub ("password authentication failed"). The password now survives a reload, and steps 4-5 can be redone.
+    assert "sessionStorage" in html and "function suPwSet(" in html
+    for key in ("su_title", "su_token", "su_jobs", "su_sql", "su_pooler", "su_claude", "su_try", "su_perm_help",
+                "su_redo", "su_regen_q", "dbh_failed_help"):
         assert html.count(key + ":") == 2
 
 
