@@ -176,6 +176,15 @@ class BrainCustomer(BaseModel):
     allowed: bool
 
 
+class SetupValue(BaseModel):
+    value: str = Field(max_length=300)
+
+
+class SetupDbUrl(BaseModel):
+    pooler: str = Field(max_length=400)
+    password: str = Field(max_length=80)
+
+
 class DevelopBody(BaseModel):
     target: str = Field(max_length=60)
     request: str = Field(max_length=2000)
@@ -366,6 +375,64 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
     def develop_view(d) -> dict[str, Any]:
         return {"targets": [{k: t[k] for k in ("id", "name", "base", "live")} for t in d.targets()],
                 "ready": d.github.ready(), "requests": d.requests()}
+
+    # ---------- setup guide of the own programs' maintenance (07.11.2026)
+    def setup_guide(app_id: str):
+        from .setup_guide import SetupGuide
+        g = SetupGuide(store)
+        app_ = g.app(app_id)
+        if app_ is None:
+            raise HTTPException(404, "unknown_app")
+        return g, app_
+
+    @app.get("/api/setup/{app_id}")
+    def setup_status(app_id: str) -> dict[str, Any]:
+        g, app_ = setup_guide(app_id)
+        return g.status(app_)
+
+    @app.post("/api/setup/{app_id}/supabase")
+    def setup_supabase(app_id: str, body: SetupValue) -> dict[str, Any]:
+        from .setup_guide import supabase_ref
+        g, app_ = setup_guide(app_id)
+        ref = supabase_ref(body.value)
+        if ref is None:
+            raise HTTPException(422, "invalid_supabase")
+        apps = apps_list()
+        for a in apps:
+            if a.get("id") == app_id:
+                a["supabase_ref"] = ref
+        store.set_setting(APPS_KEY, apps)
+        return g.status(g.app(app_id))
+
+    @app.post("/api/setup/{app_id}/anthropic")
+    def setup_anthropic(app_id: str) -> dict[str, Any]:
+        from . import brain as brain_mod
+        g, app_ = setup_guide(app_id)
+        key = store.get_setting(brain_mod.KEY_SETTING)
+        if not isinstance(key, str) or not brain_mod.KEY_RE.match(key):
+            raise HTTPException(409, "no_key")
+        r = g.put_secret(app_["repair_repo"], "ANTHROPIC_API_KEY", key)
+        if r != "saved":
+            raise HTTPException(409, "secrets_" + r)
+        store.audit("admin:dashboard", "setup.secret_saved", {"repo": app_["repair_repo"], "name": "ANTHROPIC_API_KEY"})
+        return g.status(app_)
+
+    @app.post("/api/setup/{app_id}/dburl")
+    def setup_dburl(app_id: str, body: SetupDbUrl) -> dict[str, Any]:
+        from .setup_guide import health_url
+        g, app_ = setup_guide(app_id)
+        ref = app_.get("supabase_ref")
+        if not ref:
+            raise HTTPException(409, "no_supabase")
+        try:
+            url = health_url(body.pooler, body.password, ref)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        r = g.put_secret(app_["repair_repo"], "DB_HEALTH_URL", url)
+        if r != "saved":
+            raise HTTPException(409, "secrets_" + r)
+        store.audit("admin:dashboard", "setup.secret_saved", {"repo": app_["repair_repo"], "name": "DB_HEALTH_URL"})
+        return g.status(app_)
 
     # ---------- weekly database check of the own programs (07.11.2026)
     @app.get("/api/dbhealth")
