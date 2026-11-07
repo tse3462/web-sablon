@@ -93,6 +93,7 @@ def test_programs_without_the_job_or_without_a_key_are_skipped(tmp_path):
 
 def test_check_now_from_the_panel(tmp_path, monkeypatch):
     store, gh, sent, w = setup(tmp_path)
+    assert w.hurry() is False
     import bonelia.server.db_health as mod
 
     monkeypatch.setattr(mod, "TRANSPORT", gh.transport)
@@ -100,6 +101,7 @@ def test_check_now_from_the_panel(tmp_path, monkeypatch):
     g = c.get("/api/dbhealth").json()
     assert [p["id"] for p in g["programs"]] == ["a1"] and g["reports"] == {}
     assert c.post("/api/dbhealth/a1/run", json={}).json()["result"] == "started" and gh.dispatched[0]["ref"] == "main"
+    assert w.hurry() is True  # its report is looked for every minute now
     assert c.post("/api/dbhealth/a2/run", json={}).status_code == 404
     w.poll()
     assert c.get("/api/dbhealth").json()["reports"]["a1"]["status"] == "warn"

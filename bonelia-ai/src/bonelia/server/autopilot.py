@@ -426,6 +426,7 @@ class Autopilot:
             p = st.get("pilot")
             apps.append({"id": a["id"], "name": a.get("name"), "on": a["id"] not in s["off"],
                          "db_watch": a["id"] in (self.store.get_setting(DB_URLS_KEY) or {}),
+                         "db_fail": int(((self.store.get_setting(DB_STATE_KEY) or {}).get(a["id"]) or {}).get("fail", 0)) >= 2,
                          "open": {k: p.get(k) for k in ("phase", "since", "branch", "why", "run_url")} | {"log": p.get("log", [])[-8:]} if p else None,
                          "waiting": st.get("pilot_wait"), "last": st.get("pilot_last")})
         return {"ai_cap": s["ai_cap"], "ai_runs": self.ai_runs(), "apps": apps,
@@ -441,20 +442,42 @@ STATS_SQL = """select (select count(*) from pg_stat_activity) as connections,
     and backend_type = 'client backend' and pid <> pg_backend_pid()) as long_running"""
 
 
-def read_db_stats(url: str, connect: Callable[..., Any] | None = None) -> dict[str, Any] | None:
-    """The monitor role's figures (pg_monitor: statistics only, never table data); None when unreachable."""
+CONNECT: Callable[..., Any] | None = None  # tests replace the database connection
+
+
+def _connect(url: str, connect: Callable[..., Any] | None):
     u = urlsplit(url)
     if u.scheme not in ("postgres", "postgresql") or not u.hostname or not u.username:
-        return None
+        raise ValueError("invalid_url")
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # sslmode=no-verify, like the GitHub job
+    connect = connect or CONNECT
     if connect is None:
         import pg8000.dbapi as pg  # noqa: PLC0415 - optional at import time
         connect = pg.connect
+    return connect(user=unquote(u.username), password=unquote(u.password or ""), host=u.hostname, port=u.port or 5432,
+                   database=(u.path or "/postgres").lstrip("/") or "postgres", ssl_context=ctx, timeout=10,
+                   application_name="bonelia-db-5min")
+
+
+def db_login(url: str, connect: Callable[..., Any] | None = None) -> str:
+    """'ok', 'auth' (the database refused this password) or 'unreachable' -- tried before the password goes to GitHub."""
     try:
-        con = connect(user=unquote(u.username), password=unquote(u.password or ""), host=u.hostname, port=u.port or 5432,
-                      database=(u.path or "/postgres").lstrip("/") or "postgres", ssl_context=ctx, timeout=15,
-                      application_name="bonelia-db-5min")
+        con = _connect(url, connect)
+    except Exception as exc:
+        text = str(exc).lower()
+        return "auth" if "password authentication failed" in text or "28p01" in text else "unreachable"
+    try:
+        con.close()
+    except Exception:
+        pass
+    return "ok"
+
+
+def read_db_stats(url: str, connect: Callable[..., Any] | None = None) -> dict[str, Any] | None:
+    """The monitor role's figures (pg_monitor: statistics only, never table data); None when unreachable."""
+    try:
+        con = _connect(url, connect)
     except Exception:
         return None
     try:

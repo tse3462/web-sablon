@@ -174,9 +174,14 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         async def db_health_watch():  # weekly database reports of the own programs, looked for every 30 minutes
             from .db_health import DbHealthWatch
             watch = DbHealthWatch(store, notifier=notifier)
+            await run_in_threadpool(safe_notify, watch.poll)  # right after a (re)start, too
+            n = 0
             while True:
-                await asyncio.sleep(1800)
-                await run_in_threadpool(safe_notify, watch.poll)
+                await asyncio.sleep(60)
+                n += 1
+                # every minute for 15 minutes after "Şimdi kontrol et", otherwise every 30 minutes
+                if n % 30 == 0 or watch.hurry():
+                    await run_in_threadpool(safe_notify, watch.poll)
 
         async def pilot_db_watch():  # autopilot (07.11.2026): free database figures every 5 minutes, morning summary
             from .autopilot import DB_URLS_KEY, Autopilot, read_db_stats

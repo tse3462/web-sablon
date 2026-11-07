@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import json
 import secrets
+import time
 import zipfile
 from typing import Any
 
@@ -21,6 +22,7 @@ from .repair import API, GitHubRepair, valid_repo
 WORKFLOW = "db-saglik.yml"
 ARTIFACT = "db-saglik-report"
 SETTINGS_KEY = "db_health"
+HURRY_KEY = "db_health_hurry"
 STATUSES = ("ok", "info", "warn", "crit", "no_secret", "failed")
 LEVELS = ("ok", "info", "warn", "crit")
 TRANSPORT: httpx.BaseTransport | None = None  # tests replace the network
@@ -112,4 +114,12 @@ class DbHealthWatch:
                            json={"ref": "main", "inputs": {"request_id": secrets.token_hex(6)}})
         except httpx.HTTPError:
             return "refused"
-        return "started" if r.status_code == 204 else "refused"
+        if r.status_code != 204:
+            return "refused"
+        self.store.set_setting(HURRY_KEY, time.time() + 900)
+        return "started"
+
+    def hurry(self) -> bool:
+        """A check was started by hand in the last 15 minutes: look for its report every minute."""
+        until = self.store.get_setting(HURRY_KEY)
+        return isinstance(until, (int, float)) and time.time() < until

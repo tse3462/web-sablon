@@ -67,9 +67,11 @@ def panel(tmp_path, monkeypatch, gh):
     store.set_setting("anthropic_api_key", "sk-ant-api03-" + "B" * 40)
     store.set_setting(APPS_KEY, [{"id": "a1", "name": "BNL Rezervasyon", "url": "https://reservierung.bnl-digital.de",
                                   "repair_repo": "tse3462/bonelia-ai-rezervation"}])
+    import bonelia.server.autopilot as ap
     import bonelia.server.setup_guide as mod
 
     monkeypatch.setattr(mod, "TRANSPORT", gh.transport)
+    monkeypatch.setattr(ap, "CONNECT", lambda **kw: type("C", (), {"close": lambda self: None})())  # Supabase knows it
     return store, TestClient(create_dashboard_app(store, TOKEN, 9999), base_url="http://127.0.0.1:9999", headers=H)
 
 
@@ -117,6 +119,23 @@ def test_a_program_without_a_repository_is_linked_in_the_guide(tmp_path, monkeyp
     assert c.post("/api/setup/link", json={"app_id": "nope", "repo": "a/b"}).status_code == 404
     html = c.get("/").text
     assert 'id="suLink"' in html and html.count("su_link:") == 2 and html.count("su_link_help:") == 2
+
+
+def test_a_password_supabase_does_not_know_never_reaches_github(tmp_path, monkeypatch):
+    """07.11.2026: twice the SQL was not run with the password that went to GitHub; now BONELIA tries it first."""
+    gh = FakeGitHub()
+    store, c = panel(tmp_path, monkeypatch, gh)
+    import bonelia.server.autopilot as ap
+
+    def refuse(**kw):
+        raise Exception({"S": "FATAL", "C": "28P01", "M": 'password authentication failed for user "bonelia_health_monitor"'})
+    monkeypatch.setattr(ap, "CONNECT", refuse)
+    c.post("/api/setup/a1/supabase", json={"value": REF})
+    r = c.post("/api/setup/a1/dburl", json={"pooler": POOLER, "password": PW})
+    assert r.status_code == 422 and r.json()["detail"] == "db_password_mismatch" and "DB_HEALTH_URL" not in gh.secrets
+    assert ap.db_login("postgresql://u.x:p@h:5432/postgres", lambda **kw: (_ for _ in ()).throw(OSError("timed out"))) == "unreachable"
+    html = c.get("/").text
+    assert html.count("db_password_mismatch:") == 2 and html.count("ap_db_fail:") == 2
 
 
 def test_missing_secret_permission_is_named(tmp_path, monkeypatch):

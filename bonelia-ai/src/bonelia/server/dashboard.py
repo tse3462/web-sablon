@@ -470,6 +470,10 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
             url = health_url(body.pooler, body.password, ref)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+        # 07.11.2026: twice a password went to GitHub that Supabase did not know (SQL not run with it). Try it first.
+        from . import autopilot
+        if autopilot.db_login(url) == "auth":
+            raise HTTPException(422, "db_password_mismatch")
         r = g.put_secret(app_["repair_repo"], "DB_HEALTH_URL", url)
         if r != "saved":
             raise HTTPException(409, "secrets_" + r)
