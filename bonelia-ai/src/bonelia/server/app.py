@@ -155,8 +155,11 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
     @contextlib.asynccontextmanager
     async def lifespan(_app):
         async def offline_watch():
+            from . import self_update
+            await run_in_threadpool(safe_notify, self_update.report, store, cfg.data_dir, notifier)  # after an update
             while True:
                 await asyncio.sleep(300)
+                await run_in_threadpool(safe_notify, self_update.report, store, cfg.data_dir, notifier)
                 await run_in_threadpool(safe_notify, notifier.check_offline)
                 await run_in_threadpool(safe_notify, notifier.backup_overdue)
 

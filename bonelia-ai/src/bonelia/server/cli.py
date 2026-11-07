@@ -92,6 +92,12 @@ def main(argv: list[str] | None = None) -> int:
     pa = sub.add_parser("publish-agent", help="publish a new agent program; installed PCs update themselves")
     pa.add_argument("exe", help="path to BoneliaAI-Konsol.exe from the new USB package")
 
+    uc = sub.add_parser("update-check", help="hidden update task: is there newer code whose tests passed? (exit 0 = update)")
+    uc.add_argument("--repo", type=Path, default=Path("."))
+    un = sub.add_parser("update-note", help="hidden update task: leave its outcome for the server to report")
+    un.add_argument("--result", required=True, choices=("ok", "rolled_back", "merge_failed"))
+    un.add_argument("--from", dest="old", default="")
+    un.add_argument("--to", dest="new", default="")
     db = sub.add_parser("dashboard", help="open the control panel (this PC, or a Tailscale address for phone access)")
     db.add_argument("--port", type=int, default=0)
     db.add_argument("--no-browser", action="store_true")
@@ -115,6 +121,19 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         uvicorn.run(create_app(cfg), host=host, port=port, log_level="info",
                     ssl_certfile=str(cfg.tls_cert) if cfg.tls_cert else None, ssl_keyfile=str(cfg.tls_key) if cfg.tls_key else None)
+        return 0
+
+    if args.cmd == "update-check":
+        from . import self_update
+        d = self_update.decide(self_update._git(args.repo))
+        print(json.dumps(d))
+        if d["action"] == "blocked" and d.get("reason") in ("tests_failed", "local_changes", "diverged"):
+            self_update.write_note(cfg.data_dir, {"result": "blocked", "reason": d["reason"], "to": d.get("to", "")})
+        return self_update.EXIT[d["action"]]
+
+    if args.cmd == "update-note":
+        from . import self_update
+        self_update.write_note(cfg.data_dir, {"result": args.result, "from": args.old, "to": args.new})
         return 0
 
     if args.cmd == "hw-check":

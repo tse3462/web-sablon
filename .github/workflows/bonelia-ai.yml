@@ -105,6 +105,14 @@ jobs:
           git remote set-url origin $orig
           if ($rc -ne 1) { throw "a failed update must end with exit 1 (got $rc)" }
           if ((Invoke-RestMethod http://127.0.0.1:8742/v1/health).status -ne "ok") { throw "server not running after a failed update" }
+          # the hidden 30-minute task: nothing it may update to here (detached checkout) -> it touches nothing
+          $env:BONELIA_PY = (Get-Command python).Source
+          $before = git rev-parse HEAD
+          cmd /c deployment\windows\BONELIA-Server-Guncelle.bat /auto
+          if ($LASTEXITCODE -ne 0) { throw "automatic update run must end quietly (got $LASTEXITCODE)" }
+          if ((git rev-parse HEAD) -ne $before) { throw "automatic update changed the code without tested news" }
+          if ((Invoke-RestMethod http://127.0.0.1:8742/v1/health).status -ne "ok") { throw "server stopped by an automatic run with nothing to do" }
+          Get-Content "$env:TEMP\bonelia-update-check.txt"
           cmd /c deployment\windows\BONELIA-Server-Durdur.bat
           $global:LASTEXITCODE = 0
       - name: Backup before a format and the one-click restore afterwards

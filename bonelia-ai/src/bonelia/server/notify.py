@@ -272,6 +272,28 @@ class Notifier:
         title = ("✨ Geliştir: " if self.lang == "tr" else "✨ Entwickeln: ") + target
         return self._send(f"develop|{req.get('id')}|{st}", timedelta(days=30), title, text)
 
+    def self_update(self, note: dict) -> bool:
+        """The hidden update task's outcome (07.11.2026): updated, went back, or why it waits."""
+        res, to = note.get("result"), str(note.get("to") or "")[:7]
+        tr = {"ok": f"✅ BONELIA AI kendini güncelledi (sürüm {to}). Sunucu, panel ve ajan yeni sürümle çalışıyor.",
+              "rolled_back": f"⚠️ Yeni sürüm ({to}) başlamadı; BONELIA eski sürüme döndü ve çalışmaya devam ediyor. Claude'a haber verin.",
+              "merge_failed": "⚠️ Güncelleme uygulanamadı; BONELIA eski sürümle çalışıyor.",
+              "tests_failed": f"ℹ️ Yeni sürüm ({to}) GitHub testlerinden geçmedi; güncellenmedi. Düzeltilince kendiliğinden güncellenir.",
+              "local_changes": "ℹ️ Otomatik güncelleme duruyor: bu bilgisayarda elle değişmiş dosyalar var. Claude'a haber verin.",
+              "diverged": "ℹ️ Otomatik güncelleme duruyor: yerel kod GitHub'dan ayrılmış. Claude'a haber verin."}
+        de = {"ok": f"✅ BONELIA AI hat sich aktualisiert (Version {to}). Server, Panel und Agent laufen mit der neuen Version.",
+              "rolled_back": f"⚠️ Neue Version ({to}) startete nicht; BONELIA läuft weiter mit der alten Version. Claude informieren.",
+              "merge_failed": "⚠️ Update nicht anwendbar; BONELIA läuft mit der alten Version.",
+              "tests_failed": f"ℹ️ Neue Version ({to}) hat die GitHub-Tests nicht bestanden; kein Update. Nach der Korrektur automatisch.",
+              "local_changes": "ℹ️ Automatisches Update pausiert: lokal geänderte Dateien. Claude informieren.",
+              "diverged": "ℹ️ Automatisches Update pausiert: lokaler Code weicht von GitHub ab. Claude informieren."}
+        key = res if res != "blocked" else str(note.get("reason"))
+        text = (tr if self.lang == "tr" else de).get(key)
+        if not text:
+            return False
+        quiet = timedelta(days=30) if res == "ok" else timedelta(days=7)
+        return self._send(f"self_update|{key}|{note.get('to')}", quiet, "🔄 BONELIA AI", text)
+
     def backup_overdue(self, now: datetime | None = None) -> bool:
         """Weekly server backup (06.11.2026): remind once a week when the last one is over 10 days old."""
         rec = self.store.get_setting("server_backup")

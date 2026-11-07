@@ -3,8 +3,14 @@ rem Updates BONELIA AI from GitHub: server + background agent, in one double-cli
 rem The new code is fetched FIRST, while the server keeps running: if GitHub cannot be reached
 rem (no internet, DNS, login), nothing is stopped and the full answer of git is shown with a hint.
 rem Only then the server is stopped, reinstalled, and started again with the background agent.
+rem
+rem /auto (07.11.2026): the hidden task "BONELIA AI Guncelle" runs this every 30 minutes, without any window.
+rem It updates only when GitHub has newer code AND its BONELIA AI tests passed there (bonelia.server update-check);
+rem local edits or red tests: nothing is touched. When the new server does not start, it goes back to the old
+rem version. The outcome reaches the owner on Telegram (update-note, reported once by the server).
 setlocal
 cd /d "%~dp0..\.."
+if /i "%~1"=="/auto" goto auto
 set "PULLOUT=%TEMP%\bonelia-git-pull.txt"
 set "TRY=0"
 
@@ -59,3 +65,46 @@ echo guncel surumle calisiyor. Telefon adresi: C:\BoneliaAI\server-data\panel-ur
 echo (Server, Panel und Hintergrund-Agent laufen mit der neuen Version.)
 pause
 endlocal
+
+:auto
+set "CFG=%CD%\deployment\server.home.toml"
+if defined BONELIA_CONFIG set "CFG=%BONELIA_CONFIG%"
+set "PY=%CD%\.venv\Scripts\python.exe"
+if defined BONELIA_PY set "PY=%BONELIA_PY%"
+if not exist "%PY%" (endlocal & exit /b 0)
+set "LOCK=%TEMP%\bonelia-update.lock"
+rem A lock left by a crashed run older than 2 hours is removed; a running update is never disturbed.
+powershell -NoProfile -Command "$l='%LOCK%'; if ((Test-Path $l) -and ((Get-Item $l).LastWriteTime -lt (Get-Date).AddHours(-2))) { Remove-Item -Recurse -Force $l }" >nul 2>&1
+mkdir "%LOCK%" 2>nul || (endlocal & exit /b 0)
+set "LOG=C:\BoneliaAI\guncelleme.log"
+"%PY%" -m bonelia.server --config "%CFG%" update-check > "%TEMP%\bonelia-update-check.txt" 2>&1
+if errorlevel 1 goto autoend
+for /f %%i in ('git rev-parse HEAD') do set "OLD=%%i"
+git merge --ff-only @{u} >nul 2>&1
+if errorlevel 1 (
+  "%PY%" -m bonelia.server --config "%CFG%" update-note --result merge_failed --from %OLD%
+  goto autoend
+)
+for /f %%i in ('git rev-parse HEAD') do set "NEW=%%i"
+echo %date% %time% %OLD% -^> %NEW% >> "%LOG%" 2>nul
+call "%~dp0BONELIA-Server-Durdur.bat"
+"%PY%" -m pip install -q -e ".[server]" >> "%LOG%" 2>&1
+call "%~dp0BONELIA-Server-Baslat.bat" /quiet
+if errorlevel 1 goto autoback
+call "%~dp0BONELIA-Panel-Baslat.bat" /quiet
+call "%~dp0BONELIA-Ajan-Onar.bat" /auto
+"%PY%" -m bonelia.server --config "%CFG%" update-note --result ok --from %OLD% --to %NEW%
+goto autoend
+
+:autoback
+echo %date% %time% new version did not start, back to %OLD% >> "%LOG%" 2>nul
+call "%~dp0BONELIA-Server-Durdur.bat"
+git reset -q --hard %OLD%
+"%PY%" -m pip install -q -e ".[server]" >> "%LOG%" 2>&1
+call "%~dp0BONELIA-Server-Baslat.bat" /quiet
+call "%~dp0BONELIA-Panel-Baslat.bat" /quiet
+"%PY%" -m bonelia.server --config "%CFG%" update-note --result rolled_back --from %OLD% --to %NEW%
+
+:autoend
+rmdir "%LOCK%" 2>nul
+endlocal & exit /b 0
