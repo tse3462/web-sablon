@@ -79,7 +79,8 @@ _NOTICE = {
 class HybridRouter:
     def __init__(self, local: Provider | None, cloud: Provider | None, prices: PriceTable, usage: UsageStore,
                  allowed_tools: Callable[[], set[str]], max_ai_events: int = 5,
-                 history: Callable[[DiagnosticEvent], list[str]] | None = None):
+                 history: Callable[[DiagnosticEvent], list[str]] | None = None,
+                 brain: Callable[[], tuple[Provider, float] | None] | None = None):
         self.local = local
         self.cloud = cloud
         self.prices = prices
@@ -88,6 +89,8 @@ class HybridRouter:
         self.max_ai_events = max_ai_events
         self.history = history or (lambda e: [])
         self._local_ok: bool | None = None
+        # The "brain" (07.11.2026): Claude for important problems, set up in the panel -> (provider, monthly limit)
+        self.brain = brain or (lambda: None)
 
     def status(self) -> dict:
         return {
@@ -118,6 +121,18 @@ class HybridRouter:
         month = self.usage.ai_spend(policy.tenant_id, "month")
         return day + est <= policy.daily_budget and month + est <= policy.monthly_budget
 
+    def _brain_budget_ok(self, provider: Provider, limit: float) -> bool:
+        """One monthly limit over all customers; a call is only made when even a long answer stays inside it."""
+        est = self.prices.estimate(provider.name, provider.model, 6000, 6000, provider.is_cloud)
+        spend_all = getattr(self.usage, "ai_spend_all", None)
+        if est is None or spend_all is None:
+            return False
+        return spend_all("month") + est <= limit
+
+    @staticmethod
+    def _important(event: DiagnosticEvent) -> bool:
+        return event.triage == Triage.important or event.severity == Severity.critical
+
     def _ask(self, provider: Provider, event: DiagnosticEvent, rules: Diagnosis, lang: str, tenant_id: str) -> Diagnosis:
         tools = self.allowed_tools()
         system, user = build_prompt(event, rules.summary, tools, lang, self.history(event))
@@ -144,6 +159,11 @@ class HybridRouter:
         modes: set[str] = set()
         local_ok = self.local_available()
         ai_budget = self.max_ai_events
+        try:
+            brain = self.brain()
+        except Exception as exc:  # a broken brain setting must never stop the analysis
+            log.warning("brain unavailable: %s", exc)
+            brain = None
         for event in events:
             rules = diagnose_with_rules(event, lang)
             if not self._needs_ai(event, rules) or ai_budget <= 0:
@@ -158,7 +178,19 @@ class HybridRouter:
                 continue
             diag: Diagnosis | None = None
             ai_budget -= 1  # count attempts, not successes: failed calls also cost time
-            if local_ok and self.local is not None:
+            if brain is not None and self._important(event):
+                if not policy.cloud_allowed:
+                    notices.append(_NOTICE["cloud_denied"][lang])
+                elif not self._brain_budget_ok(*brain):
+                    notices.append(_NOTICE["budget"][lang])
+                else:
+                    try:
+                        diag = self._ask(brain[0], event, rules, lang, policy.tenant_id)
+                        modes.add("brain")
+                    except (ProviderError, ValueError) as exc:
+                        log.warning("brain failed: %s", exc)
+                        notices.append(_NOTICE["ai_failed"][lang])
+            if diag is None and local_ok and self.local is not None:
                 try:
                     diag = self._ask(self.local, event, rules, lang, policy.tenant_id)
                     modes.add("local")

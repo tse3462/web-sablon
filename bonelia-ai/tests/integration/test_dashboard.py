@@ -387,3 +387,39 @@ def test_settings_show_when_the_server_was_last_backed_up(tmp_path):
     assert 'id="bkState"' in html and "function backupLoad(" in html
     for key in ("bk_title", "bk_last", "bk_none", "bk_help"):
         assert html.count(key + ":") == 2
+
+
+def test_brain_settings_key_limit_model_and_customer_consent(tmp_path, monkeypatch):
+    """07.11.2026: the owner sets up Claude in the panel: the key is kept on the server and never shown again, a monthly
+    limit (5 EUR), the model, and per customer whether its data may go to Claude (off until ticked)."""
+    store, c, t, *_ = setup(tmp_path)
+    g = c.get("/api/brain", headers=H).json()
+    assert g["enabled"] is False and g["key_set"] is False and g["monthly_limit"] == 5.0 and g["model"] == "claude-opus-5-5"
+    assert g["customers"] == [{"id": t, "name": "Filiale Ehrenfeld", "allowed": False}] and g["spent_month"] == 0
+    assert c.post("/api/brain", headers=H, json={"enabled": True, "key": "not-a-key"}).status_code == 422
+    r = c.post("/api/brain", headers=H, json={"enabled": True, "key": "sk-ant-api03-" + "A" * 40, "monthly_limit": 5, "model": "claude-opus-5-5"})
+    assert r.status_code == 200 and r.json()["key_set"] is True and "sk-ant" not in r.text
+    assert store.get_setting("anthropic_api_key").startswith("sk-ant-api03-")
+    assert c.post("/api/brain", headers=H, json={"enabled": True, "monthly_limit": 500}).status_code == 422  # sane limit only
+    assert c.post("/api/brain", headers=H, json={"enabled": True, "model": "gpt-4"}).status_code == 422
+    assert c.post("/api/brain/customer", headers=H, json={"tenant_id": t, "allowed": True}).json()["customers"][0]["allowed"] is True
+    assert store.tenant(t)["cloud_ai_allowed"]
+    from bonelia.server import brain as brain_mod
+
+    calls = []
+
+    class Fake:
+        name, model, is_cloud = "anthropic", "claude-opus-5-5", True
+
+        def complete(self, system, user, max_output_tokens=900):
+            calls.append(user)
+            from bonelia.ai.providers import ProviderResult
+            return ProviderResult('{"ok": true}', 40, 10, 900, "claude-opus-5-5")
+
+    monkeypatch.setattr(brain_mod, "make_provider", lambda key, model: Fake())
+    tr = c.post("/api/brain/test", headers=H, json={}).json()
+    assert tr["ok"] is True and calls and tr["spent_month"] > 0  # the test call counts against the limit too
+    html = c.get("/").text
+    assert 'id="brainKey"' in html and "function brainLoad(" in html
+    for key in ("br_title", "br_help", "br_key", "br_limit", "br_spent", "br_customers", "br_test_ok"):
+        assert html.count(key + ":") == 2

@@ -357,6 +357,15 @@ class Store:
                        (tenant_id, _iso(start)))
         return float(rows[0]["s"])
 
+    def ai_spend_all(self, period: str) -> float:
+        """Cloud AI spend of all customers together (the brain's monthly limit is one limit for everything)."""
+        now = utcnow()
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if period == "month":
+            start = start.replace(day=1)
+        rows = self._q("select coalesce(sum(estimated_cost),0) s from ai_calls where created_at>=?", (_iso(start),))
+        return float(rows[0]["s"])
+
     def ai_usage(self, tenant_id: str) -> list[dict[str, Any]]:
         return [dict(r) for r in self._q(
             "select provider, model, count(*) calls, sum(input_tokens) input_tokens, sum(output_tokens) output_tokens,"

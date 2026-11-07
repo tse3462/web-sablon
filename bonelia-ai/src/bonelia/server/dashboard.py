@@ -34,6 +34,7 @@ from .uptime import UptimeMonitor, check_settings, normalize_keyword
 from .vault_store import VaultStore
 from .disk_store import SAFE_KEYS, DiskStore, tree_nodes
 from . import rescue_report
+from . import brain as brain_mod
 from ..security.vault import valid_box
 from .store import Store
 
@@ -163,6 +164,18 @@ class CloseProgramBody(BaseModel):
     restart: bool = False
 
 
+class BrainBody(BaseModel):
+    enabled: bool | None = None
+    key: str | None = Field(default=None, max_length=300)
+    monthly_limit: float | None = None
+    model: str | None = Field(default=None, max_length=40)
+
+
+class BrainCustomer(BaseModel):
+    tenant_id: str = Field(max_length=80)
+    allowed: bool
+
+
 class TokenBody(BaseModel):
     token: str = Field(max_length=4000)  # may be the whole @BotFather message; the token is extracted
 
@@ -276,6 +289,73 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
                 "scan_pending": scan_pending,
                 "progress": {"pct": prog["pct"], "at": prog["at"]} if scan_pending and prog and prog["request"] == pol.get("disk_scan") else None,
                 "consent": int(tenant.get("max_auto_level") or 0) >= 1}
+
+    # ---------- the brain (07.11.2026): Claude for important problems, with a monthly limit and customer consent
+    def brain_view() -> dict[str, Any]:
+        s = brain_mod.settings(store)
+        key = store.get_setting(brain_mod.KEY_SETTING)
+        return {**s, "key_set": isinstance(key, str) and bool(brain_mod.KEY_RE.match(key)),
+                "spent_month": round(store.ai_spend_all("month"), 4),
+                "customers": [{"id": x["id"], "name": x["name"], "allowed": bool(x["cloud_ai_allowed"])} for x in store.tenants()]}
+
+    @app.get("/api/brain")
+    def brain_get() -> dict[str, Any]:
+        return brain_view()
+
+    @app.post("/api/brain")
+    def brain_set(body: BrainBody) -> dict[str, Any]:
+        s = brain_mod.settings(store)
+        if body.key is not None and body.key.strip():
+            k = body.key.strip()
+            if not brain_mod.KEY_RE.match(k):
+                raise HTTPException(422, "invalid_key")
+            store.set_setting(brain_mod.KEY_SETTING, k)  # this PC only; never sent back to the panel
+        if body.monthly_limit is not None:
+            if not 0 < body.monthly_limit <= brain_mod.MAX_LIMIT:
+                raise HTTPException(422, "invalid_limit")
+            s["monthly_limit"] = round(float(body.monthly_limit), 2)
+        if body.model is not None:
+            if body.model not in brain_mod.MODELS:
+                raise HTTPException(422, "invalid_model")
+            s["model"] = body.model
+        if body.enabled is not None:
+            s["enabled"] = body.enabled
+        store.set_setting(brain_mod.SETTINGS_KEY, s)
+        store.audit("admin:dashboard", "settings.brain", {**s, "key_changed": bool(body.key)})
+        return brain_view()
+
+    @app.post("/api/brain/customer")
+    def brain_customer(body: BrainCustomer) -> dict[str, Any]:
+        if store.tenant(body.tenant_id) is None:
+            raise HTTPException(404, "unknown_tenant")
+        store.update_tenant(body.tenant_id, cloud_ai_allowed=1 if body.allowed else 0)
+        return brain_view()
+
+    @app.post("/api/brain/test")
+    def brain_test() -> dict[str, Any]:
+        """One tiny question to Claude: is the key right? Counts against the monthly limit like every call."""
+        key = store.get_setting(brain_mod.KEY_SETTING)
+        if not isinstance(key, str) or not brain_mod.KEY_RE.match(key):
+            raise HTTPException(409, "no_key")
+        s = brain_mod.settings(store)
+        if store.ai_spend_all("month") >= s["monthly_limit"]:
+            raise HTTPException(409, "limit_reached")
+        from ..ai.claude import claude_prices
+        from ..ai.costs import PriceTable
+        from ..ai.providers import ProviderError
+        from ..ai.router import AICallRecord
+
+        p = brain_mod.make_provider(key, s["model"])
+        try:
+            res = p.complete("Answer with JSON only.", 'Reply {"ok": true}', 50)
+            ok = '"ok"' in res.text
+        except ProviderError as exc:
+            return {**brain_view(), "ok": False, "error": str(exc)[:120]}
+        cost = PriceTable(claude_prices()).estimate(p.name, p.model, res.input_tokens, res.output_tokens, True)
+        store.record_ai_call(AICallRecord(tenant_id="system", provider=p.name, model=p.model, input_tokens=res.input_tokens,
+                                          output_tokens=res.output_tokens, estimated_cost=cost, latency_ms=res.latency_ms,
+                                          category="brain_test", ok=ok))
+        return {**brain_view(), "ok": ok}
 
     @app.get("/api/backup")
     def backup_get() -> dict[str, Any]:

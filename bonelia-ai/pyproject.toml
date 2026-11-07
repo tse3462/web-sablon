@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-server = ["fastapi>=0.110", "uvicorn>=0.29"]
+server = ["fastapi>=0.110", "uvicorn>=0.29", "anthropic>=2.6,<3"]
 ui = ["fastapi>=0.110", "uvicorn>=0.29"]
 dev = ["pytest>=8", "fastapi>=0.110", "uvicorn>=0.29", "pyinstaller>=6.5"]
 

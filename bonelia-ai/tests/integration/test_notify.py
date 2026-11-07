@@ -169,3 +169,13 @@ def test_an_old_server_backup_is_reminded_once_a_week(tmp_path):
     assert n.backup_overdue(now)
     assert "14 gündür" in " ".join(ch.sent[-1]) and "USB" in " ".join(ch.sent[-1])
     assert not n.backup_overdue(now)  # not again the same week
+
+
+def test_an_important_finding_carries_the_brains_explanation(tmp_path):
+    from tests.integration.test_notify import ev as make_ev
+
+    store = Store(tmp_path / "db")
+    ch = FakeChannel()
+    n = Notifier(store, [ch], lang="tr")
+    assert n.finding("Filiale", "KASSE-1", "t1", make_ev("f9"), explain="Yazıcı sürücüsü bozuk; sürücüyü güncelleyin.")
+    assert "🧠 Yazıcı sürücüsü bozuk" in ch.sent[-1][1]

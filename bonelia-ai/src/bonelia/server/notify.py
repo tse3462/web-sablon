@@ -202,10 +202,12 @@ class Notifier:
         self.store.mark_notified(key)
         return sent
 
-    def finding(self, customer: str, device: str, tenant_id: str, ev: DiagnosticEvent) -> bool:
+    def finding(self, customer: str, device: str, tenant_id: str, ev: DiagnosticEvent, explain: str | None = None) -> bool:
         if ev.triage != Triage.important:
             return False
         body = ev.title + (f"\n→ {ev.repair_tool} (otomatik / automatisch)" if ev.repair_tool else "")
+        if explain:  # the brain's (Claude's) explanation, 07.11.2026
+            body += "\n\n🧠 " + explain.strip()[:700]
         return self._send(f"finding|{tenant_id}|{ev.fingerprint}", timedelta(hours=6),
                           self._title("finding", customer=customer, device=device), body)
 

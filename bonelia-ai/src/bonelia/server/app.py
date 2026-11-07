@@ -50,6 +50,8 @@ from .uptime import UptimeMonitor
 from .vault_store import VaultStore
 from .disk_store import DiskStore
 from . import rescue_report
+from .brain import Brain
+from ..ai.claude import claude_prices
 from ..collectors.remote import VAULT_ERRORS
 from .store import Store
 
@@ -87,8 +89,13 @@ def build_router(cfg: ServerConfig, store: Store, registry: ToolRegistry) -> Hyb
         codes = [e.code for e in ev.evidence if e.code]
         return store.knowledge_for(ev.app.name, codes)
 
-    return HybridRouter(local, cloud, PriceTable.from_config(cfg.prices), store, lambda: ai_proposable_tools(registry),
-                        max_ai_events=cfg.max_ai_events_per_request, history=history)
+    prices = PriceTable.from_config(cfg.prices)
+    for k, v in claude_prices().items():  # the brain's models (07.11.2026); configured prices win
+        if prices.estimate(*k.split(":", 1), 0, 0, True) is None:
+            prices.set(k, v)
+    brain = Brain(store)
+    return HybridRouter(local, cloud, prices, store, lambda: ai_proposable_tools(registry),
+                        max_ai_events=cfg.max_ai_events_per_request, history=history, brain=brain.current)
 
 
 class _RateLimiter:
@@ -244,6 +251,7 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         back = {s.event_id: o.event_id for s, o in zip(saved, originals)}  # server id -> client id
         async with analyze_sem:
             result = await run_in_threadpool(router.analyze, saved, ai_policy(tenant), allow_cloud, lang)
+        explain = {d.event_id: d.summary for d in result.diagnoses if str(d.produced_by).startswith("anthropic:")}
         for d in result.diagnoses:
             store.save_diagnosis(tenant["id"], d)
             d.event_id = back.get(d.event_id, d.event_id)
@@ -251,7 +259,7 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
                     tenant_id=tenant["id"], device_id=dev["id"])
         cust, dlabel = labels(tenant, dev)
         for ev in saved:
-            await run_in_threadpool(safe_notify, notifier.finding, cust, dlabel, tenant["id"], ev)
+            await run_in_threadpool(safe_notify, notifier.finding, cust, dlabel, tenant["id"], ev, explain.get(ev.event_id))
         return AnalyzeResponse(diagnoses=result.diagnoses, ai_mode=result.mode, notices=result.notices)
 
     # ------------------------------------------------------------------ routes
