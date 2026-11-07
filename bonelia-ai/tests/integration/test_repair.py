@@ -97,6 +97,7 @@ def setup(tmp_path, token=True):
     if token:
         body["repair_token"] = PAT
     saved = c.post("/api/apps", headers=H, json=body).json()["apps"][0]
+    store.set_setting("autopilot", {"off": [saved["id"]]})  # these tests: the owner turned the autopilot off
     sent, now = Sent(), [utcnow()]
     mon = UptimeMonitor(store, sent, transport=gh.transport, clock=lambda: now[0], ssl_days=lambda h: 90,
                         probes=("https://probe.test/",))

@@ -178,6 +178,21 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
                 await asyncio.sleep(1800)
                 await run_in_threadpool(safe_notify, watch.poll)
 
+        async def pilot_db_watch():  # autopilot (07.11.2026): free database figures every 5 minutes, morning summary
+            from .autopilot import DB_URLS_KEY, Autopilot, read_db_stats
+            from .repair import GitHubRepair
+            pilot = Autopilot(store, GitHubRepair(store), notifier)
+
+            def once():
+                urls = store.get_setting(DB_URLS_KEY) or {}
+                for a in store.get_setting("apps") or []:
+                    if isinstance(a, dict) and a.get("id") in urls:
+                        pilot.db_check(a, read_db_stats(urls[a["id"]]), pilot.clock())
+                pilot.send_digest()
+            while True:
+                await asyncio.sleep(300)
+                await run_in_threadpool(safe_notify, once)
+
         async def uptime_watch():  # own programs from "My apps", once a minute
             monitor = UptimeMonitor(store, notifier)
             while True:
@@ -188,6 +203,7 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
         uptime_task = asyncio.create_task(uptime_watch())
         develop_task = asyncio.create_task(develop_watch())
         dbh_task = asyncio.create_task(db_health_watch())
+        pilot_task = asyncio.create_task(pilot_db_watch())
         try:
             yield
         finally:
@@ -195,6 +211,7 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             uptime_task.cancel()
             develop_task.cancel()
             dbh_task.cancel()
+            pilot_task.cancel()
 
     app = FastAPI(title="BONELİA AI Server", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)

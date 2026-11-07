@@ -180,6 +180,12 @@ class SetupValue(BaseModel):
     value: str = Field(max_length=300)
 
 
+class PilotSettings(BaseModel):
+    app_id: str | None = Field(default=None, max_length=40)
+    on: bool | None = None
+    ai_cap: int | None = Field(default=None, ge=0, le=500)
+
+
 class SetupLink(BaseModel):
     app_id: str = Field(max_length=40)
     repo: str = Field(max_length=201)
@@ -468,6 +474,11 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
         if r != "saved":
             raise HTTPException(409, "secrets_" + r)
         store.audit("admin:dashboard", "setup.secret_saved", {"repo": app_["repair_repo"], "name": "DB_HEALTH_URL"})
+        # The same read-only monitor address stays on this PC for the free five-minute check (autopilot, 07.11.2026):
+        # that role sees statistics only, never a customer's data, and can change nothing.
+        from .autopilot import DB_URLS_KEY
+        urls = store.get_setting(DB_URLS_KEY) or {}
+        store.set_setting(DB_URLS_KEY, {**urls, app_id: url})
         return g.status(app_)
 
     # ---------- weekly database check of the own programs (07.11.2026)
@@ -759,6 +770,47 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
             raise HTTPException(code, "repair_" + outcome)
         store.audit("admin:dashboard", "uptime.repair_started", {"app_id": app_id})
         return {"started": True, "apps": uptime.summary()}
+
+    # ---------- autopilot of the own programs (07.11.2026)
+    def pilot_view() -> dict[str, Any]:
+        from .uptime import STATE_KEY as UPTIME_STATE
+        return uptime.pilot.summary(store.get_setting(UPTIME_STATE) or {})
+
+    @app.get("/api/pilot")
+    def pilot_get() -> dict[str, Any]:
+        return pilot_view()
+
+    @app.post("/api/pilot/settings")
+    def pilot_settings(body: PilotSettings) -> dict[str, Any]:
+        from .autopilot import SETTINGS_KEY as PILOT_KEY
+        s = uptime.pilot.settings()
+        if body.app_id is not None and body.on is not None:
+            if not any(a.get("id") == body.app_id for a in apps_list()):
+                raise HTTPException(404, "unknown_app")
+            off = [x for x in s["off"] if x != body.app_id] + ([] if body.on else [body.app_id])
+            s["off"] = off
+        if body.ai_cap is not None:
+            s["ai_cap"] = body.ai_cap
+        store.set_setting(PILOT_KEY, s)
+        store.audit("admin:dashboard", "autopilot.settings", {"off": s["off"], "ai_cap": s["ai_cap"]})
+        return pilot_view()
+
+    @app.post("/api/pilot/{app_id}/approve")
+    def pilot_approve(app_id: str) -> dict[str, Any]:
+        """The owner's "Onayla" for a fix the autopilot did not take live by itself."""
+        from .uptime import STATE_KEY as UPTIME_STATE
+        app_ = next((a for a in apps_list() if a.get("id") == app_id and a.get("repair_repo")), None)
+        if app_ is None:
+            raise HTTPException(404, "unknown_app")
+        with uptime._lock:
+            states = store.get_setting(UPTIME_STATE) or {}
+            st = states.setdefault(app_id, {"fails": 0, "alerted": False})
+            result = uptime.pilot.approve(app_, st)
+            if result != "merged":
+                raise HTTPException(409, "pilot_" + result)
+            store.set_setting(UPTIME_STATE, states)
+        store.audit("admin:dashboard", "autopilot.approved", {"app_id": app_id, "branch": st["pilot"].get("branch")})
+        return {"result": result, **pilot_view()}
 
     @app.post("/api/uptime/check")
     def uptime_check_now() -> dict[str, Any]:

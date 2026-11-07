@@ -3,8 +3,9 @@
 The panel walks the owner through what only he can do (a permission on his GitHub key, one SQL in Supabase,
 copying one address) and does the rest itself: it checks each step against GitHub, and it writes the repository
 secrets ANTHROPIC_API_KEY (the brain's key) and DB_HEALTH_URL (built from the Supabase pooler address and the
-password the panel generated) with GitHub's own encryption. The password never leaves the owner's browser except
-inside that request, and BONELIA does not keep it.
+password the panel generated) with GitHub's own encryption. The password leaves the owner's browser only inside that
+request. Since the autopilot (07.11.2026) the same read-only monitor address also stays on this PC for the free
+five-minute database check; that role sees statistics only and can change nothing.
 """
 
 from __future__ import annotations

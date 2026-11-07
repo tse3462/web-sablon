@@ -272,6 +272,35 @@ class Notifier:
         title = ("✨ Geliştir: " if self.lang == "tr" else "✨ Entwickeln: ") + target
         return self._send(f"develop|{req.get('id')}|{st}", timedelta(days=30), title, text)
 
+    # ---------- autopilot of the own programs (07.11.2026): at once only what it could not solve
+    def pilot_alert(self, name: str, lines: list[str], links: list[dict] | None = None) -> bool:
+        head = (f"🚨 {name}: otomatik pilot sorunu çözemedi, sana ihtiyaç var." if self.lang == "tr"
+                else f"🚨 {name}: der Autopilot konnte das Problem nicht lösen.")
+        body = "\n".join("• " + x for x in lines[-8:])
+        body += "".join(f"\n→ {l.get('label', '')}: {l.get('url', '')}" for l in (links or [])[:6])
+        return self._send(f"pilot_alert|{name}|{lines[-1] if lines else ''}", timedelta(minutes=30), head, body)
+
+    def pilot_resolved(self, name: str, minutes: int, lines: list[str]) -> bool:
+        head = f"✅ {name}: sorun çözüldü ({minutes} dk)." if self.lang == "tr" else f"✅ {name}: Problem gelöst ({minutes} Min.)."
+        return self._send(f"pilot_resolved|{name}|{minutes}|{len(lines)}", timedelta(minutes=10), head, "\n".join("• " + x for x in lines[-8:]))
+
+    def pilot_waiting(self, name: str, branch: str, why: str, run_url: str) -> bool:
+        reasons = {"tr": {"too_many_files": "çok dosya değişiyor", "too_large": "değişiklik büyük", "daily_limit": "bugünkü otomatik sınır doldu",
+                          "merge_failed": "otomatik birleştirilemedi", "empty": "değişiklik okunamadı"},
+                   "de": {"too_many_files": "zu viele Dateien", "too_large": "Änderung zu groß", "daily_limit": "Tageslimit erreicht",
+                          "merge_failed": "nicht automatisch zusammenführbar", "empty": "Änderung nicht lesbar"}}[self.lang]
+        why_t = reasons.get(why) or (("hassas bir alana dokunuyor: " if self.lang == "tr" else "berührt einen sensiblen Bereich: ") + why.split(":", 1)[-1])
+        body = (f"Claude bir düzeltme hazırladı, testler geçti ({branch}) ama otomatik canlıya alınmadı: {why_t}.\n"
+                "Panel → Programlar → 🛡 Otomatik pilot → Onayla." if self.lang == "tr" else
+                f"Claude hat eine Korrektur vorbereitet, Tests bestanden ({branch}), aber nicht automatisch live: {why_t}.\n"
+                "Panel → Programme → 🛡 Autopilot → Bestätigen.") + (f"\n{run_url}" if run_url else "")
+        return self._send(f"pilot_waiting|{name}|{branch}", timedelta(days=7), f"✋ {name}", body)
+
+    def pilot_digest(self, entries: list[dict]) -> bool:
+        head = "☀️ Otomatik pilot — dünden bugüne" if self.lang == "tr" else "☀️ Autopilot — seit gestern"
+        body = "\n".join(f"• {e.get('app', '')}: {e.get('text', '')}" for e in entries[-30:])
+        return self._send(f"pilot_digest|{entries[-1].get('at') if entries else ''}", timedelta(hours=20), head, body)
+
     def self_update(self, note: dict) -> bool:
         """The hidden update task's outcome (07.11.2026): updated, went back, or why it waits."""
         res, to = note.get("result"), str(note.get("to") or "")[:7]

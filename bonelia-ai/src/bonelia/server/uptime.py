@@ -139,6 +139,8 @@ class UptimeMonitor:
         self.store, self.notifier, self.transport, self.clock, self.ssl_days = store, notifier, transport, clock, ssl_days
         self.probes = probes
         self.repair = repair or GitHubRepair(store, transport=transport)
+        from .autopilot import Autopilot
+        self.pilot = Autopilot(store, self.repair, notifier, clock)  # owner decision 07.11.2026
         self._lock = UptimeMonitor._RUN_LOCK
         with store._lock:
             store._db.executescript(SCHEMA)
@@ -202,21 +204,35 @@ class UptimeMonitor:
                               (a["id"], _iso(now), int(res.ok), res.code, res.ms, res.error))
                 st = state.setdefault(a["id"], {"fails": 0, "alerted": False})
                 if res.ok:
-                    if st.get("alerted") and st.get("down_since"):
+                    # While the autopilot handles it quietly, "back up" goes into its summary instead.
+                    quiet = st.get("pilot_quiet") and not (st.get("pilot") or {}).get("alerted")
+                    if st.get("alerted") and st.get("down_since") and not quiet:
                         minutes = max(1, round((now - _parse(st["down_since"])).total_seconds() / 60))
                         self._notify("uptime_up", a["id"], a["name"], minutes)
-                    st.update(fails=0, alerted=False, down_since=None)
+                    st.update(fails=0, alerted=False, down_since=None, pilot_quiet=False)
                 else:
                     st["fails"] = int(st.get("fails", 0)) + 1
                     if not st.get("down_since"):
                         st["down_since"] = _iso(now)
                     st["reason"] = res.error
                     if st["fails"] >= FAILURES_BEFORE_ALERT and not st.get("alerted"):
-                        started = self._start_repair(a, st, now, res.error or "down", REPAIR_EVERY)
-                        self._notify("uptime_down", a["id"], a["name"], res.error or "down", a.get("links") or [], started)
+                        if self.pilot.enabled(a):  # first aid without asking; the owner hears only what it cannot solve
+                            self.pilot.start(a, st, now, res.error or "down")
+                            st["pilot_quiet"] = True
+                        else:
+                            started = self._start_repair(a, st, now, res.error or "down", REPAIR_EVERY)
+                            self._notify("uptime_down", a["id"], a["name"], res.error or "down", a.get("links") or [], started)
                         st["alerted"] = True
                 self._check_certificate(a, url, st, now)
             self._poll_repairs(apps, state, now)
+            checked = {a["id"]: r.ok for a, _, r in results}
+            for a in apps:
+                st = state.get(a["id"]) or {}
+                if st.get("pilot") and a["id"] in checked:
+                    try:
+                        self.pilot.advance(a, st, now, checked[a["id"]])
+                    except Exception:  # GitHub hiccup: try again next minute
+                        pass
             self._save(state, apps, now)
 
     # ------------------------------------------------------------------ AI repair (GitHub job)

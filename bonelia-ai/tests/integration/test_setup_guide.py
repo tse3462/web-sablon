@@ -85,7 +85,9 @@ def test_guide_checks_steps_and_writes_the_secrets_itself(tmp_path, monkeypatch)
     r = c.post("/api/setup/a1/dburl", json={"pooler": POOLER, "password": PW})
     assert r.status_code == 200 and r.json()["secrets"]["DB_HEALTH_URL"] is True
     assert gh.secrets["DB_HEALTH_URL"].startswith(f"postgresql://bonelia_health_monitor.{REF}:")
-    assert PW not in json.dumps(store.get_setting("apps")) and PW not in r.text  # BONELIA keeps no password
+    assert PW not in json.dumps(store.get_setting("apps")) and PW not in r.text  # never in the app list or an answer
+    # kept only as the read-only monitor address for the free five-minute check (autopilot, 07.11.2026)
+    assert store.get_setting("db_monitor_urls")["a1"] == gh.secrets["DB_HEALTH_URL"]
     assert c.post("/api/setup/a1/dburl", json={"pooler": "postgresql://x", "password": PW}).status_code == 422
     assert c.get("/api/setup/nope").status_code == 404
     html = c.get("/").text
