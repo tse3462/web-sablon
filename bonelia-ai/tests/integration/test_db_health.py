@@ -109,3 +109,31 @@ def test_check_now_from_the_panel(tmp_path, monkeypatch):
     assert 'id="dbhList"' in html and "function dbhLoad(" in html
     for key in ("dbh_title", "dbh_help", "dbh_now", "dbh_ok", "dbh_warn", "dbh_crit", "dbh_none", "dbh_no_secret"):
         assert html.count(key + ":") == 2
+
+
+def test_the_panel_sees_that_a_check_is_running_and_when_its_report_arrived(tmp_path, monkeypatch):
+    """Owner request 07.11.2026: after "Şimdi kontrol et" the panel shows the check is running and replaces the old
+    report by itself as soon as the new one is picked up, without closing and reopening the app."""
+    store, gh, sent, w = setup(tmp_path)
+    import bonelia.server.db_health as mod
+
+    monkeypatch.setattr(mod, "TRANSPORT", gh.transport)
+    c = TestClient(create_dashboard_app(store, TOKEN, 9999), base_url="http://127.0.0.1:9999", headers=H)
+    w.poll()  # last week's report (run 71)
+    assert c.get("/api/dbhealth").json()["pending"] == {}
+    assert c.post("/api/dbhealth/a1/run", json={}).json()["result"] == "started"
+    pending = c.get("/api/dbhealth").json()["pending"]
+    assert list(pending) == ["a1"] and pending["a1"] > 0
+    w.poll()  # the new run is not finished yet: GitHub still shows run 71
+    assert list(c.get("/api/dbhealth").json()["pending"]) == ["a1"]
+    gh.run_id = 72
+    w.poll()
+    g = c.get("/api/dbhealth").json()
+    assert g["pending"] == {} and g["reports"]["a1"]["run_id"] == 72
+    # a check that never reports back stops showing as running after 15 minutes
+    assert c.post("/api/dbhealth/a1/run", json={}).json()["result"] == "started"
+    store.set_setting(mod.PENDING_KEY, {"a1": {"since": 1.0, "run_id": 72}})
+    assert c.get("/api/dbhealth").json()["pending"] == {}
+    html = c.get("/").text
+    for key in ("dbh_running", "dbhTimer"):
+        assert key in html

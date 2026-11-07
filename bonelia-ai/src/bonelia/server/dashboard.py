@@ -490,7 +490,8 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
     def dbhealth_get() -> dict[str, Any]:
         from .db_health import DbHealthWatch
         w = DbHealthWatch(store)
-        return {"programs": [{"id": a["id"], "name": a.get("name") or a["repair_repo"]} for a in w.programs()], "reports": w.reports()}
+        return {"programs": [{"id": a["id"], "name": a.get("name") or a["repair_repo"]} for a in w.programs()], "reports": w.reports(),
+                "pending": w.pending()}
 
     @app.post("/api/dbhealth/{app_id}/run")
     def dbhealth_run(app_id: str) -> dict[str, Any]:

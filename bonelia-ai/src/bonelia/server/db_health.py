@@ -23,6 +23,9 @@ WORKFLOW = "db-saglik.yml"
 ARTIFACT = "db-saglik-report"
 SETTINGS_KEY = "db_health"
 HURRY_KEY = "db_health_hurry"
+# A check started from the panel, per program: when, and which report was the latest then (07.11.2026).
+PENDING_KEY = "db_health_pending"
+PENDING_SECONDS = 900
 STATUSES = ("ok", "info", "warn", "crit", "no_secret", "failed")
 LEVELS = ("ok", "info", "warn", "crit")
 TRANSPORT: httpx.BaseTransport | None = None  # tests replace the network
@@ -53,6 +56,16 @@ class DbHealthWatch:
     def reports(self) -> dict[str, Any]:
         r = self.store.get_setting(SETTINGS_KEY)
         return r if isinstance(r, dict) else {}
+
+    def pending(self) -> dict[str, float]:
+        """Programs whose check was started by hand and whose new report has not arrived yet (at most 15 minutes)."""
+        raw = self.store.get_setting(PENDING_KEY)
+        if not isinstance(raw, dict):
+            return {}
+        reports, now = self.reports(), time.time()
+        return {k: float(v["since"]) for k, v in raw.items()
+                if isinstance(v, dict) and isinstance(v.get("since"), (int, float)) and now - v["since"] < PENDING_SECONDS
+                and (reports.get(k) or {}).get("run_id") == v.get("run_id")}
 
     def _latest(self, repo: str) -> tuple[int, str, dict[str, Any]] | None:
         with self.github._client() as c:
@@ -116,7 +129,12 @@ class DbHealthWatch:
             return "refused"
         if r.status_code != 204:
             return "refused"
-        self.store.set_setting(HURRY_KEY, time.time() + 900)
+        now = time.time()
+        self.store.set_setting(HURRY_KEY, now + PENDING_SECONDS)
+        raw = self.store.get_setting(PENDING_KEY)
+        pending = {k: v for k, v in raw.items() if k in self.pending()} if isinstance(raw, dict) else {}
+        pending[app_id] = {"since": now, "run_id": (self.reports().get(app_id) or {}).get("run_id")}
+        self.store.set_setting(PENDING_KEY, pending)
         return "started"
 
     def hurry(self) -> bool:
