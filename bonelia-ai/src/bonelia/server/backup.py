@@ -26,6 +26,7 @@ from typing import Any
 
 KEY, DB, TOKEN = "server_ed25519.key", "bonelia.db", "dashboard.token"
 PREFIX = "sunucu-"
+SETTING = "server_backup"  # {"at", "folder"} of the last backup, for the panel and the weekly reminder
 
 
 def _sha(p: Path) -> str:
@@ -122,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     mk.add_argument("--extra", action="append", default=[], help="name=path, e.g. tailscale/server-state.conf=C:\\...")
     mk.add_argument("--info", action="append", default=[], help="key=value kept in the manifest")
     mk.add_argument("--keep", type=int, default=5)
+    mk.add_argument("--record", action="store_true", help="note the backup in the server's database (panel, reminder)")
     lt = sub.add_parser("latest")
     lt.add_argument("--root", required=True)
     rs = sub.add_parser("restore")
@@ -134,11 +136,19 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "make":
             extras = dict(x.split("=", 1) for x in args.extra if "=" in x)
             info = dict(x.split("=", 1) for x in args.info if "=" in x)
-            folder = make_backup(_data_dir(args), Path(args.dest), {k: Path(v) for k, v in extras.items()}, info, keep=args.keep)
+            data_dir = _data_dir(args)
+            folder = make_backup(data_dir, Path(args.dest), {k: Path(v) for k, v in extras.items()}, info, keep=args.keep)
             out = {"ok": not verify(folder), "folder": str(folder)}
+            if out["ok"] and args.record and (data_dir / DB).is_file():
+                from .store import Store
+                Store(data_dir / DB).set_setting(SETTING, {"at": datetime.now().isoformat(timespec="seconds"), "folder": str(folder)})
         elif args.cmd == "latest":
             f = latest(args.root)
-            out = {"ok": f is not None, "folder": str(f) if f else None}
+            age = None
+            if f:
+                made = datetime.strptime(f.name[len(PREFIX):], "%Y%m%d-%H%M%S")
+                age = max(0, (datetime.now() - made).days)
+            out = {"ok": f is not None, "folder": str(f) if f else None, "age_days": age}
         else:
             out = {"ok": True, **restore(args.src, _data_dir(args))}
     except (OSError, ValueError, sqlite3.Error) as exc:

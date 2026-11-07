@@ -151,6 +151,7 @@ def create_app(cfg: ServerConfig, store: Store | None = None, router: HybridRout
             while True:
                 await asyncio.sleep(300)
                 await run_in_threadpool(safe_notify, notifier.check_offline)
+                await run_in_threadpool(safe_notify, notifier.backup_overdue)
 
         async def uptime_watch():  # own programs from "My apps", once a minute
             monitor = UptimeMonitor(store, notifier)

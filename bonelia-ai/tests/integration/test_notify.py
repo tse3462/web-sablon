@@ -152,3 +152,20 @@ def test_rescue_repairs_are_told_in_plain_words(tmp_path):
     assert "WINWORD.EXE" in texts[2] and "kaydedilmemiş" in texts[2]
     # a new process number of the same program does not repeat the message within the hour
     assert not n.repair("Filiale", "KASSE-1", "t1", "windows.restart_hung_app", {"pid": 5555, "name": "Kasse.exe"}, "executed_verified")
+
+
+def test_an_old_server_backup_is_reminded_once_a_week(tmp_path):
+    """Weekly backup (06.11.2026): when the stick was not plugged in for over 10 days the owner is reminded."""
+    from datetime import datetime, timezone
+
+    store = Store(tmp_path / "db")
+    ch = FakeChannel()
+    n = Notifier(store, [ch], lang="tr")
+    now = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    assert not n.backup_overdue(now)  # never backed up: nothing to remind (the panel shows it)
+    store.set_setting("server_backup", {"at": "2026-11-15T09:00:00", "folder": "E:\\BONELIA-Yedek\\sunucu-1"})
+    assert not n.backup_overdue(now)  # five days: fine
+    store.set_setting("server_backup", {"at": "2026-11-06T09:00:00", "folder": "E:\\BONELIA-Yedek\\sunucu-1"})
+    assert n.backup_overdue(now)
+    assert "14 gündür" in " ".join(ch.sent[-1]) and "USB" in " ".join(ch.sent[-1])
+    assert not n.backup_overdue(now)  # not again the same week

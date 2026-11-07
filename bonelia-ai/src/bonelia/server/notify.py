@@ -238,6 +238,27 @@ class Notifier:
         return self._send(f"denied|{tenant_id}|{device}|{what}", timedelta(hours=24),
                           self._title("denied", customer=customer, device=device), f"{what} ({', '.join(reasons)})")
 
+    def backup_overdue(self, now: datetime | None = None) -> bool:
+        """Weekly server backup (06.11.2026): remind once a week when the last one is over 10 days old."""
+        rec = self.store.get_setting("server_backup")
+        if not isinstance(rec, dict) or not rec.get("at"):
+            return False
+        now = now or utcnow()
+        try:
+            at = datetime.fromisoformat(str(rec["at"]))
+        except ValueError:
+            return False
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=now.tzinfo)
+        days = (now - at).days
+        if days <= 10:
+            return False
+        title = "💾 Sunucu yedeği eski" if self.lang == "tr" else "💾 Server-Sicherung veraltet"
+        body = (f"Son yedek {days} gündür alınmadı. Yedek USB belleğini ev bilgisayarına takın; yedek kendiliğinden alınır."
+                if self.lang == "tr" else
+                f"Letzte Sicherung vor {days} Tagen. Den Sicherungs-USB-Stick am Heim-PC einstecken; die Sicherung läuft von selbst.")
+        return self._send(f"backup_overdue|{rec['at']}", timedelta(days=7), title, body)
+
     def check_offline(self, now: datetime | None = None) -> list[str]:
         """Notify once per silent agent; re-armed when it reports again."""
         now = now or utcnow()

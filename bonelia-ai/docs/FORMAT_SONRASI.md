@@ -11,6 +11,10 @@ Program GitHub'da durur; **sunucunun verisi durmaz**. Format atmadan önce bir k
    - `BONELIA-Format-Sonrasi-Kur.bat` — format sonrası çift tıklanacak dosya.
    Son 5 yedek tutulur, eskileri kendiliğinden silinir.
 
+**Haftalık otomatik yedek:** ilk elle yedekten sonra bilgisayar her gün gizlice bakar; o USB takılıysa ve
+son yedek 7 günden eskiyse kendiliğinden yeni yedek alır (pencere açılmaz, `C:\BoneliaAI\yedek.log`).
+Son yedek panelde Ayarlar → Sunucu yedeği'nde görünür; 10 günü geçerse Telegram'a hatırlatma gelir.
+
 **Dikkat:** yedekte sunucunun anahtarı var. USB'yi güvenli yerde saklayın; buluta / e-postaya koymayın.
 
 ## Format SONRASI

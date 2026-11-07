@@ -106,6 +106,15 @@ jobs:
           cmd /c deployment\windows\BONELIA-Yedekle.bat
           if ($LASTEXITCODE -ne 0) { throw "backup failed" }
           if (-not (Test-Path "$usb\BONELIA-Format-Sonrasi-Kur.bat")) { throw "restore script not put next to the backup" }
+          # the weekly automatic run: a backup from today is new enough, so nothing new is written
+          cmd /c deployment\windows\BONELIA-Yedekle.bat /auto
+          if ($LASTEXITCODE -ne 0) { throw "automatic run failed" }
+          if (@(Get-ChildItem -Directory $usb -Filter 'sunucu-*').Count -ne 1) { throw "automatic run must wait a week" }
+          $task = Get-ScheduledTask -TaskName 'BONELIA AI Yedek'
+          if (-not $task.Settings.StartWhenAvailable -or $task.Triggers.Count -ne 1) { throw "weekly backup task not set up" }
+          $task.Actions[0].Arguments
+          Unregister-ScheduledTask -TaskName 'BONELIA AI Yedek' -Confirm:$false
+          python -c "import sys; from bonelia.server.store import Store; r = Store(sys.argv[1]).get_setting('server_backup'); assert r and r['folder'], r" "$d\bonelia.db"
           $env:BONELIA_ONLY_DATA = "1"; $env:BONELIA_DATA_DIR = "$env:RUNNER_TEMP\restored"
           cmd /c "$usb\BONELIA-Format-Sonrasi-Kur.bat"
           if ($LASTEXITCODE -ne 0) { throw "restore failed" }

@@ -376,3 +376,14 @@ def test_programs_have_their_own_page_and_open_their_admin_address(tmp_path):
     assert "repeat(8,1fr)" in html  # eight places in the phone's bottom menu
     for key in ("n_apps", "app_admin", "nv_devices"):
         assert html.count(key + ":") == 2
+
+
+def test_settings_show_when_the_server_was_last_backed_up(tmp_path):
+    store, c, *_ = setup(tmp_path)
+    assert c.get("/api/backup", headers=H).json() == {"last": None}
+    store.set_setting("server_backup", {"at": "2026-11-06T20:15:00", "folder": "E:\\BONELIA-Yedek\\sunucu-20261106-201500"})
+    assert c.get("/api/backup", headers=H).json()["last"]["folder"].endswith("sunucu-20261106-201500")
+    html = c.get("/").text
+    assert 'id="bkState"' in html and "function backupLoad(" in html
+    for key in ("bk_title", "bk_last", "bk_none", "bk_help"):
+        assert html.count(key + ":") == 2

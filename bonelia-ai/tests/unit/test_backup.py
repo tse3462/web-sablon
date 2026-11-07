@@ -85,3 +85,21 @@ def test_command_line(tmp_path, capsys):
     assert made["ok"] and bk.verify(made["folder"]) == []
     assert bk.main(["latest", "--root", str(tmp_path / "usb")]) == 0
     assert json.loads(capsys.readouterr().out)["folder"] == made["folder"]
+
+
+def test_a_made_backup_is_recorded_for_the_panel_and_its_age_is_known(tmp_path, capsys):
+    """Weekly backup (06.11.2026): the server learns when the last backup was made (panel + reminder), and the
+    automatic run knows whether the newest one on the stick is a week old already."""
+    from bonelia.server.store import Store
+
+    d = server_dir(tmp_path)
+    cfg = tmp_path / "server.toml"
+    cfg.write_text(f'[server]\ndata_dir = "{d.as_posix()}"\n')
+    assert bk.main(["make", "--config", str(cfg), "--dest", str(tmp_path / "usb"), "--record"]) == 0
+    made = json.loads(capsys.readouterr().out)
+    rec = Store(d / "bonelia.db").get_setting("server_backup")
+    assert rec["folder"] == made["folder"] and rec["at"]
+    assert bk.main(["latest", "--root", str(tmp_path / "usb")]) == 0
+    assert json.loads(capsys.readouterr().out)["age_days"] == 0
+    assert bk.main(["latest", "--root", str(tmp_path / "nothing")]) == 1
+    assert json.loads(capsys.readouterr().out)["age_days"] is None

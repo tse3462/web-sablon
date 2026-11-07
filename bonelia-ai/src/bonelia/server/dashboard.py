@@ -277,6 +277,12 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
                 "progress": {"pct": prog["pct"], "at": prog["at"]} if scan_pending and prog and prog["request"] == pol.get("disk_scan") else None,
                 "consent": int(tenant.get("max_auto_level") or 0) >= 1}
 
+    @app.get("/api/backup")
+    def backup_get() -> dict[str, Any]:
+        """When the server was last backed up (written by BONELIA-Yedekle.bat, also its weekly automatic run)."""
+        rec = store.get_setting("server_backup")
+        return {"last": rec if isinstance(rec, dict) else None}
+
     # ---------- automatic rescue (06.11.2026): two switches, and "close" for a program the PC reported
     @app.get("/api/rescue")
     def rescue_get() -> dict[str, bool]:

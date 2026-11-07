@@ -51,3 +51,13 @@ def test_backup_and_one_click_reinstall_scripts():
     assert "BONELIA-Kur-Otomatik.bat" in rs and "BONELIA-Ajan-Onar.bat" in rs and ".onceki-" in rs
     # the data is put back BEFORE the server starts, so it never makes a new key of its own
     assert rs.index("RestoreData\n$cfg") < rs.index("BONELIA-Kur-Otomatik.bat")
+    assert "BONELIA-Yedekle.bat" in rs  # the weekly backup is set up again after a reinstall
+
+
+def test_backup_runs_by_itself_once_a_week_while_the_stick_is_plugged_in():
+    bk = (WIN / "BONELIA-Yedekle.bat").read_text(encoding="ascii")
+    assert '"%~1"=="/auto"' in bk and "BONELIA_AUTO" in bk and "--record" in bk
+    assert "Register-ScheduledTask -TaskName 'BONELIA AI Yedek'" in bk and "-Daily" in bk and "-StartWhenAvailable" in bk
+    assert "age_days" in bk and "-lt 7" in bk  # daily look, a new backup only when the newest is a week old
+    vbs = (WIN / "gizli-calistir.vbs").read_text(encoding="ascii")
+    assert "WScript.Arguments" in vbs and ", 0, True" in vbs  # no window at all

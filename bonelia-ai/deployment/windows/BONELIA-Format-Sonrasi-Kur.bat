@@ -195,6 +195,12 @@ if ($info.agent_device_id -and $up) {
   [void]$todo.Add('Bu bilgisayarda ajan yoktu; isterseniz USB''deki Bu-Bilgisayara-Kur.bat ve sonra BONELIA-Ajan-Onar.bat')
 }
 
+if ($bk) {  # a fresh backup on the same stick, which also sets up the weekly automatic backup again
+  $env:BONELIA_BACKUP_DEST = Split-Path $bk.FullName -Parent
+  & cmd /c (Join-Path $root 'deployment\windows\BONELIA-Yedekle.bat')
+  if ($LASTEXITCODE -ne 0) { [void]$todo.Add('Haftalik yedek: BONELIA-Yedekle.bat dosyasini bir kez calistirin') }
+}
+
 Write-Host ''
 Write-Host '================================================================' -ForegroundColor Green
 Say 'BITTI. Sunucu, telefon paneli ve musteri bilgisayarlari eskisi gibi.' 'Fertig.'
