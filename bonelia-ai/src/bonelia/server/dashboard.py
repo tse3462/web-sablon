@@ -176,6 +176,11 @@ class BrainCustomer(BaseModel):
     allowed: bool
 
 
+class DevelopBody(BaseModel):
+    target: str = Field(max_length=60)
+    request: str = Field(max_length=2000)
+
+
 class TokenBody(BaseModel):
     token: str = Field(max_length=4000)  # may be the whole @BotFather message; the token is extracted
 
@@ -356,6 +361,34 @@ def create_dashboard_app(store: Store, token: str, port: int, extra_hosts: list[
                                           output_tokens=res.output_tokens, estimated_cost=cost, latency_ms=res.latency_ms,
                                           category="brain_test", ok=ok))
         return {**brain_view(), "ok": ok}
+
+    # ---------- "Geliştir" (07.11.2026): a wish -> Claude on its own branch with tests -> the owner approves
+    def develop_view(d) -> dict[str, Any]:
+        return {"targets": [{k: t[k] for k in ("id", "name", "base", "live")} for t in d.targets()],
+                "ready": d.github.ready(), "requests": d.requests()}
+
+    @app.get("/api/develop")
+    def develop_get() -> dict[str, Any]:
+        from .develop import DevelopDesk
+        return develop_view(DevelopDesk(store))
+
+    @app.post("/api/develop")
+    def develop_submit(body: DevelopBody) -> dict[str, Any]:
+        from .develop import DevelopDesk
+        d = DevelopDesk(store)
+        r = d.submit(body.target, body.request)
+        if isinstance(r, str):
+            raise HTTPException({"invalid_request": 422, "unknown_target": 404}.get(r, 409), r)
+        return develop_view(d)
+
+    @app.post("/api/develop/{rid}/approve")
+    def develop_approve(rid: str) -> dict[str, Any]:
+        from .develop import DevelopDesk
+        d = DevelopDesk(store)
+        r = d.approve(rid)
+        if r != "merged":
+            raise HTTPException(404 if r == "unknown" else 409, r)
+        return develop_view(d)
 
     @app.get("/api/backup")
     def backup_get() -> dict[str, Any]:

@@ -1,0 +1,119 @@
+name: Claude gelistir
+
+# The "Geliştir" box of the BONELIA AI panel (07.11.2026): the owner's wish, made by Claude on its own branch
+# claude/gelistir-<run>, with the full test set run again here. Nothing is merged and nothing goes live from this job:
+# only the owner's "Onayla" in the panel takes the branch in.
+# Needs ONE repository secret: CLAUDE_CODE_OAUTH_TOKEN (Claude Pro/Max subscription, made with `claude setup-token`)
+# or ANTHROPIC_API_KEY. BONELIA AI downloads the artifact "gelistir-report" and shows the result.
+run-name: Gelistir ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Set by BONELIA AI to find this run again
+        required: false
+        default: manual
+      request:
+        description: The owner's wish
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: claude-gelistir
+  cancel-in-progress: false
+
+jobs:
+  develop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      REQUEST: ${{ inputs.request }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install BONELIA AI
+        working-directory: bonelia-ai
+        run: pip install -e ".[dev]"
+
+      - name: Key present?
+        id: key
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$CLAUDE_CODE_OAUTH_TOKEN$ANTHROPIC_API_KEY" ]; then echo "ok=true"; else echo "ok=false"; fi >> "$GITHUB_OUTPUT"
+
+      - name: Claude makes the change
+        if: steps.key.outputs.ok == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mkdir -p .gelistir
+          echo ".gelistir/" >> .git/info/exclude
+          printf '%s' "${REQUEST:0:2000}" > .gelistir/request.txt
+          git rev-parse HEAD > .gelistir/start-sha
+          npm install -g @anthropic-ai/claude-code
+          claude -p "$(cat bonelia-ai/scripts/gelistir-prompt.md)" --max-turns 80 \
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(cd:*),Bash(python -m pytest:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(ls:*)" \
+            > .gelistir/claude-log.txt 2>&1 || echo "Claude ended with an error; see claude-log.txt"
+
+      # Git decides whether something changed, and the full test set decides whether it is good.
+      - name: Verify the change
+        id: verify
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          git checkout "$(cat .gelistir/start-sha)" -- .github
+          git clean -fdq -- .github
+          if [ -z "$(git status --porcelain)" ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          if (cd bonelia-ai && python -m pytest -q tests) > .gelistir/tests.txt 2>&1; then ok=true; else ok=false; fi
+          echo "verified=$ok" >> "$GITHUB_OUTPUT"
+
+      - name: Save the change on its own branch
+        id: push
+        if: steps.verify.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="claude/gelistir-${GITHUB_RUN_ID}"
+          git config user.name "BONELIA Gelistir"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b "$branch"
+          git add -A
+          git commit -q -m "Geliştir: ${REQUEST:0:72}" -m "Prepared by the Claude gelistir workflow ($RUN_URL). Not merged; the owner approves in the panel."
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Report
+        if: always()
+        env:
+          GELISTIR_STAGE: ${{ steps.key.outputs.ok == 'true' && 'ran' || 'no_key' }}
+          GELISTIR_CHANGED: ${{ steps.verify.outputs.changed }}
+          GELISTIR_VERIFIED: ${{ steps.verify.outputs.verified }}
+          GELISTIR_BRANCH: ${{ steps.push.outputs.branch }}
+        run: python bonelia-ai/scripts/gelistir_report.py .gelistir
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gelistir-report
+          path: |
+            .gelistir/report.json
+            .gelistir/summary.md
+            .gelistir/claude-log.txt
+            .gelistir/tests.txt
+          if-no-files-found: warn
+          retention-days: 14

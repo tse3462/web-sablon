@@ -240,6 +240,24 @@ class Notifier:
         return self._send(f"denied|{tenant_id}|{device}|{what}", timedelta(hours=24),
                           self._title("denied", customer=customer, device=device), f"{what} ({', '.join(reasons)})")
 
+    def develop_result(self, target: str, req: dict) -> bool:
+        """"Geliştir" (07.11.2026): what Claude did with the owner's wish."""
+        rep = req.get("report") or {}
+        st = req.get("state")
+        tr = {"ready": "✨ {n}: geliştirme hazır, testler geçti.\n{s}\n\nPanel → Programlar → Geliştir → Onayla.",
+              "tests_failed": "✨ {n}: değişiklik yapıldı ama testler geçmedi; programa alınmadı.\n{s}",
+              "no_change": "✨ {n}: değişiklik yapılmadı.\n{s}",
+              "no_key": "✨ {n}: GitHub'da Claude anahtarı yok (CLAUDE_CODE_OAUTH_TOKEN veya ANTHROPIC_API_KEY).",
+              "failed": "✨ {n}: iş tamamlanamadı. {s}"}
+        de = {"ready": "✨ {n}: Änderung fertig, Tests bestanden.\n{s}\n\nPanel → Programme → Entwickeln → Bestätigen.",
+              "tests_failed": "✨ {n}: Änderung gemacht, aber Tests fehlgeschlagen; nicht übernommen.\n{s}",
+              "no_change": "✨ {n}: keine Änderung.\n{s}",
+              "no_key": "✨ {n}: Kein Claude-Schlüssel auf GitHub (CLAUDE_CODE_OAUTH_TOKEN oder ANTHROPIC_API_KEY).",
+              "failed": "✨ {n}: Auftrag nicht abgeschlossen. {s}"}
+        text = (tr if self.lang == "tr" else de).get(st, tr["failed"]).format(n=target, s=str(rep.get("summary") or "")[:900]).strip()
+        title = ("✨ Geliştir: " if self.lang == "tr" else "✨ Entwickeln: ") + target
+        return self._send(f"develop|{req.get('id')}|{st}", timedelta(days=30), title, text)
+
     def backup_overdue(self, now: datetime | None = None) -> bool:
         """Weekly server backup (06.11.2026): remind once a week when the last one is over 10 days old."""
         rec = self.store.get_setting("server_backup")
